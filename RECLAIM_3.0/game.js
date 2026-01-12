@@ -10,8 +10,6 @@ const game = {
     shakeDecay: 0.90,
     flash: 0,
     flashDecay: 0.85,
-    yellowFlash: 0, // ✅ 핵 경고용 노란색 플래시
-    yellowFlashDecay: 0.88,
 
     addShake(amount) {
         // amount: 대략 0~30
@@ -23,12 +21,6 @@ const game = {
         // amount: 0~1
         const a = Math.max(0, Math.min(1, Number(amount) || 0));
         this.flash = Math.max(this.flash || 0, a);
-    },
-
-    // ✅ 핵 경고용 노란색 플래시
-    addYellowFlash(amount) {
-        const a = Math.max(0, Math.min(1, Number(amount) || 0));
-        this.yellowFlash = Math.max(this.yellowFlash || 0, a);
     },
 
     scaleRatio: 1,
@@ -1088,13 +1080,6 @@ const game = {
         } else {
             this.flash = 0;
         }
-        // ✅ 노란색 플래시 decay
-        if (this.yellowFlash > 0.01) {
-            this.yellowFlash *= this.yellowFlashDecay;
-            if (this.yellowFlash < 0.02) this.yellowFlash = 0;
-        } else {
-            this.yellowFlash = 0;
-        }
 
         if (typeof AI !== 'undefined') AI.update(this.frame);
 
@@ -1168,20 +1153,11 @@ const game = {
         this.particles.forEach(p => p.draw(ctx));
         ctx.restore();
 
-        // [VFX] screen flash (screen-space)
+        // [VFX] screen flash (screen-space) - 흰색만 사용
         if (this.flash > 0.01) {
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.fillStyle = `rgba(255,255,255,${this.flash})`;
-            ctx.fillRect(0, 0, this.width, this.height);
-            ctx.restore();
-        }
-
-        // ✅ 노란색 플래시 (핵 경고용)
-        if (this.yellowFlash > 0.01) {
-            ctx.save();
-            ctx.setTransform(1, 0, 0, 1, 0, 0);
-            ctx.fillStyle = `rgba(255,220,0,${this.yellowFlash})`;
             ctx.fillRect(0, 0, this.width, this.height);
             ctx.restore();
         }
