@@ -737,33 +737,23 @@ const game = {
                 // (옵션) 쿨타임이 있다면 반영
                 if (u.cooldown && u.cooldown > 0) this.cooldowns.nuke = u.cooldown;
 
-                // ✅ [NEW] 핵 발사 전 경고음 + 노란색 플래시 + 지연
-                ui.showToast("⚠️ 전술핵 발사 승인! 3초 후 투하!");
+                // ✅ [NEW] 핵 발사 전 경고음 + 5초 지연
+                ui.showToast("⚠️ 전술핵 발사 승인! 5초 후 투하!");
 
-                // 경고음 재생
+                // 경고음 재생 (5초간 사이렌)
                 if (typeof AudioSystem !== 'undefined') AudioSystem.playNukeWarning();
 
-                // 노란색 플래시 효과 (여러 번 깜빡임)
-                const flashInterval = setInterval(() => {
-                    if (this.addYellowFlash) this.addYellowFlash(0.4);
-                }, 400);
-
-                // 2.5초 후 실제 핵 발사
+                // 5초 후 실제 핵 발사
                 const targetX = x;
                 const groundY = this.groundY;
                 setTimeout(() => {
-                    clearInterval(flashInterval);
-
-                    // 마지막 강한 노란 플래시
-                    if (this.addYellowFlash) this.addYellowFlash(0.9);
-
                     const nuke = new Projectile(targetX, -500, null, 1000, 'player', 'nuke');
                     nuke.targetX = targetX;
                     nuke.targetY = groundY;
                     this.projectiles.push(nuke);
 
                     ui.showToast("☢️ 전술핵 투하!");
-                }, 2500);
+                }, 5000);
 
                 // [FIX] 스킬은 큐/쿨타임이 없으면 uiDirty가 안 떠서 숫자 갱신이 안 됨
                 if (typeof app !== 'undefined') { app.markDirty(); app.markUiDirty(); }
