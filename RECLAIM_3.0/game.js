@@ -10,6 +10,8 @@ const game = {
     shakeDecay: 0.90,
     flash: 0,
     flashDecay: 0.85,
+    yellowFlash: 0, // ✅ 핵 경고용 노란색 플래시
+    yellowFlashDecay: 0.88,
 
     addShake(amount) {
         // amount: 대략 0~30
@@ -21,6 +23,12 @@ const game = {
         // amount: 0~1
         const a = Math.max(0, Math.min(1, Number(amount) || 0));
         this.flash = Math.max(this.flash || 0, a);
+    },
+
+    // ✅ 핵 경고용 노란색 플래시
+    addYellowFlash(amount) {
+        const a = Math.max(0, Math.min(1, Number(amount) || 0));
+        this.yellowFlash = Math.max(this.yellowFlash || 0, a);
     },
 
     scaleRatio: 1,
@@ -728,10 +736,34 @@ const game = {
                 this.skillCharges.nuke--;
                 // (옵션) 쿨타임이 있다면 반영
                 if (u.cooldown && u.cooldown > 0) this.cooldowns.nuke = u.cooldown;
-                const nuke = new Projectile(x, -500, null, 1000, 'player', 'nuke');
-                nuke.targetX = x; nuke.targetY = this.groundY;
-                this.projectiles.push(nuke);
-                ui.showToast("전술핵 발사 감지!");
+
+                // ✅ [NEW] 핵 발사 전 경고음 + 노란색 플래시 + 지연
+                ui.showToast("⚠️ 전술핵 발사 승인! 3초 후 투하!");
+
+                // 경고음 재생
+                if (typeof AudioSystem !== 'undefined') AudioSystem.playNukeWarning();
+
+                // 노란색 플래시 효과 (여러 번 깜빡임)
+                const flashInterval = setInterval(() => {
+                    if (this.addYellowFlash) this.addYellowFlash(0.4);
+                }, 400);
+
+                // 2.5초 후 실제 핵 발사
+                const targetX = x;
+                const groundY = this.groundY;
+                setTimeout(() => {
+                    clearInterval(flashInterval);
+
+                    // 마지막 강한 노란 플래시
+                    if (this.addYellowFlash) this.addYellowFlash(0.9);
+
+                    const nuke = new Projectile(targetX, -500, null, 1000, 'player', 'nuke');
+                    nuke.targetX = targetX;
+                    nuke.targetY = groundY;
+                    this.projectiles.push(nuke);
+
+                    ui.showToast("☢️ 전술핵 투하!");
+                }, 2500);
 
                 // [FIX] 스킬은 큐/쿨타임이 없으면 uiDirty가 안 떠서 숫자 갱신이 안 됨
                 if (typeof app !== 'undefined') { app.markDirty(); app.markUiDirty(); }
@@ -1066,6 +1098,13 @@ const game = {
         } else {
             this.flash = 0;
         }
+        // ✅ 노란색 플래시 decay
+        if (this.yellowFlash > 0.01) {
+            this.yellowFlash *= this.yellowFlashDecay;
+            if (this.yellowFlash < 0.02) this.yellowFlash = 0;
+        } else {
+            this.yellowFlash = 0;
+        }
 
         if (typeof AI !== 'undefined') AI.update(this.frame);
 
@@ -1144,6 +1183,15 @@ const game = {
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
             ctx.fillStyle = `rgba(255,255,255,${this.flash})`;
+            ctx.fillRect(0, 0, this.width, this.height);
+            ctx.restore();
+        }
+
+        // ✅ 노란색 플래시 (핵 경고용)
+        if (this.yellowFlash > 0.01) {
+            ctx.save();
+            ctx.setTransform(1, 0, 0, 1, 0, 0);
+            ctx.fillStyle = `rgba(255,220,0,${this.yellowFlash})`;
             ctx.fillRect(0, 0, this.width, this.height);
             ctx.restore();
         }

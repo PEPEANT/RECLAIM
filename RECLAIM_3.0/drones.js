@@ -82,7 +82,8 @@
             } else {
                 if (game && game.createParticles) game.createParticles(tx, groundY, 28, '#f59e0b');
             }
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // ✅ 스텔스드론 폭발 사운드 (boom-3)
+            if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('stealth');
 
             const applyAoE = (arr, mult = 1.0) => {
                 for (let i = 0; i < arr.length; i++) {

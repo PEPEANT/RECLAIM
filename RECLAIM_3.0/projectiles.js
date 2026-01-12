@@ -97,6 +97,9 @@ class Projectile {
                 VFX.spawn(game, 'tactical', this.x, game.groundY);
             }
 
+            // ✅ 폭발 사운드 (boom-3)
+            if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('tactical');
+
             // ✅ 범위 피해 (전술급)
             const targets = [...game.enemies, ...game.enemyBuildings];
             const R = 260;
@@ -118,10 +121,12 @@ class Projectile {
             } else {
                 if (game.createParticles) game.createParticles(this.x, this.y, 100, '#ef4444');
             }
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // ✅ 핵폭발 사운드 (boom-1)
+            if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('nuke');
 
+            // ✅ 핵 폭발 범위 20% 증가 (400 -> 480)
             const allTargets = [...game.enemies, ...game.enemyBuildings];
-            allTargets.forEach(t => { if (!t.dead && Math.abs(t.x - this.x) < 400 && !(t.stats && t.stats.invulnerable)) t.takeDamage(800); });
+            allTargets.forEach(t => { if (!t.dead && Math.abs(t.x - this.x) < 480 && !(t.stats && t.stats.invulnerable)) t.takeDamage(800); });
             return;
         }
 
@@ -132,6 +137,8 @@ class Projectile {
 
             if (this.type === 'artillery' || this.type === 'bomb') {
                 VFX.spawn(game, this.type === 'bomb' ? 'bomb' : 'artillery', this.x, game.groundY);
+                // ✅ 자주포/폭격기 폭발 사운드 (boom-3)
+                if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom(this.type === 'bomb' ? 'bomber' : 'spg');
             }
             else if (this.type === 'rocket' || this.type === 'aa_shell' || this.type === 'shell') {
                 // RPG / 대공포 / 전차포 피격 폭발

@@ -383,8 +383,22 @@ class Unit extends Entity {
                 if (game && game.createParticles) game.createParticles(this.x, this.y, 20, '#f59e0b');
             }
 
-            // [New] SFX
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // ✅ 드론 폭발 사운드
+            if (typeof AudioSystem !== 'undefined') {
+                if (id === 'tactical_drone') {
+                    AudioSystem.playBoom('tactical_drone'); // boom-2
+                } else if (id === 'stealth_drone') {
+                    AudioSystem.playBoom('stealth'); // boom-3
+                } else {
+                    // 일반 드론 (지상 충돌 시 boom-4)
+                    const isOnGround = this.y >= (game.groundY - 30);
+                    if (isOnGround) {
+                        AudioSystem.playBoom('drone'); // boom-4
+                    } else {
+                        AudioSystem.playBoom('other'); // boom-2 (공중)
+                    }
+                }
+            }
 
             if (target && !target.dead && typeof target.takeDamage === 'function') {
                 target.takeDamage(this.stats.damage);

@@ -180,6 +180,34 @@
         else if (type === 'ui') {
             this.playTone(t, 0.1, 'sine', 1200, 0.1);
         }
+    },
+
+    // [NEW] Explosion MP3 Sound Effects
+    // boom-1: 핵폭발 (가장 큰)
+    // boom-2: 전술드론 및 기타 폭발
+    // boom-3: 자주포, 폭격기, 스텔스드론, 전술미사일
+    // boom-4: 일반 드론, 작은 폭발 (지상에서만)
+    playBoom(type) {
+        if (this.volume.sfx <= 0) return;
+
+        let file = 'bgm/boom/boom-4.mp3'; // default: 작은 폭발
+        if (type === 'nuke') file = 'bgm/boom/boom-1.mp3';
+        else if (type === 'tactical_drone' || type === 'other') file = 'bgm/boom/boom-2.mp3';
+        else if (type === 'artillery' || type === 'bomb' || type === 'stealth' || type === 'tactical' || type === 'spg' || type === 'bomber') file = 'bgm/boom/boom-3.mp3';
+        else if (type === 'drone' || type === 'small') file = 'bgm/boom/boom-4.mp3';
+
+        const audio = new Audio(file);
+        audio.volume = this.volume.sfx * this.volume.master;
+        audio.play().catch(e => console.warn("Boom audio error:", e));
+    },
+
+    // [NEW] Nuke Warning Sound (발사 전 경고음)
+    playNukeWarning() {
+        if (this.volume.sfx <= 0) return;
+
+        const audio = new Audio('bgm/sound_effect.mp3');
+        audio.volume = this.volume.sfx * this.volume.master;
+        audio.play().catch(e => console.warn("Nuke warning audio error:", e));
     }
 };
 
