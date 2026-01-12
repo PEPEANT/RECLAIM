@@ -115,6 +115,17 @@ class Projectile {
         }
 
         if (this.type === 'nuke') {
+            // ✅ 핵폭발 - 흰색 플래시 먼저 (강하게, 오래 유지)
+            if (game.addFlash) {
+                game.addFlash(1.0);
+                // 더 오래 유지되도록 decay를 일시적으로 느리게
+                const originalDecay = game.flashDecay;
+                game.flashDecay = 0.96; // 느린 감쇠
+                setTimeout(() => {
+                    game.flashDecay = originalDecay; // 원래대로 복원
+                }, 1500);
+            }
+
             // [VFX] 핵폭발
             if (typeof VFX !== 'undefined') {
                 VFX.spawn(game, 'nuke', this.x, (game && game.groundY) ? game.groundY : this.y);
@@ -123,17 +134,6 @@ class Projectile {
             }
             // ✅ 핵폭발 사운드 (boom-1)
             if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('nuke');
-
-            // ✅ 핵폭발 후 노란색 번쩍임 (한 번, 길게 유지)
-            if (game.addYellowFlash) {
-                game.addYellowFlash(1.0);
-                // 더 오래 유지되도록 decay를 일시적으로 느리게
-                const originalDecay = game.yellowFlashDecay;
-                game.yellowFlashDecay = 0.96; // 느린 감쇠
-                setTimeout(() => {
-                    game.yellowFlashDecay = originalDecay; // 원래대로 복원
-                }, 1500);
-            }
 
             // ✅ 핵 폭발 범위 20% 증가 (400 -> 480)
             const allTargets = [...game.enemies, ...game.enemyBuildings];
