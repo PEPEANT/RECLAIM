@@ -886,7 +886,7 @@ const game = {
         const u = CONFIG.units[key];
 
         // Special logic for targeting
-        const needsTargeting = ['tactical_drone', 'stealth_drone', 'blackhawk', 'chinook', 'emp', 'nuke'].includes(key);
+        const needsTargeting = ['tactical_drone', 'stealth_drone', 'blackhawk', 'chinook', 'emp', 'nuke', 'tactical_missile'].includes(key);
         if (needsTargeting) {
             // [FIX] Clear holdTimer value so startHold can run again.
             if (this.holdTimer) {
