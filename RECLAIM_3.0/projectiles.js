@@ -151,8 +151,8 @@ class Projectile {
         } else {
             if (game.createParticles) game.createParticles(this.x, this.y, 5, this.type === 'rocket' ? '#ef4444' : '#fbbf24');
         }
-        // [Optimization] Conditional SFX
-        if (Math.random() < 0.3 && typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+        // [Optimization] Conditional SFX - small ground explosions use boom-4
+        if (Math.random() < 0.3 && typeof AudioSystem !== 'undefined') AudioSystem.playBoom('small');
 
         const enemiesList = this.team === 'player' ? game.enemies : game.players;
         const enemyBldgs = this.team === 'player' ? game.enemyBuildings : game.playerBuildings;

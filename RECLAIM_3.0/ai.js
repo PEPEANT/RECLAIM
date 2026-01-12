@@ -189,7 +189,8 @@ const AI = {
         // 광범위 초토화
         this._applyAreaDamageToPlayer(x, game.groundY, 420, 1200, 1400);
 
-        if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+        // ✅ AI 핵폭발 사운드 (boom-1)
+        if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('nuke');
 
         this.special.charges.nuke--;
         this.special.cd.nuke = 60 * 90; // 90초
@@ -292,7 +293,8 @@ const AI = {
             // 전술급 피해
             this._applyAreaDamageToPlayer(s.x, s.y, 260, 520, 720);
 
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // ✅ AI 전술미사일 폭발 사운드 (boom-3)
+            if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('tactical');
 
             this.special.pending.splice(i, 1);
         }

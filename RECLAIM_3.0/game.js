@@ -893,8 +893,8 @@ const game = {
             // small extra sparks
             this.createParticles(b.x, b.y - (b.height || 80) * 0.5, kind === 'hq' ? 12 : 6, '#facc15');
 
-            // sound
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // sound - building destruction uses boom-2
+            if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('other');
         } catch (e) {
             console.warn('spawnBuildingDestructionFX failed', e);
         }
