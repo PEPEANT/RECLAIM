@@ -447,7 +447,14 @@ class Unit extends Entity {
         else if (['aa_tank', 'turret'].includes(id)) type = 'aa_shell';
         else if (['humvee', 'apc', 'blackhawk', 'fighter'].includes(id)) type = 'machinegun';
 
-        if (typeof AudioSystem !== 'undefined' && Math.random() < 0.3) AudioSystem.playSFX('shoot');
+        // 총소리 재생 (유닛 타입별)
+        if (typeof AudioSystem !== 'undefined' && Math.random() < 0.3) {
+            if (id === 'infantry') AudioSystem.playGun('infantry');
+            else if (id === 'special_forces') AudioSystem.playGun('special');
+            else if (id === 'humvee' || id === 'apc') AudioSystem.playGun('machine_gun');
+            else if (id === 'aa_tank') AudioSystem.playGun('flak');
+            else AudioSystem.playSFX('shoot');
+        }
 
         try {
             game.projectiles.push(new Projectile(this.x, this.y - this.height / 2, target, dmg, this.team, type));

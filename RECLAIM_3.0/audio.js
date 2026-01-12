@@ -208,6 +208,24 @@
         const audio = new Audio('bgm/sound_effect.mp3');
         audio.volume = this.volume.sfx * this.volume.master;
         audio.play().catch(e => console.warn("Nuke warning audio error:", e));
+    },
+
+    // [NEW] Gun Sound Effects (총소리)
+    // gun: 보병
+    // gun2: 특수부대
+    // machine_gun: 험비, 장갑차
+    // flak: 대공포, 감시탑, 총사령부
+    playGun(type) {
+        if (this.volume.sfx <= 0) return;
+
+        let file = 'bgm/gun.mp3'; // default: 보병
+        if (type === 'special') file = 'bgm/gun2.mp3';
+        else if (type === 'machine_gun') file = 'bgm/machine_gun.mp3';
+        else if (type === 'flak') file = 'bgm/flak.mp3';
+
+        const audio = new Audio(file);
+        audio.volume = this.volume.sfx * this.volume.master * 0.5; // 총소리는 좀 더 작게
+        audio.play().catch(e => console.warn("Gun audio error:", e));
     }
 };
 
