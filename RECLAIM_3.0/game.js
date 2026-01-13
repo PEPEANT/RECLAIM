@@ -386,6 +386,10 @@ const game = {
         this.running = true;
         this.cameraX = 0;
 
+        // [수정] 게임 시작 시 무조건 0.5배속 고정 시작
+        this.setSpeed(0.5);
+        if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
+
         // HUD
         this.minimapVisible = true;
         document.getElementById('hud-minimap-container').classList.remove('hidden');
@@ -393,7 +397,6 @@ const game = {
         document.getElementById('hud-ctrl-wrapper')?.classList.remove('hidden');
         document.getElementById('hud-option-btn').classList.remove('hidden');
         document.getElementById('unit-cmd-wrapper')?.classList.remove('hidden');
-        if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
 
         // In-game BGM OFF
         if (typeof AudioSystem !== 'undefined') {
@@ -762,6 +765,9 @@ const game = {
 
                 const m = new Projectile(sx, sy, null, 0, 'player', 'tactical_missile', { targetX: x, targetY: ty });
                 this.projectiles.push(m);
+
+                // [수정] 전술미사일 발사음
+                if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('rocket');
 
                 ui.showToast("전술미사일 발사!");
 

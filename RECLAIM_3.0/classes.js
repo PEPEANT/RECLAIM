@@ -43,6 +43,7 @@ class Unit extends Entity {
         let startY = groundY;
         // [FIX] Stealth Drone Height adjustment (Higher than normal air units)
         if (stats.id === 'stealth_drone') startY = groundY - 420 - Math.random() * 60;
+        else if (stats.id === 'bomber') startY = groundY - 320 - Math.random() * 80; // 폭격기 더 높게
         else if (stats.type === 'air') startY = groundY - 150 - Math.random() * 100;
 
         super(x, startY, team, stats.hp, stats.width, stats.height);
@@ -92,6 +93,12 @@ class Unit extends Entity {
 
         if (this.hp <= 0) {
             this.dead = true;
+
+            // [수정] 드론 사망 폭발음
+            if (typeof AudioSystem !== 'undefined' && this.stats?.id?.includes('drone')) {
+                AudioSystem.playSFX('drone_Explosion');
+            }
+
             if (this.team === 'enemy') game.killCount++;
         }
     }
@@ -324,8 +331,11 @@ class Unit extends Entity {
 
         if (isAttacking) {
             let rate = 60;
-            // [?섏젙] 釉붾옓?명겕??鍮좊Ⅸ ?곗궗 (15?꾨젅?? ?곸슜
+            // [수정] 유닛별 연사/발사 속도 튜닝
             if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
+            else if (this.stats.id === 'md500') rate = 10;      // 소형헬기(영웅): 미니건 초연사
+            else if (this.stats.id === 'apache') rate = 24;     // 공격헬기: 로켓 연사
+            else if (this.stats.id === 'sniper') rate = 140;    // 저격수: 느리지만 강한 한 발
             else if (this.stats.id === 'spg') rate = 300;
 
             if (game.frame - this.lastAttack > rate) {
@@ -431,9 +441,19 @@ class Unit extends Entity {
         else if (['mbt'].includes(id)) type = 'shell';
         else if (['apache', 'rpg'].includes(id)) type = 'rocket';
         else if (['aa_tank', 'turret'].includes(id)) type = 'aa_shell';
-        else if (['humvee', 'apc', 'blackhawk', 'fighter'].includes(id)) type = 'machinegun';
+        else if (['humvee', 'apc', 'blackhawk', 'fighter', 'md500'].includes(id)) type = 'machinegun';
 
-        if (typeof AudioSystem !== 'undefined' && Math.random() < 0.3) AudioSystem.playSFX('shoot');
+        // [수정] 유닛별 발사음(합성 SFX)
+        if (typeof AudioSystem !== 'undefined') {
+            if (['mbt', 'spg'].includes(id)) AudioSystem.playSFX('tank_fire');       // 탱크/자주포 포탄 발사음
+            else if (['apache', 'rpg'].includes(id)) AudioSystem.playSFX('rpg');     // RPG/공격헬기 로켓 발사음
+            else if (id === 'sniper') AudioSystem.playSFX('sniper');                 // 저격수
+            else if (['md500', 'humvee', 'apc', 'blackhawk', 'fighter', 'aa_tank', 'turret'].includes(id)) {
+                AudioSystem.playSFX('machinegun');                                   // 미니건/기관총
+            } else if (Math.random() < 0.3) {
+                AudioSystem.playSFX('shoot');
+            }
+        }
 
         try {
             game.projectiles.push(new Projectile(this.x, this.y - this.height / 2, target, dmg, this.team, type));
@@ -477,11 +497,97 @@ class Unit extends Entity {
         // [湲곗〈 ?좊떅 洹몃━湲?肄붾뱶 ?좎?, 釉붾옓?명겕/移섎늻?щ쭔 ?섏젙]
         if (id === 'infantry') { ctx.fillRect(-6, -20, 12, 20); ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#1e293b'; ctx.fillRect(2, -18, 10, 3); }
         else if (id === 'rpg') { ctx.fillRect(-5, -18, 10, 18); ctx.beginPath(); ctx.arc(0, -22, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#334155'; ctx.fillRect(-2, -24, 12, 6); ctx.fillStyle = '#7f1d1d'; ctx.fillRect(8, -24, 4, 6); }
+        else if (id === 'sniper') {
+            // [NEW] 저격수 - 긴 저격총
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const darkColor = '#1e293b';
+
+            // 몸체
+            ctx.fillStyle = teamColor; ctx.fillRect(-6, -20, 12, 20);
+            ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill();
+
+            // 부니햇 (저격수 특유의 모자)
+            ctx.fillStyle = '#334155';
+            ctx.beginPath(); ctx.ellipse(0, -26, 9, 2.5, 0, 0, Math.PI * 2); ctx.fill();
+            ctx.beginPath(); ctx.arc(0, -27, 5, Math.PI, 0); ctx.fill();
+
+            // 저격총 (긴 바렐)
+            ctx.fillStyle = darkColor;
+            ctx.fillRect(-2, -18, 26, 2);
+            ctx.fillRect(4, -21, 6, 3);
+
+            // 스코프
+            ctx.fillStyle = teamColor; ctx.fillRect(2, -18, 6, 4);
+        }
+        else if (id === 'md500') {
+            // [NEW] 소형헬기(MD500) - 미니건 영웅
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+
+            // 메인 바디 (작고 둥근 형태)
+            ctx.fillStyle = teamColor;
+            ctx.beginPath(); ctx.ellipse(0, -5, 14, 11, 0, 0, Math.PI * 2); ctx.fill();
+
+            // 캐노피 (유리창)
+            ctx.fillStyle = '#94a3b8';
+            ctx.beginPath(); ctx.arc(5, -5, 7, -0.5, 2.5); ctx.fill();
+
+            // 테일붐
+            ctx.fillStyle = '#1e293b';
+            ctx.fillRect(-30, -6, 20, 3);
+            ctx.fillRect(-32, -10, 4, 8);
+
+            // 스키드
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(-5, 5); ctx.lineTo(-5, 12);
+            ctx.moveTo(5, 5); ctx.lineTo(5, 12);
+            ctx.moveTo(-10, 12); ctx.lineTo(10, 12);
+            ctx.stroke();
+
+            // 메인 로터
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-25, -16, 50, 2);
+            ctx.fillRect(-2, -16, 4, 4);
+
+            // 미니건
+            ctx.fillStyle = '#000';
+            ctx.fillRect(5, 2, 8, 3);
+        }
         else if (id === 'special_forces') { ctx.fillStyle = '#171717'; ctx.fillRect(-7, -22, 14, 22); ctx.fillStyle = '#1e293b'; ctx.fillRect(-7, -22, 14, 10); ctx.beginPath(); ctx.arc(0, -26, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(-2, -26, 1.5, 0, Math.PI * 2); ctx.arc(2, -26, 1.5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.fillRect(4, -18, 12, 4); }
         else if (id === 'humvee') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.fillRect(-20, -15, 40, 15); ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.moveTo(-10, -15); ctx.lineTo(-5, -25); ctx.lineTo(10, -25); ctx.lineTo(15, -15); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.arc(12, 0, 6, 0, Math.PI * 2); ctx.fill(); }
         else if (id === 'mbt') { ctx.fillRect(-25, -15, 50, 15); ctx.fillStyle = '#1e293b'; ctx.fillRect(-15, -25, 30, 10); ctx.fillRect(0, -23, 40, 4); ctx.fillStyle = '#000'; ctx.fillRect(-28, -5, 56, 5); }
         else if (id === 'spg') { ctx.fillRect(-25, -20, 50, 20); ctx.fillStyle = '#1e293b'; ctx.save(); ctx.translate(-10, -20); ctx.rotate(-Math.PI / 4); ctx.fillRect(0, -5, 45, 10); ctx.restore(); }
-        else if (id === 'apache') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.ellipse(0, -10, 30, 10, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillRect(-35, -12, 20, 4); ctx.fillStyle = '#000'; ctx.save(); ctx.translate(0, -20); ctx.scale(Math.sin(this.rotorAngle), 1); ctx.fillStyle = '#333'; ctx.fillRect(-40, -1, 80, 2); ctx.restore(); ctx.fillStyle = '#475569'; ctx.fillRect(5, -5, 10, 4); }
+        else if (id === 'apache') {
+            // [NEW] 공격헬기(아파치) - 각진 바디 + 검은 창문
+            // 꼬리
+            ctx.fillStyle = '#334155'; ctx.fillRect(-40, -5, 30, 8);
+            ctx.save();
+            ctx.translate(-40, -5);
+            ctx.rotate(this.rotorAngle * 3);
+            ctx.fillStyle = '#000'; ctx.fillRect(-2, -12, 4, 24);
+            ctx.restore();
+
+            // 몸통(각진 형태)
+            ctx.fillStyle = (this.team === 'player') ? '#1e3a8a' : '#7f1d1d';
+            ctx.beginPath();
+            ctx.moveTo(20, 5); ctx.lineTo(25, -5); ctx.lineTo(-10, -10); ctx.lineTo(-15, 5);
+            ctx.closePath(); ctx.fill();
+
+            // 콕핏 창문(검은색)
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.moveTo(12, -5); ctx.lineTo(18, -5); ctx.lineTo(16, -8); ctx.lineTo(14, -8); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(2, -8); ctx.lineTo(8, -8); ctx.lineTo(6, -11); ctx.lineTo(4, -11); ctx.closePath(); ctx.fill();
+
+            // 무장
+            ctx.fillStyle = '#1e293b'; ctx.fillRect(0, 0, 10, 8);
+            ctx.fillStyle = '#000'; ctx.fillRect(2, 6, 6, 4);
+
+            // 메인 로터
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-30, -12, 60, 3);
+            ctx.fillRect(-5, -15, 10, 5);
+        }
 
         else if (id === 'blackhawk') {
             // [?섏젙] 釉붾옓?명겕: ?꾨줈?좊윭 ?쇱옄 (??
@@ -539,7 +645,39 @@ class Unit extends Entity {
         else if (id === 'emp') { ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(-5, -8); ctx.lineTo(8, -2); ctx.lineTo(-2, 2); ctx.lineTo(6, 10); ctx.lineTo(-8, 4); ctx.lineTo(2, 0); ctx.fill(); }
         else if (id === 'nuke') { ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 0, Math.PI / 3); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 2 * Math.PI / 3, Math.PI); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 4 * Math.PI / 3, 5 * Math.PI / 3); ctx.lineTo(0, 0); ctx.fill(); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); }
         else if (id === 'stealth_drone') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, 9); ctx.lineTo(-4, 0); ctx.lineTo(-10, -9); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(1, 0, 3.5, 2.2, 0, 0, Math.PI * 2); ctx.fill(); if (this.team === 'player' && this.targetX !== null && this.targetX !== undefined && !this.exploded) { const gx = (game && game.groundY) ? game.groundY : this.y; const tx = this.targetX; const ty = gx - 8; const dd = Math.hypot(this.x - tx, this.y - ty); if (dd > 70) { ctx.save(); ctx.translate(-this.x + tx, -this.y + ty); ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2; const s = 7; ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke(); ctx.restore(); } } }
-        else if (id === 'bomber') { ctx.scale(0.6, 0.6); ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.ellipse(-10, 0, 40, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-30, 40); ctx.lineTo(-10, 40); ctx.lineTo(10, 0); ctx.fill(); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-30, -40); ctx.lineTo(-10, -40); ctx.lineTo(10, 0); ctx.fill(); ctx.fillStyle = '#ef4444'; ctx.fillRect(-35, 10, 4, 4); ctx.fillRect(-35, -14, 4, 4); }
+        else if (id === 'bomber') {
+            // [NEW] 폭격기 (B-1 랜서 스타일)
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+
+            // 동체 (B-1 Lancer 느낌)
+            ctx.fillStyle = '#334155';
+            ctx.beginPath();
+            ctx.moveTo(60, 0);
+            ctx.lineTo(40, -7);
+            ctx.lineTo(-20, -7);
+            ctx.lineTo(-40, -25);
+            ctx.lineTo(-35, -5);
+            ctx.lineTo(-50, 0);
+            ctx.lineTo(-45, 5);
+            ctx.lineTo(20, 8);
+            ctx.closePath();
+            ctx.fill();
+
+            // 콕핏 창문
+            ctx.fillStyle = '#000';
+            ctx.beginPath(); ctx.moveTo(40, -7); ctx.lineTo(50, -2); ctx.lineTo(42, -2); ctx.closePath(); ctx.fill();
+
+            // 날개
+            ctx.fillStyle = '#1e293b';
+            ctx.beginPath(); ctx.moveTo(10, -2); ctx.lineTo(-30, -2); ctx.lineTo(-40, 15); ctx.lineTo(-10, 15); ctx.closePath(); ctx.fill();
+
+            // 엔진 포드
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath(); ctx.ellipse(-20, 12, 15, 4, 0, 0, Math.PI * 2); ctx.fill();
+
+            // 식별 마크
+            ctx.fillStyle = teamColor; ctx.fillRect(-10, -4, 15, 3);
+        }
 
         if (!this.hideHp && this.hp < this.maxHp) {
             const hpPct = Math.max(0, this.hp / this.maxHp);

@@ -58,6 +58,12 @@
             width: 14, height: 22, color: '#f87171', type: 'bio', antiAir: true, category: 'infantry',
             role: '대전차/대공', description: '지상과 공중의 장갑 목표물을 타격합니다.'
         },
+        sniper: {
+            id: 'sniper', name: '저격수', cost: 45, cooldown: 80, maxCount: 10,
+            hp: 45, damage: 90, range: 520, speed: 0.75,
+            width: 15, height: 25, color: '#60a5fa', type: 'bio', category: 'infantry',
+            role: '초장거리 저격', description: '매우 긴 사거리에서 강력한 단발을 발사합니다. (대공 불가)'
+        },
         special_forces: {
             id: 'special_forces', name: '특수부대', cost: 200, cooldown: 60, maxCount: 6,
             hp: 180, damage: 25, range: 180, speed: 1.2,
@@ -105,10 +111,16 @@
             role: '제공권 장악', description: '적 항공기(헬기, 폭격기)만 전문적으로 요격합니다. (드론 무시)'
         },
         apache: {
-            id: 'apache', name: '아파치', cost: 120, cooldown: 280, maxCount: 5,
+            id: 'apache', name: '공격헬기', cost: 120, cooldown: 280, maxCount: 5,
             hp: 400, damage: 70, range: 380, speed: 0.9,
             width: 70, height: 24, color: '#a855f7', type: 'air', category: 'air',
-            role: '지상 지원', description: '로켓으로 지상군을 지속적으로 공격합니다.'
+            role: '지상 지원', description: 'AH-64 아파치. 로켓으로 지상군을 공격합니다.'
+        },
+        md500: {
+            id: 'md500', name: '소형헬기', cost: 160, cooldown: 360, maxCount: 1,
+            hp: 320, damage: 10, range: 260, speed: 1.6,
+            width: 55, height: 22, color: '#22c55e', type: 'air', category: 'air',
+            role: '공중 영웅 / 연사 제압', description: 'MD500. 미니건 연사로 드론·보병을 빠르게 제압하는 영웅 유닛입니다. (최대 1기)'
         },
         blackhawk: {
             id: 'blackhawk', name: '블랙호크', cost: 220, cooldown: 420, maxCount: 2,
@@ -124,7 +136,7 @@
         },
         bomber: {
             id: 'bomber', name: '폭격기', cost: 200, cooldown: 400, maxCount: 3,
-            hp: 1500, damage: 150, range: 100, speed: 2.5,
+            hp: 800, damage: 150, range: 100, speed: 2.5,
             width: 90, height: 30, color: '#334155', type: 'air', category: 'air', highAltitude: true,
             role: '전략 폭격', description: '고고도 융단 폭격. 대공 미사일에만 피격됩니다. (생존 귀환 시 재고 회복)'
         },

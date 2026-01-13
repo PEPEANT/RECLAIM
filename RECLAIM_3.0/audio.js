@@ -180,6 +180,87 @@
         else if (type === 'ui') {
             this.playTone(t, 0.1, 'sine', 1200, 0.1);
         }
+        else if (type === 'machinegun') {
+            // 미니건/기관총 발사음
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'square';
+            osc.frequency.setValueAtTime(Math.random() * 140 + 220, t);
+            osc.frequency.exponentialRampToValueAtTime(80, t + 0.06);
+            gain.gain.setValueAtTime(0.12 * vol, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(t); osc.stop(t + 0.06);
+        }
+        else if (type === 'tank_fire') {
+            // 탱크/자주포 포탄 발사음 (저음 펑 + 노이즈)
+            const src = this.ctx.createBufferSource();
+            src.buffer = this.noiseBuffer;
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'lowpass';
+            filter.frequency.setValueAtTime(500, t);
+            filter.frequency.exponentialRampToValueAtTime(40, t + 0.25);
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(vol * 1.2, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.25);
+
+            const osc = this.ctx.createOscillator();
+            osc.type = 'sine';
+            osc.frequency.setValueAtTime(90, t);
+            osc.frequency.exponentialRampToValueAtTime(30, t + 0.18);
+
+            const og = this.ctx.createGain();
+            og.gain.setValueAtTime(vol * 0.7, t);
+            og.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+            src.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+            osc.connect(og); og.connect(this.ctx.destination);
+
+            src.start(t); src.stop(t + 0.25);
+            osc.start(t); osc.stop(t + 0.18);
+        }
+        else if (type === 'rocket' || type === 'rpg') {
+            // 로켓/RPG/공격헬기 로켓 발사음
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(type === 'rocket' ? 180 : 220, t);
+            osc.frequency.exponentialRampToValueAtTime(type === 'rocket' ? 520 : 460, t + 0.12);
+            gain.gain.setValueAtTime(vol * (type === 'rocket' ? 0.35 : 0.28), t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.12);
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(t); osc.stop(t + 0.12);
+        }
+        else if (type === 'sniper') {
+            // 저격수 발사음 (짧고 날카로운 한 발)
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(1200, t);
+            osc.frequency.exponentialRampToValueAtTime(200, t + 0.04);
+            gain.gain.setValueAtTime(vol * 0.25, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+            osc.connect(gain); gain.connect(this.ctx.destination);
+            osc.start(t); osc.stop(t + 0.04);
+        }
+        else if (type === 'drone_Explosion') {
+            // 드론 전용 폭발음 (짧고 건조한 폭발)
+            const src = this.ctx.createBufferSource();
+            src.buffer = this.noiseBuffer;
+
+            const filter = this.ctx.createBiquadFilter();
+            filter.type = 'bandpass';
+            filter.frequency.setValueAtTime(900, t);
+            filter.frequency.exponentialRampToValueAtTime(120, t + 0.18);
+
+            const gain = this.ctx.createGain();
+            gain.gain.setValueAtTime(vol * 0.9, t);
+            gain.gain.exponentialRampToValueAtTime(0.001, t + 0.18);
+
+            src.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+            src.start(t); src.stop(t + 0.18);
+        }
     }
 };
 
