@@ -383,8 +383,22 @@ class Unit extends Entity {
                 if (game && game.createParticles) game.createParticles(this.x, this.y, 20, '#f59e0b');
             }
 
-            // [New] SFX
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // ✅ 드론 폭발 사운드
+            if (typeof AudioSystem !== 'undefined') {
+                if (id === 'tactical_drone') {
+                    AudioSystem.playBoom('tactical_drone'); // boom-2
+                } else if (id === 'stealth_drone') {
+                    AudioSystem.playBoom('stealth'); // boom-3
+                } else {
+                    // 일반 드론 (지상 충돌 시 boom-4)
+                    const isOnGround = this.y >= (game.groundY - 30);
+                    if (isOnGround) {
+                        AudioSystem.playBoom('drone'); // boom-4
+                    } else {
+                        AudioSystem.playBoom('other'); // boom-2 (공중)
+                    }
+                }
+            }
 
             if (target && !target.dead && typeof target.takeDamage === 'function') {
                 target.takeDamage(this.stats.damage);
@@ -433,7 +447,14 @@ class Unit extends Entity {
         else if (['aa_tank', 'turret'].includes(id)) type = 'aa_shell';
         else if (['humvee', 'apc', 'blackhawk', 'fighter'].includes(id)) type = 'machinegun';
 
-        if (typeof AudioSystem !== 'undefined' && Math.random() < 0.3) AudioSystem.playSFX('shoot');
+        // 총소리 재생 (유닛 타입별)
+        if (typeof AudioSystem !== 'undefined' && Math.random() < 0.3) {
+            if (id === 'infantry') AudioSystem.playGun('infantry');
+            else if (id === 'special_forces') AudioSystem.playGun('special');
+            else if (id === 'humvee' || id === 'apc') AudioSystem.playGun('machine_gun');
+            else if (id === 'aa_tank') AudioSystem.playGun('flak');
+            else AudioSystem.playSFX('shoot');
+        }
 
         try {
             game.projectiles.push(new Projectile(this.x, this.y - this.height / 2, target, dmg, this.team, type));
@@ -538,6 +559,7 @@ class Unit extends Entity {
         else if (id === 'tactical_drone') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-5, 6); ctx.lineTo(-2, 0); ctx.lineTo(-5, -6); ctx.fill(); }
         else if (id === 'emp') { ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(-5, -8); ctx.lineTo(8, -2); ctx.lineTo(-2, 2); ctx.lineTo(6, 10); ctx.lineTo(-8, 4); ctx.lineTo(2, 0); ctx.fill(); }
         else if (id === 'nuke') { ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 0, Math.PI / 3); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 2 * Math.PI / 3, Math.PI); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 4 * Math.PI / 3, 5 * Math.PI / 3); ctx.lineTo(0, 0); ctx.fill(); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); }
+        else if (id === 'tactical_missile') { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(-12, -3, 24, 6); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(12, -3); ctx.lineTo(18, 0); ctx.lineTo(12, 3); ctx.fill(); ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(-12, 0, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(-8, -3); ctx.lineTo(-12, -8); ctx.lineTo(-12, -3); ctx.fill(); ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(-12, 8); ctx.lineTo(-12, 3); ctx.fill(); }
         else if (id === 'stealth_drone') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, 9); ctx.lineTo(-4, 0); ctx.lineTo(-10, -9); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(1, 0, 3.5, 2.2, 0, 0, Math.PI * 2); ctx.fill(); if (this.team === 'player' && this.targetX !== null && this.targetX !== undefined && !this.exploded) { const gx = (game && game.groundY) ? game.groundY : this.y; const tx = this.targetX; const ty = gx - 8; const dd = Math.hypot(this.x - tx, this.y - ty); if (dd > 70) { ctx.save(); ctx.translate(-this.x + tx, -this.y + ty); ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2; const s = 7; ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke(); ctx.restore(); } } }
         else if (id === 'bomber') { ctx.scale(0.6, 0.6); ctx.fillStyle = '#334155'; ctx.beginPath(); ctx.ellipse(-10, 0, 40, 8, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-30, 40); ctx.lineTo(-10, 40); ctx.lineTo(10, 0); ctx.fill(); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-30, -40); ctx.lineTo(-10, -40); ctx.lineTo(10, 0); ctx.fill(); ctx.fillStyle = '#ef4444'; ctx.fillRect(-35, 10, 4, 4); ctx.fillRect(-35, -14, 4, 4); }
 

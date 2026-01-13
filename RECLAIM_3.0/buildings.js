@@ -146,6 +146,11 @@
                 }
                 game.projectiles.push(new Projectile(this.x, spawnY, target, dmg, this.team, this.projectileType));
                 this.lastShot = game.frame;
+
+                // 건물 발사 사운드 (flak)
+                if (typeof AudioSystem !== 'undefined' && Math.random() < 0.25) {
+                    AudioSystem.playGun('flak');
+                }
             }
         }
 

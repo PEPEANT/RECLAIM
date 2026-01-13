@@ -728,10 +728,24 @@ const game = {
                 this.skillCharges.nuke--;
                 // (옵션) 쿨타임이 있다면 반영
                 if (u.cooldown && u.cooldown > 0) this.cooldowns.nuke = u.cooldown;
-                const nuke = new Projectile(x, -500, null, 1000, 'player', 'nuke');
-                nuke.targetX = x; nuke.targetY = this.groundY;
-                this.projectiles.push(nuke);
-                ui.showToast("전술핵 발사 감지!");
+
+                // ✅ [NEW] 핵 발사 전 경고음 + 5초 지연
+                ui.showToast("⚠️ 전술핵 발사 승인! 5초 후 투하!");
+
+                // 경고음 재생 (5초간 사이렌)
+                if (typeof AudioSystem !== 'undefined') AudioSystem.playNukeWarning();
+
+                // 5초 후 실제 핵 발사
+                const targetX = x;
+                const groundY = this.groundY;
+                setTimeout(() => {
+                    const nuke = new Projectile(targetX, -500, null, 1000, 'player', 'nuke');
+                    nuke.targetX = targetX;
+                    nuke.targetY = groundY;
+                    this.projectiles.push(nuke);
+
+                    ui.showToast("☢️ 전술핵 투하!");
+                }, 5000);
 
                 // [FIX] 스킬은 큐/쿨타임이 없으면 uiDirty가 안 떠서 숫자 갱신이 안 됨
                 if (typeof app !== 'undefined') { app.markDirty(); app.markUiDirty(); }
@@ -861,8 +875,8 @@ const game = {
             // small extra sparks
             this.createParticles(b.x, b.y - (b.height || 80) * 0.5, kind === 'hq' ? 12 : 6, '#facc15');
 
-            // sound
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('explode');
+            // sound - building destruction uses boom-2
+            if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('other');
         } catch (e) {
             console.warn('spawnBuildingDestructionFX failed', e);
         }
@@ -886,7 +900,7 @@ const game = {
         const u = CONFIG.units[key];
 
         // Special logic for targeting
-        const needsTargeting = ['tactical_drone', 'stealth_drone', 'blackhawk', 'chinook', 'emp', 'nuke'].includes(key);
+        const needsTargeting = ['tactical_drone', 'stealth_drone', 'blackhawk', 'chinook', 'emp', 'nuke', 'tactical_missile'].includes(key);
         if (needsTargeting) {
             // [FIX] Clear holdTimer value so startHold can run again.
             if (this.holdTimer) {
@@ -1139,7 +1153,7 @@ const game = {
         this.particles.forEach(p => p.draw(ctx));
         ctx.restore();
 
-        // [VFX] screen flash (screen-space)
+        // [VFX] screen flash (screen-space) - 흰색만 사용
         if (this.flash > 0.01) {
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
