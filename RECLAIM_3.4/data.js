@@ -44,8 +44,62 @@
         turret: { hp: 1500, width: 50, height: 60, color: '#64748b', name: 'CIWS 포탑', damage: 12, range: 500, rate: 8, antiAir: true }
     },
 
+    // ============================================
+    // [NEW] 건설 가능 건물 정의 (작업자가 건설)
+    // ============================================
+    constructable: {
+        barracks: {
+            id: 'barracks',
+            name: '보병막사',
+            hp: 2000,
+            width: 120,
+            height: 80,
+            buildTime: 300,      // 5초 (60fps 기준)
+            cooldown: 180,       // 3초 쿨타임
+            cost: 300,
+            footprint: { w: 140, h: 20 },  // 충돌 판정용
+            productionTab: 'infantry',     // 이 건물에서 생산 가능한 탭
+        },
+        watchtower_new: {
+            id: 'watchtower_new',
+            name: '감시탑',
+            hp: 1200,
+            width: 60,
+            height: 80,
+            buildTime: 180,      // 3초
+            cooldown: 120,       // 2초 쿨타임
+            cost: 150,
+            footprint: { w: 80, h: 20 },
+            canShoot: true,
+            damage: 8,
+            range: 400,
+            rate: 12,
+            projectileType: 'bullet',
+        },
+        tank_depot: {
+            id: 'tank_depot',
+            name: '전차기지',
+            hp: 2500,
+            width: 150,
+            height: 100,
+            buildTime: 420,      // 7초
+            cooldown: 240,       // 4초 쿨타임
+            cost: 500,
+            footprint: { w: 170, h: 25 },
+            productionTab: 'armored',      // 이 건물에서 생산 가능한 탭
+        }
+    },
+
     units: {
         // [INFANTRY]
+        // [NEW] 작업자 (건설 유닛)
+        worker: {
+            id: 'worker', name: '작업자', cost: 50, cooldown: 60, maxCount: 5,
+            hp: 80, damage: 0, range: 0, speed: 1.0,
+            width: 18, height: 28, color: '#facc15', type: 'bio', category: 'infantry',
+            role: '건설 유닛', description: '건물을 건설할 수 있는 작업자입니다. 전투 능력이 없습니다.',
+            isBuilder: true,  // 건설 가능 플래그
+        },
         infantry: {
             id: 'infantry', name: '보병', cost: 15, cooldown: 25, maxCount: 40,
             hp: 50, damage: 8, range: 120, speed: 0.8,
