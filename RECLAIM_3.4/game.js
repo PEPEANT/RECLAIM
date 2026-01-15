@@ -544,11 +544,18 @@ const game = {
         let pinchAnchorClientX = 0;
         let pinchAnchorClientY = 0;
 
-        const selectHQAt = (wx, wy) => {
+        // [MODIFIED] 건물 선택 (플레이어 건설 건물 포함)
+        const selectBuildingAt = (wx, wy) => {
+            // 선택 가능한 건물 타입들
+            const selectableTypes = [
+                'hq_player', 'hq_enemy', 'fortress_player', 'fortress_enemy',
+                'barracks', 'watchtower_new', 'tank_depot'  // [NEW] 플레이어 건설 건물
+            ];
+
             for (let b of this.buildings) {
                 if (b.dead) continue;
-                if (b.type !== 'hq_player' && b.type !== 'hq_enemy' &&
-                    b.type !== 'fortress_player' && b.type !== 'fortress_enemy') continue;
+                // 기존 타입 또는 canProduce 플래그가 있는 건물만 선택 가능
+                if (!selectableTypes.includes(b.type) && !b.canProduce && !b.canShoot) continue;
                 if (wx > b.x - b.width / 2 && wx < b.x + b.width / 2 &&
                     wy > b.y - b.height && wy < b.y) {
                     this.selectedBuilding = b;
@@ -564,6 +571,8 @@ const game = {
             this.updateHUDSelection();
             return false;
         };
+        // Alias for backward compatibility
+        const selectHQAt = selectBuildingAt;
 
         const getTouchDist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
         const getTouchMid = (t1, t2) => ({
