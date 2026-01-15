@@ -43,6 +43,19 @@ const game = {
     playerBuildings: [], enemyBuildings: [],
     selectedBuilding: null,
 
+    // ============================================
+    // [NEW] 건설 모드 상태
+    // ============================================
+    buildMode: {
+        active: false,
+        type: null,           // 건설할 건물 타입 (barracks, watchtower_new, tank_depot)
+        previewX: 0,          // 프리뷰 위치 (월드 좌표)
+        previewY: 0,
+        valid: false,         // 배치 가능 여부
+        worker: null,         // 건설 중인 작업자 참조
+    },
+    builderCooldown: 0,       // 작업자 공용 쿨타임
+
     // [Queue System]
     spawnQueue: {},
     holdTimer: null, holdKey: null,
@@ -571,6 +584,11 @@ const game = {
                 cameraDrag = true;
                 cameraLastX = p.x;
             } else if (e.button === 0) {
+                // [NEW] 건설 모드 중이면 배치 처리
+                if (this.buildMode.active) {
+                    this.handleBuildPlacement(p.x + this.cameraX);
+                    return;
+                }
                 // 좌클릭: 타겟팅 중이면 타겟팅 처리
                 if (this.targetingType) {
                     this.handleTargeting(p.x + this.cameraX, p.y);
@@ -587,6 +605,11 @@ const game = {
 
         window.addEventListener('mousemove', e => {
             const p = getScaledPos(e.clientX, e.clientY);
+
+            // [NEW] 건설 모드 프리뷰 업데이트
+            if (this.buildMode.active) {
+                this.updateBuildPreview(p.x + this.cameraX, p.y);
+            }
 
             // 카메라 드래그 (우클릭)
             if (cameraDrag && !this.selectDragActive) {
@@ -628,11 +651,19 @@ const game = {
             }
         });
 
-        // 우클릭 메뉴 차단 + 드론 명령
+        // 우클릭 메뉴 차단 + 드론 명령 + 건설 취소
         this.canvas.addEventListener('contextmenu', e => {
             e.preventDefault();
             // [NEW] Block if inside HUD area
             if (isInsideHUD(e.clientY)) return;
+
+            // [NEW] 건설 모드 취소
+            if (this.buildMode.active) {
+                this.cancelBuildMode();
+                ui.showToast('건설 취소');
+                return;
+            }
+
             const p = getScaledPos(e.clientX, e.clientY);
             this.commandDrones(p.x + this.cameraX, p.y);
         });
@@ -663,6 +694,14 @@ const game = {
 
                 const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
                 if (p.x < 0 || p.x > this.width || p.y < 0 || p.y > this.height) return;
+
+                // [NEW] 건설 모드 중이면 배치 처리
+                if (this.buildMode.active) {
+                    this.updateBuildPreview(p.x + this.cameraX, p.y);
+                    this.handleBuildPlacement(p.x + this.cameraX);
+                    isMobileSelecting = false;
+                    return;
+                }
 
                 // 타겟팅 중이면 타겟팅 처리
                 if (this.targetingType) {
@@ -762,6 +801,18 @@ const game = {
                 pinchActive = false;
             } else if (e.touches.length < 2) {
                 pinchActive = false;
+            }
+        });
+
+        // [NEW] ESC 키로 건설/타겟팅 모드 취소
+        window.addEventListener('keydown', e => {
+            if (e.key === 'Escape') {
+                if (this.buildMode.active) {
+                    this.cancelBuildMode();
+                    ui.showToast('건설 취소');
+                } else if (this.targetingType) {
+                    this.cancelTargeting();
+                }
             }
         });
     },
@@ -917,6 +968,221 @@ const game = {
     cancelTargeting() {
         this.targetingType = null;
         document.getElementById('targeting-overlay').classList.add('hidden');
+    },
+
+    // ============================================
+    // [NEW] 건설 모드 함수
+    // ============================================
+    enterBuildMode(buildingType, worker) {
+        if (!CONFIG.constructable[buildingType]) {
+            ui.showToast('알 수 없는 건물 타입!');
+            return;
+        }
+        if (this.builderCooldown > 0) {
+            ui.showToast('건설 쿨타임 중!');
+            return;
+        }
+        const bData = CONFIG.constructable[buildingType];
+        if (this.supply < bData.cost) {
+            ui.showToast('자원 부족!');
+            return;
+        }
+
+        this.buildMode.active = true;
+        this.buildMode.type = buildingType;
+        this.buildMode.worker = worker;
+        this.buildMode.valid = false;
+
+        // 취소 오버레이 표시
+        document.getElementById('targeting-overlay').classList.remove('hidden');
+        document.getElementById('target-msg').innerText = `${bData.name} 배치 위치 선택`;
+    },
+
+    cancelBuildMode() {
+        this.buildMode.active = false;
+        this.buildMode.type = null;
+        this.buildMode.worker = null;
+        this.buildMode.valid = false;
+        document.getElementById('targeting-overlay').classList.add('hidden');
+    },
+
+    updateBuildPreview(worldX, worldY) {
+        if (!this.buildMode.active) return;
+
+        const bType = this.buildMode.type;
+        const bData = CONFIG.constructable[bType];
+        if (!bData) return;
+
+        // 프리뷰 위치 업데이트 (지면에 고정)
+        this.buildMode.previewX = worldX;
+        this.buildMode.previewY = this.groundY;
+
+        // 배치 가능 여부 판정
+        this.buildMode.valid = this.checkBuildPlacement(worldX, bData);
+    },
+
+    checkBuildPlacement(x, bData) {
+        // 1. 맵 범위 체크
+        const halfW = (bData.footprint?.w || bData.width) / 2;
+        if (x - halfW < 50 || x + halfW > CONFIG.mapWidth - 50) return false;
+
+        // 2. 기존 건물과 중첩 체크
+        for (const b of this.buildings) {
+            if (b.dead) continue;
+            const bHalfW = (b.width || 100) / 2;
+            const dist = Math.abs(b.x - x);
+            const minDist = halfW + bHalfW + 20; // 여유 간격
+            if (dist < minDist) return false;
+        }
+
+        // 3. 건설 중인 건물과도 중첩 체크
+        if (this.constructingBuildings) {
+            for (const cb of this.constructingBuildings) {
+                if (cb.dead) continue;
+                const cbHalfW = (cb.width || 100) / 2;
+                const dist = Math.abs(cb.x - x);
+                const minDist = halfW + cbHalfW + 20;
+                if (dist < minDist) return false;
+            }
+        }
+
+        return true;
+    },
+
+    handleBuildPlacement(worldX) {
+        if (!this.buildMode.active) return;
+
+        const bType = this.buildMode.type;
+        const bData = CONFIG.constructable[bType];
+        if (!bData) return;
+
+        // 유효성 재확인
+        if (!this.checkBuildPlacement(worldX, bData)) {
+            ui.showToast('이 위치에 건설할 수 없습니다!');
+            return;
+        }
+
+        // 자원 소모
+        if (this.supply < bData.cost) {
+            ui.showToast('자원 부족!');
+            this.cancelBuildMode();
+            return;
+        }
+        this.supply -= bData.cost;
+
+        // 건설 중 건물 생성 (Commit C에서 구현)
+        this.startConstruction(bType, worldX, this.groundY, 'player');
+
+        // 쿨타임 시작
+        this.builderCooldown = bData.cooldown || 120;
+
+        // 건설 모드 종료
+        this.cancelBuildMode();
+
+        ui.showToast(`${bData.name} 건설 시작!`);
+
+        if (typeof app !== 'undefined') {
+            app.markDirty();
+            app.markUiDirty();
+        }
+    },
+
+    // 건설 시작 (Commit C에서 완전 구현)
+    startConstruction(bType, x, y, team) {
+        // 임시: 바로 완성된 건물 생성 (Commit C에서 건설 중 상태로 변경)
+        if (!this.constructingBuildings) this.constructingBuildings = [];
+
+        const bData = CONFIG.constructable[bType];
+        const construction = {
+            type: bType,
+            x: x,
+            y: y,
+            team: team,
+            width: bData.width,
+            height: bData.height,
+            hp: 1,
+            maxHp: bData.hp,
+            progress: 0,
+            buildTime: bData.buildTime,
+            dead: false,
+            isConstruction: true,
+        };
+        this.constructingBuildings.push(construction);
+    },
+
+    // [NEW] 건설 프리뷰 렌더링
+    drawBuildPreview(ctx) {
+        const bType = this.buildMode.type;
+        const bData = CONFIG.constructable[bType];
+        if (!bData) return;
+
+        const x = this.buildMode.previewX;
+        const y = this.groundY;
+        const w = bData.width;
+        const h = bData.height;
+
+        ctx.save();
+
+        // 유효/무효에 따른 색상
+        const isValid = this.buildMode.valid;
+        const fillColor = isValid ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+        const strokeColor = isValid ? '#22c55e' : '#ef4444';
+
+        // 건물 프리뷰 (반투명)
+        ctx.fillStyle = fillColor;
+        ctx.fillRect(x - w / 2, y - h, w, h);
+
+        // 테두리 (점선)
+        ctx.strokeStyle = strokeColor;
+        ctx.lineWidth = 2;
+        ctx.setLineDash([8, 4]);
+        ctx.strokeRect(x - w / 2, y - h, w, h);
+
+        // 건물 이름 표시
+        ctx.setLineDash([]);
+        ctx.fillStyle = strokeColor;
+        ctx.font = 'bold 14px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(bData.name, x, y - h - 8);
+
+        ctx.restore();
+    },
+
+    // [NEW] 건설 중인 건물 렌더링
+    drawConstructingBuilding(ctx, c) {
+        const bData = CONFIG.constructable[c.type];
+        if (!bData) return;
+
+        const x = c.x;
+        const y = c.y;
+        const w = c.width;
+        const h = c.height;
+
+        ctx.save();
+
+        // 건설 중 배경 (회색)
+        ctx.fillStyle = '#374151';
+        ctx.fillRect(x - w / 2, y - h, w, h);
+
+        // 진행률에 따른 채워짐 (아래에서 위로)
+        const progress = c.progress / c.buildTime;
+        const fillH = h * progress;
+        ctx.fillStyle = '#3b82f6';
+        ctx.fillRect(x - w / 2, y - fillH, w, fillH);
+
+        // 테두리
+        ctx.strokeStyle = '#60a5fa';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x - w / 2, y - h, w, h);
+
+        // 진행률 텍스트
+        ctx.fillStyle = '#fff';
+        ctx.font = 'bold 12px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.fillText(`${Math.floor(progress * 100)}%`, x, y - h / 2);
+        ctx.fillText(bData.name, x, y - h - 5);
+
+        ctx.restore();
     },
 
     commandDrones(x, y) {
@@ -1126,6 +1392,10 @@ const game = {
 
         for (let k in this.cooldowns) if (this.cooldowns[k] > 0) this.cooldowns[k]--;
         for (let k in this.enemyCooldowns) if (this.enemyCooldowns[k] > 0) this.enemyCooldowns[k]--;
+
+        // [NEW] 작업자 건설 쿨타임 감소
+        if (this.builderCooldown > 0) this.builderCooldown--;
+
         if (this.empTimer > 0) {
             this.empTimer--;
             document.getElementById('emp-flash').classList.toggle('active', this.empTimer > 0);
@@ -1240,6 +1510,20 @@ const game = {
         this.players.forEach(u => u.draw(ctx));
         this.projectiles.forEach(p => p.draw(ctx));
         this.particles.forEach(p => p.draw(ctx));
+
+        // [NEW] 건설 중인 건물 렌더링
+        if (this.constructingBuildings) {
+            this.constructingBuildings.forEach(c => {
+                if (c.dead) return;
+                this.drawConstructingBuilding(ctx, c);
+            });
+        }
+
+        // [NEW] 건설 프리뷰 렌더링
+        if (this.buildMode.active && this.buildMode.type) {
+            this.drawBuildPreview(ctx);
+        }
+
         ctx.restore();
 
         // [VFX] screen flash (screen-space) - 흰색만 사용

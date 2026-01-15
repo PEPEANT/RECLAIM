@@ -401,6 +401,13 @@ const HUD = {
         const buildingLabel = this.elements.buildingLabel;
         if (!productionArea || !unitPanel) return;
 
+        // [NEW] 작업자 선택 시 건물 버튼 표시
+        const hasWorkerSelected = this.checkWorkerSelected();
+        if (hasWorkerSelected) {
+            this.showBuildButtons(productionArea, footer, buildingLabel);
+            return;
+        }
+
         const shouldShowProduction =
             this.selection &&
             this.selection.kind === 'building' &&
@@ -503,6 +510,95 @@ const HUD = {
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 1;
         ctx.strokeRect(cx, 0, cw, cvs.height);
+    },
+
+    // ============================================
+    // [NEW] 작업자 건설 버튼 관련 함수
+    // ============================================
+    checkWorkerSelected() {
+        if (!game.selectedUnits || game.selectedUnits.size === 0) return false;
+        for (const u of game.selectedUnits) {
+            if (u.stats && u.stats.isBuilder && u.team === 'player' && !u.dead) {
+                return true;
+            }
+        }
+        return false;
+    },
+
+    getSelectedWorker() {
+        if (!game.selectedUnits) return null;
+        for (const u of game.selectedUnits) {
+            if (u.stats && u.stats.isBuilder && u.team === 'player' && !u.dead) {
+                return u;
+            }
+        }
+        return null;
+    },
+
+    showBuildButtons(productionArea, footer, buildingLabel) {
+        if (!productionArea) return;
+
+        // 건설 가능한 건물 목록
+        const buildings = CONFIG.constructable || {};
+        const worker = this.getSelectedWorker();
+
+        // 기존 내용 지우고 건물 버튼 생성
+        productionArea.innerHTML = '';
+
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'flex gap-2 items-center';
+        btnContainer.style.cssText = 'padding: 4px;';
+
+        for (const key in buildings) {
+            const bData = buildings[key];
+
+            const btn = document.createElement('button');
+            btn.className = 'build-btn flex flex-col items-center justify-center px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white text-xs transition-all';
+            btn.style.cssText = 'min-width: 70px;';
+
+            const canAfford = game.supply >= bData.cost;
+            const onCooldown = game.builderCooldown > 0;
+
+            if (!canAfford || onCooldown) {
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            btn.innerHTML = `
+                <span class="font-bold text-sm">${bData.name}</span>
+                <span class="text-yellow-400">${bData.cost} 💰</span>
+            `;
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (worker && canAfford && !onCooldown) {
+                    game.enterBuildMode(key, worker);
+                } else if (onCooldown) {
+                    ui.showToast('건설 쿨타임 중!');
+                } else if (!canAfford) {
+                    ui.showToast('자원 부족!');
+                }
+            });
+
+            btnContainer.appendChild(btn);
+        }
+
+        // 취소 버튼 (건설 모드 중일 때만)
+        if (game.buildMode && game.buildMode.active) {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold';
+            cancelBtn.innerText = '취소';
+            cancelBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                game.cancelBuildMode();
+            });
+            btnContainer.appendChild(cancelBtn);
+        }
+
+        productionArea.appendChild(btnContainer);
+
+        // 상태 표시
+        if (footer) footer.classList.add('hud-show-production');
+        if (buildingLabel) buildingLabel.textContent = '작업자 - 건설';
     },
 
     /**
