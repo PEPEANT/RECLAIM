@@ -555,6 +555,116 @@
             ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 4;
             ctx.beginPath(); ctx.moveTo(0, -45); ctx.lineTo(this.team === 'player' ? 30 : -30, -55); ctx.stroke();
         }
+        // ============================================
+        // [NEW] 플레이어 건설 건물 렌더링
+        // ============================================
+        else if (this.type === 'barracks') {
+            // 보병막사 - 군사 막사 스타일
+            const w = this.width;
+            const h = this.height;
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+
+            // 메인 건물
+            ctx.fillStyle = '#4b5563';
+            ctx.fillRect(-w/2, -h, w, h);
+
+            // 지붕
+            ctx.fillStyle = '#374151';
+            ctx.beginPath();
+            ctx.moveTo(-w/2 - 5, -h);
+            ctx.lineTo(0, -h - 20);
+            ctx.lineTo(w/2 + 5, -h);
+            ctx.closePath();
+            ctx.fill();
+
+            // 문
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(-15, -40, 30, 40);
+
+            // 창문들
+            ctx.fillStyle = '#9ca3af';
+            ctx.fillRect(-w/2 + 10, -h + 15, 20, 15);
+            ctx.fillRect(w/2 - 30, -h + 15, 20, 15);
+
+            // 팀 색상 마크
+            ctx.fillStyle = teamColor;
+            ctx.fillRect(-w/2, -h, 5, h);
+            ctx.fillRect(w/2 - 5, -h, 5, h);
+        }
+        else if (this.type === 'watchtower_new') {
+            // 감시탑 - 포탑 스타일
+            const w = this.width;
+            const h = this.height;
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+
+            // 기둥
+            ctx.fillStyle = '#6b7280';
+            ctx.fillRect(-15, -h + 20, 30, h - 20);
+
+            // 상단 플랫폼
+            ctx.fillStyle = '#4b5563';
+            ctx.fillRect(-w/2, -h, w, 25);
+
+            // 지붕
+            ctx.fillStyle = '#374151';
+            ctx.beginPath();
+            ctx.moveTo(-w/2, -h);
+            ctx.lineTo(0, -h - 15);
+            ctx.lineTo(w/2, -h);
+            ctx.closePath();
+            ctx.fill();
+
+            // 기관총
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(w/2 - 5, -h + 8, 25, 6);
+
+            // 팀 색상 라이트
+            ctx.fillStyle = teamColor;
+            ctx.beginPath();
+            ctx.arc(0, -h - 5, 5, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        else if (this.type === 'tank_depot') {
+            // 전차기지 - 대형 창고/차고 스타일
+            const w = this.width;
+            const h = this.height;
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+
+            // 메인 건물 (대형)
+            ctx.fillStyle = '#374151';
+            ctx.fillRect(-w/2, -h, w, h);
+
+            // 창고 문 (큰 셔터)
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(-w/2 + 20, -h/2, w - 40, h/2);
+
+            // 셔터 라인
+            ctx.strokeStyle = '#4b5563';
+            ctx.lineWidth = 2;
+            for (let i = 1; i < 5; i++) {
+                ctx.beginPath();
+                ctx.moveTo(-w/2 + 20, -h/2 + i * 10);
+                ctx.lineTo(w/2 - 20, -h/2 + i * 10);
+                ctx.stroke();
+            }
+
+            // 지붕
+            ctx.fillStyle = '#4b5563';
+            ctx.fillRect(-w/2 - 5, -h - 10, w + 10, 15);
+
+            // 굴뚝
+            ctx.fillStyle = '#6b7280';
+            ctx.fillRect(w/2 - 30, -h - 30, 15, 25);
+
+            // 팀 색상 표시
+            ctx.fillStyle = teamColor;
+            ctx.fillRect(-w/2, -h, w, 5);
+
+            // 탱크 아이콘 (문 위)
+            ctx.fillStyle = teamColor;
+            ctx.fillRect(-20, -h + 20, 40, 8);
+            ctx.fillRect(-10, -h + 15, 30, 5);
+        }
         ctx.restore();
         this.drawHp(ctx);
     }

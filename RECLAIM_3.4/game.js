@@ -1148,6 +1148,74 @@ const game = {
         ctx.restore();
     },
 
+    // [NEW] 건설 진행 업데이트
+    updateConstructions() {
+        if (!this.constructingBuildings) return;
+
+        const completed = [];
+
+        for (let i = this.constructingBuildings.length - 1; i >= 0; i--) {
+            const c = this.constructingBuildings[i];
+            if (c.dead) {
+                this.constructingBuildings.splice(i, 1);
+                continue;
+            }
+
+            c.progress++;
+            c.hp = Math.floor((c.progress / c.buildTime) * c.maxHp);
+
+            // 건설 완료
+            if (c.progress >= c.buildTime) {
+                completed.push(c);
+                this.constructingBuildings.splice(i, 1);
+            }
+        }
+
+        // 완료된 건물을 실제 Building으로 변환
+        for (const c of completed) {
+            this.completeConstruction(c);
+        }
+    },
+
+    // [NEW] 건설 완료 처리
+    completeConstruction(c) {
+        const bData = CONFIG.constructable[c.type];
+        if (!bData) return;
+
+        // Building 클래스 인스턴스 생성
+        const building = new Building(c.type, c.x, c.y, c.team);
+
+        // CONFIG.constructable 데이터로 오버라이드
+        building.hp = bData.hp;
+        building.maxHp = bData.hp;
+        building.width = bData.width;
+        building.height = bData.height;
+        building.isConstructed = true;  // 플레이어가 건설한 건물 표시
+
+        // 생산 가능 건물인 경우 추가 속성
+        if (bData.productionTab) {
+            building.productionTab = bData.productionTab;
+            building.canProduce = true;
+        }
+
+        // 감시탑인 경우 공격 속성 추가
+        if (bData.canShoot) {
+            building.canShoot = true;
+            building.damage = bData.damage;
+            building.range = bData.range;
+            building.rate = bData.rate;
+            building.lastAttack = 0;
+        }
+
+        this.buildings.push(building);
+
+        ui.showToast(`${bData.name} 건설 완료!`);
+
+        if (typeof AudioSystem !== 'undefined') {
+            AudioSystem.play('build_complete');
+        }
+    },
+
     // [NEW] 건설 중인 건물 렌더링
     drawConstructingBuilding(ctx, c) {
         const bData = CONFIG.constructable[c.type];
@@ -1418,6 +1486,9 @@ const game = {
         this.buildings.forEach(b => b.update(this.enemies, this.players));
         this.projectiles.forEach(p => p.update());
         this.particles.forEach(p => p.update());
+
+        // [NEW] 건설 중인 건물 업데이트
+        this.updateConstructions();
 
         this.players = this.players.filter(u => !u.dead);
         this.enemies = this.enemies.filter(u => !u.dead);
