@@ -401,21 +401,29 @@ const HUD = {
         const buildingLabel = this.elements.buildingLabel;
         if (!productionArea || !unitPanel) return;
 
-        const shouldShowProduction =
-            this.selection &&
+        // [NEW] 작업자 선택 시 건물 버튼 표시
+        const hasWorkerSelected = this.checkWorkerSelected();
+        if (hasWorkerSelected) {
+            this.showBuildButtons(productionArea, footer, buildingLabel);
+            return;
+        }
+
+        // [NEW] 건물 선택 시 해당 건물의 생산 탭 표시
+        const selectedBuilding = this.getSelectedProductionBuilding();
+        if (selectedBuilding) {
+            this.showProductionBuildingUI(selectedBuilding, productionArea, footer, buildingLabel);
+            return;
+        }
+
+        // HQ는 작업자만 생산 가능 (보병/전차 탭은 건물로 이동)
+        const isHQ = this.selection &&
             this.selection.kind === 'building' &&
             this.selection.name === 'hq_player' &&
             this.selection.team === 'player';
 
-        if (shouldShowProduction) {
-            // Move unit panel into HUD production area
-            productionArea.innerHTML = '';
-            productionArea.appendChild(unitPanel);
-            unitPanel.style.display = 'block';
-
-            // [FIX] Add state class to footer for hiding info area and showing building label
-            if (footer) footer.classList.add('hud-show-production');
-            if (buildingLabel) buildingLabel.textContent = '본부';
+        if (isHQ) {
+            // HQ 선택: 작업자 생산 버튼만 표시
+            this.showHQWorkerButton(productionArea, footer, buildingLabel);
         } else {
             // Return unit panel to original location and hide
             const parent = this.elements.unitPanelOriginalParent;
@@ -503,6 +511,279 @@ const HUD = {
         ctx.strokeStyle = '#fbbf24';
         ctx.lineWidth = 1;
         ctx.strokeRect(cx, 0, cw, cvs.height);
+    },
+
+    // ============================================
+    // [NEW] 작업자 건설 버튼 관련 함수
+    // ============================================
+    checkWorkerSelected() {
+        if (!game.selectedUnits || game.selectedUnits.size === 0) return false;
+        for (const u of game.selectedUnits) {
+            if (u.stats && u.stats.isBuilder && u.team === 'player' && !u.dead) {
+                return true;
+            }
+        }
+        return false;
+    },
+
+    getSelectedWorker() {
+        if (!game.selectedUnits) return null;
+        for (const u of game.selectedUnits) {
+            if (u.stats && u.stats.isBuilder && u.team === 'player' && !u.dead) {
+                return u;
+            }
+        }
+        return null;
+    },
+
+    // [NEW] HQ에서 작업자 생산 버튼 표시
+    showHQWorkerButton(productionArea, footer, buildingLabel) {
+        if (!productionArea) return;
+
+        const workerData = CONFIG.units.worker;
+        if (!workerData) return;
+
+        productionArea.innerHTML = '';
+
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'flex gap-2 items-center';
+        btnContainer.style.cssText = 'padding: 4px;';
+
+        // 작업자 생산 버튼
+        const btn = document.createElement('button');
+        btn.className = 'prod-btn flex flex-col items-center justify-center px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white text-xs transition-all';
+        btn.style.cssText = 'min-width: 80px;';
+
+        const canAfford = game.supply >= workerData.cost;
+        const inStock = (game.playerStock.worker || 0) > 0;
+        const onCooldown = (game.cooldowns.worker || 0) > 0;
+
+        if (!canAfford || !inStock || onCooldown) {
+            btn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+
+        const stockCount = game.playerStock.worker || 0;
+        btn.innerHTML = `
+            <span class="font-bold text-sm" style="color: ${workerData.color}">${workerData.name}</span>
+            <span class="text-yellow-400">${workerData.cost}💰</span>
+            <span class="text-gray-300 text-xs">${stockCount}명</span>
+        `;
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (canAfford && inStock && !onCooldown) {
+                // HQ에서 작업자 스폰
+                const hq = game.buildings.find(b => b.type === 'hq_player');
+                if (hq) {
+                    game.supply -= workerData.cost;
+                    game.playerStock.worker--;
+                    game.cooldowns.worker = workerData.cooldown;
+                    game.spawnUnitDirect('worker', hq.x + 60, game.groundY, 'player');
+                    ui.showToast('작업자 생산!');
+                }
+            } else if (onCooldown) {
+                ui.showToast('쿨타임 중!');
+            } else if (!inStock) {
+                ui.showToast('재고 없음!');
+            } else {
+                ui.showToast('자원 부족!');
+            }
+        });
+
+        btnContainer.appendChild(btn);
+
+        // 안내 텍스트
+        const hint = document.createElement('span');
+        hint.className = 'text-gray-400 text-xs ml-2';
+        hint.textContent = '작업자로 건물 건설';
+        btnContainer.appendChild(hint);
+
+        productionArea.appendChild(btnContainer);
+
+        if (footer) footer.classList.add('hud-show-production');
+        if (buildingLabel) buildingLabel.textContent = '본부';
+    },
+
+    // [NEW] 선택된 생산 건물 가져오기
+    getSelectedProductionBuilding() {
+        if (!this.selection || this.selection.kind !== 'building') return null;
+        if (!game.selectedBuilding) return null;
+
+        const b = game.selectedBuilding;
+        // canProduce 플래그가 있는 건물만 (보병막사, 전차기지)
+        if (b.canProduce && b.productionTab && b.team === 'player') {
+            return b;
+        }
+        return null;
+    },
+
+    // [NEW] 생산 건물 UI 표시
+    showProductionBuildingUI(building, productionArea, footer, buildingLabel) {
+        if (!productionArea) return;
+
+        const tab = building.productionTab; // 'infantry' or 'armored'
+        const bData = CONFIG.constructable[building.type];
+        const buildingName = bData ? bData.name : building.type;
+
+        // 해당 탭의 유닛 목록 가져오기
+        const units = CONFIG.units;
+        const tabUnits = [];
+
+        for (const key in units) {
+            const u = units[key];
+            if (u.category === tab && !u.isBuilder && !u.isSkill) {
+                tabUnits.push({ key, data: u });
+            }
+        }
+
+        // 기존 내용 지우고 생산 버튼 생성
+        productionArea.innerHTML = '';
+
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'flex gap-2 items-center overflow-x-auto';
+        btnContainer.style.cssText = 'padding: 4px; max-width: 100%;';
+
+        for (const { key, data } of tabUnits) {
+            const btn = document.createElement('button');
+            btn.className = 'prod-btn flex flex-col items-center justify-center px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white text-xs transition-all';
+            btn.style.cssText = 'min-width: 60px;';
+
+            const canAfford = game.supply >= data.cost;
+            const inStock = (game.playerStock[key] || 0) > 0;
+            const onCooldown = (game.cooldowns[key] || 0) > 0;
+
+            if (!canAfford || !inStock || onCooldown) {
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            const stockCount = game.playerStock[key] || 0;
+            btn.innerHTML = `
+                <span class="font-bold text-xs" style="color: ${data.color}">${data.name}</span>
+                <span class="text-yellow-400 text-[10px]">${data.cost}💰</span>
+                <span class="text-gray-300 text-[10px]">${stockCount}대</span>
+            `;
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (canAfford && inStock && !onCooldown) {
+                    // 건물에서 유닛 스폰
+                    this.spawnFromBuilding(building, key);
+                } else if (onCooldown) {
+                    ui.showToast('쿨타임 중!');
+                } else if (!inStock) {
+                    ui.showToast('재고 없음!');
+                } else {
+                    ui.showToast('자원 부족!');
+                }
+            });
+
+            btnContainer.appendChild(btn);
+        }
+
+        productionArea.appendChild(btnContainer);
+
+        // 상태 표시
+        if (footer) footer.classList.add('hud-show-production');
+        if (buildingLabel) buildingLabel.textContent = buildingName;
+    },
+
+    // [NEW] 건물에서 유닛 스폰
+    spawnFromBuilding(building, unitKey) {
+        const uData = CONFIG.units[unitKey];
+        if (!uData) return;
+
+        // 재고 및 자원 확인
+        if ((game.playerStock[unitKey] || 0) <= 0) {
+            ui.showToast('재고 없음!');
+            return;
+        }
+        if (game.supply < uData.cost) {
+            ui.showToast('자원 부족!');
+            return;
+        }
+        if ((game.cooldowns[unitKey] || 0) > 0) {
+            ui.showToast('쿨타임 중!');
+            return;
+        }
+
+        // 자원 소모 및 재고 감소
+        game.supply -= uData.cost;
+        game.playerStock[unitKey]--;
+        game.cooldowns[unitKey] = uData.cooldown;
+
+        // 건물 옆에서 스폰 (건물 오른쪽 + 약간의 오프셋)
+        const spawnX = building.x + building.width / 2 + 30;
+        const spawnY = game.groundY;
+
+        game.spawnUnitDirect(unitKey, spawnX, spawnY, 'player');
+
+        ui.showToast(`${uData.name} 생산!`);
+    },
+
+    showBuildButtons(productionArea, footer, buildingLabel) {
+        if (!productionArea) return;
+
+        // 건설 가능한 건물 목록
+        const buildings = CONFIG.constructable || {};
+        const worker = this.getSelectedWorker();
+
+        // 기존 내용 지우고 건물 버튼 생성
+        productionArea.innerHTML = '';
+
+        const btnContainer = document.createElement('div');
+        btnContainer.className = 'flex gap-2 items-center';
+        btnContainer.style.cssText = 'padding: 4px;';
+
+        for (const key in buildings) {
+            const bData = buildings[key];
+
+            const btn = document.createElement('button');
+            btn.className = 'build-btn flex flex-col items-center justify-center px-3 py-2 rounded bg-slate-700 hover:bg-slate-600 border border-slate-500 text-white text-xs transition-all';
+            btn.style.cssText = 'min-width: 70px;';
+
+            const canAfford = game.supply >= bData.cost;
+            const onCooldown = game.builderCooldown > 0;
+
+            if (!canAfford || onCooldown) {
+                btn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+
+            btn.innerHTML = `
+                <span class="font-bold text-sm">${bData.name}</span>
+                <span class="text-yellow-400">${bData.cost} 💰</span>
+            `;
+
+            btn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (worker && canAfford && !onCooldown) {
+                    game.enterBuildMode(key, worker);
+                } else if (onCooldown) {
+                    ui.showToast('건설 쿨타임 중!');
+                } else if (!canAfford) {
+                    ui.showToast('자원 부족!');
+                }
+            });
+
+            btnContainer.appendChild(btn);
+        }
+
+        // 취소 버튼 (건설 모드 중일 때만)
+        if (game.buildMode && game.buildMode.active) {
+            const cancelBtn = document.createElement('button');
+            cancelBtn.className = 'px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold';
+            cancelBtn.innerText = '취소';
+            cancelBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                game.cancelBuildMode();
+            });
+            btnContainer.appendChild(cancelBtn);
+        }
+
+        productionArea.appendChild(btnContainer);
+
+        // 상태 표시
+        if (footer) footer.classList.add('hud-show-production');
+        if (buildingLabel) buildingLabel.textContent = '작업자 - 건설';
     },
 
     /**

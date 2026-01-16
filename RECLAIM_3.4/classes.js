@@ -149,6 +149,13 @@ class Unit extends Entity {
             return;
         }
 
+        // [NEW] Worker 유닛: 공격 없이 이동만
+        if (this.stats.isBuilder) {
+            const moveDir = this.team === 'player' ? 1 : -1;
+            this.x += this.stats.speed * moveDir;
+            return;
+        }
+
         // 怨듭쨷 ?좊떅 留??댄깉 泥섎━ (洹??
         if (this.stats.type === 'air' && !this.stats.id.startsWith('drone') && !['blackhawk', 'chinook'].includes(this.stats.id)) {
             const isOut = (this.team === 'player' && this.x > CONFIG.mapWidth + 100) || (this.team === 'enemy' && this.x < -100);
@@ -496,7 +503,27 @@ class Unit extends Entity {
         const id = this.stats.id;
 
         // [湲곗〈 ?좊떅 洹몃━湲?肄붾뱶 ?좎?, 釉붾옓?명겕/移섎늻?щ쭔 ?섏젙]
-        if (id === 'infantry') { ctx.fillRect(-6, -20, 12, 20); ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#1e293b'; ctx.fillRect(2, -18, 10, 3); }
+        // [NEW] Worker 유닛 렌더링
+        if (id === 'worker') {
+            // 몸통 (노란색 조끼)
+            ctx.fillStyle = '#facc15';
+            ctx.fillRect(-7, -22, 14, 22);
+            // 머리
+            ctx.fillStyle = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            ctx.beginPath();
+            ctx.arc(0, -26, 5, 0, Math.PI * 2);
+            ctx.fill();
+            // 헬멧
+            ctx.fillStyle = '#f59e0b';
+            ctx.beginPath();
+            ctx.arc(0, -27, 6, Math.PI, 0);
+            ctx.fill();
+            // 도구 (망치/렌치)
+            ctx.fillStyle = '#64748b';
+            ctx.fillRect(6, -18, 8, 4);
+            ctx.fillRect(12, -20, 3, 8);
+        }
+        else if (id === 'infantry') { ctx.fillRect(-6, -20, 12, 20); ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#1e293b'; ctx.fillRect(2, -18, 10, 3); }
         else if (id === 'rpg') { ctx.fillRect(-5, -18, 10, 18); ctx.beginPath(); ctx.arc(0, -22, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#334155'; ctx.fillRect(-2, -24, 12, 6); ctx.fillStyle = '#7f1d1d'; ctx.fillRect(8, -24, 4, 6); }
         else if (id === 'special_forces') { ctx.fillStyle = '#171717'; ctx.fillRect(-7, -22, 14, 22); ctx.fillStyle = '#1e293b'; ctx.fillRect(-7, -22, 14, 10); ctx.beginPath(); ctx.arc(0, -26, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#10b981'; ctx.beginPath(); ctx.arc(-2, -26, 1.5, 0, Math.PI * 2); ctx.arc(2, -26, 1.5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.fillRect(4, -18, 12, 4); }
         else if (id === 'humvee') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.fillRect(-20, -15, 40, 15); ctx.fillStyle = '#1e293b'; ctx.beginPath(); ctx.moveTo(-10, -15); ctx.lineTo(-5, -25); ctx.lineTo(10, -25); ctx.lineTo(15, -15); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.arc(-12, 0, 6, 0, Math.PI * 2); ctx.arc(12, 0, 6, 0, Math.PI * 2); ctx.fill(); }
