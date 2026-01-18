@@ -499,12 +499,13 @@
     </div>
 
     <div id="end-screen"
-        class="hidden absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center pointer-events-auto p-6">
+        class="hidden absolute inset-0 z-[200] bg-black/95 flex flex-col items-center justify-center pointer-events-auto p-6">
         <h1 id="end-title" class="text-5xl font-bold mb-4"></h1>
         <p id="end-desc"
             class="text-gray-300 mb-8 text-xl text-center font-serif border-t border-b border-gray-700 py-4"></p>
         <button onclick="game.backToLobby()"
-            class="px-8 py-3 bg-white text-black font-bold rounded hover:bg-gray-200 flex items-center gap-2">
+            class="px-8 py-3 bg-white text-black font-bold rounded hover:bg-gray-200 flex items-center gap-2 relative z-[210]"
+            style="touch-action: manipulation;">
             <i class="fa-solid fa-house"></i> 메인으로
         </button>
     </div>

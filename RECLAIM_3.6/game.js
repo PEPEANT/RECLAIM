@@ -345,9 +345,16 @@ const game = {
         this.canvas.width = this.width;
         this.canvas.height = this.height;
 
-        // 4. 땅 높이 고정 (절대 변하지 않음)
-        // 화면을 돌려도 groundY는 항상 470px (720 - 250) 입니다.
-        this.groundY = this.height - CONFIG.groundHeight;
+        // 4. 땅 높이 계산 (HUD 높이를 고려하여 보정)
+        // [FIX] 하단 HUD가 차지하는 영역만큼 지면을 위로 올림
+        const hudFooter = document.getElementById('hud-footer');
+        let hudOffset = 0;
+        if (hudFooter && !hudFooter.classList.contains('hidden')) {
+            // HUD 높이를 논리적 좌표로 변환
+            const hudHeight = hudFooter.offsetHeight;
+            hudOffset = (hudHeight / this.scaleRatio) * 0.35; // 35% 보정 (완전히 올리면 너무 높음)
+        }
+        this.groundY = this.height - CONFIG.groundHeight - hudOffset;
 
         // 5. CSS 스타일 적용 (화면 꽉 채우기)
         if (wrapper) {
@@ -1733,11 +1740,21 @@ const game = {
     endGame(result, title, desc) {
         if (this.isGameOver) return;
         this.isGameOver = true;
+
+        // [FIX] HUD 숨기기 - end screen이 가려지지 않도록
+        if (typeof HUD !== 'undefined') HUD.hide();
+
         const s = document.getElementById('end-screen');
-        s.classList.remove('hidden'); s.style.display = 'flex';
+        s.classList.remove('hidden');
+        s.style.display = 'flex';
+        s.style.zIndex = '200'; // 확실히 최상위로
+
         document.getElementById('end-title').innerText = title;
         document.getElementById('end-title').className = `text-5xl font-bold mb-4 ${result === 'win' ? 'text-blue-500' : 'text-red-500'}`;
         document.getElementById('end-desc').innerText = desc;
+
+        // [FIX] 배속 1배로 초기화
+        this.speed = 1;
     }
 };
 
