@@ -273,6 +273,9 @@ const game = {
         this.isGameOver = false;
         if (this.loopId) cancelAnimationFrame(this.loopId);
 
+        // [FIX] 배속 1배로 초기화
+        this.resetSpeed();
+
         const endScreen = document.getElementById('end-screen');
         if (endScreen) { endScreen.classList.add('hidden'); endScreen.style.display = 'none'; }
         document.getElementById('hud-minimap-container').classList.add('hidden');
@@ -461,6 +464,9 @@ const game = {
 
         // [New] Push history state when game starts
         history.pushState({ page: 'game' }, "Game", "#game");
+
+        // [FIX] 배속 1배로 초기화 (게임 시작 시)
+        this.resetSpeed();
 
         this.players = []; this.enemies = []; this.projectiles = []; this.particles = [];
         this.buildings = [];
@@ -1249,7 +1255,7 @@ const game = {
         }
     },
 
-    // [NEW] 건설 중인 건물 렌더링
+    // [NEW] 건설 중인 건물 렌더링 - 즉시 눈에 보이도록 개선
     drawConstructingBuilding(ctx, c) {
         const bData = CONFIG.constructable[c.type];
         if (!bData) return;
@@ -1261,27 +1267,53 @@ const game = {
 
         ctx.save();
 
-        // 건설 중 배경 (회색)
-        ctx.fillStyle = '#374151';
+        // [FIX] 건설 중 배경 - 더 밝은 색상으로 즉시 눈에 띄게
+        ctx.fillStyle = '#1e3a5f';
         ctx.fillRect(x - w / 2, y - h, w, h);
 
         // 진행률에 따른 채워짐 (아래에서 위로)
         const progress = c.progress / c.buildTime;
         const fillH = h * progress;
-        ctx.fillStyle = '#3b82f6';
+
+        // [FIX] 건물 타입별 색상
+        let buildColor = '#3b82f6';
+        if (c.type === 'barracks') buildColor = '#22c55e';
+        else if (c.type === 'tank_depot') buildColor = '#f59e0b';
+        else if (c.type === 'watchtower_new') buildColor = '#8b5cf6';
+
+        ctx.fillStyle = buildColor;
         ctx.fillRect(x - w / 2, y - fillH, w, fillH);
 
-        // 테두리
-        ctx.strokeStyle = '#60a5fa';
-        ctx.lineWidth = 2;
+        // [FIX] 테두리 - 두껍고 밝게
+        ctx.strokeStyle = '#fbbf24';
+        ctx.lineWidth = 3;
         ctx.strokeRect(x - w / 2, y - h, w, h);
 
-        // 진행률 텍스트
+        // [FIX] 건설 중 깜빡임 효과
+        if (Math.floor(game.frame / 15) % 2 === 0) {
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.setLineDash([5, 5]);
+            ctx.strokeRect(x - w / 2 + 2, y - h + 2, w - 4, h - 4);
+            ctx.setLineDash([]);
+        }
+
+        // 진행률 텍스트 - 더 크고 명확하게
         ctx.fillStyle = '#fff';
-        ctx.font = 'bold 12px sans-serif';
+        ctx.font = 'bold 14px sans-serif';
         ctx.textAlign = 'center';
-        ctx.fillText(`${Math.floor(progress * 100)}%`, x, y - h / 2);
-        ctx.fillText(bData.name, x, y - h - 5);
+        ctx.shadowColor = '#000';
+        ctx.shadowBlur = 4;
+        ctx.fillText(`${Math.floor(progress * 100)}%`, x, y - h / 2 + 5);
+
+        // 건물 이름
+        ctx.font = 'bold 11px sans-serif';
+        ctx.fillText(bData.name, x, y - h - 8);
+
+        // "건설 중" 라벨
+        ctx.font = '10px sans-serif';
+        ctx.fillStyle = '#fbbf24';
+        ctx.fillText('건설 중...', x, y - h / 2 + 20);
 
         ctx.restore();
     },
@@ -1405,17 +1437,34 @@ const game = {
         this.spawnUnitDirect(key, hq.x - 50, this.groundY, 'enemy');
     },
 
-    // [New] Speed Control
+    // [New] Speed Control - SSOT (Single Source of Truth)
     speed: 1,
+    _allowedSpeeds: [0.5, 1, 2], // 허용된 배속 값만
     // HUD
     minimapVisible: true,
 
     setSpeed(s) {
-        this.speed = s;
-        // 즉시 UI 갱신(미니맵 아래 버튼 상태)
+        // [FIX] 배속 SSOT 관리 - 허용된 값만 설정
+        const numSpeed = Number(s);
+
+        // 허용된 값이 아니면 1배로 강제 복귀
+        if (!this._allowedSpeeds.includes(numSpeed)) {
+            console.warn(`[SPEED] Invalid speed ${s}, resetting to 1`);
+            this.speed = 1;
+        } else {
+            this.speed = numSpeed;
+        }
+
+        // 즉시 UI 갱신 (SSOT: UI는 표시만)
         if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
-        // [NEW] Update fixed HUD speed buttons
         if (typeof HUD !== 'undefined') HUD.updateSpeedButtons(this.speed);
+    },
+
+    // [NEW] 배속 초기화 함수 (메인/재시작 시 호출)
+    resetSpeed() {
+        this.speed = 1;
+        if (typeof ui !== 'undefined') ui.updateSpeedBtns(1);
+        if (typeof HUD !== 'undefined') HUD.updateSpeedButtons(1);
     },
 
     updateZoomUI() {

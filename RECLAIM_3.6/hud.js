@@ -349,13 +349,27 @@ const HUD = {
         }
 
         if (selection.kind === 'unit') {
-            info.innerHTML = `
-                <div class="hud-selection-item">
-                    <span class="hud-selection-type">유닛</span>
-                    <span class="hud-selection-name">${selection.name}</span>
-                    <span class="hud-selection-count">${selection.count}개</span>
-                </div>
-            `;
+            // [NEW] 작업자 선택 시 프로필 박스 + 라벨 표시
+            if (this.checkWorkerSelected()) {
+                info.innerHTML = `
+                    <div class="hud-worker-profile" style="display: flex; align-items: center; gap: 8px;">
+                        <div class="hud-worker-avatar" style="width: 36px; height: 36px; border: 2px solid #facc15; border-radius: 4px; background: #1e293b; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 18px; color: #facc15;">👷</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column;">
+                            <span style="font-weight: bold; color: #facc15; font-size: 13px;">작업자</span>
+                            <span style="color: #94a3b8; font-size: 10px;">건설</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                info.innerHTML = `
+                    <div class="hud-selection-item">
+                        <span class="hud-selection-type">유닛</span>
+                        <span class="hud-selection-name">${selection.name}</span>
+                    </div>
+                `;
+            }
         } else if (selection.kind === 'building') {
             // HQ (player base): minimal text to save space for production UI
             const isHQ = (selection.name === 'hq_player' && selection.team === 'player');
@@ -370,8 +384,22 @@ const HUD = {
                 `;
             }
         } else if (selection.kind === 'multi') {
-            // Multiple units selected
-            info.innerHTML = `<span style="color: #22c55e; font-weight: bold;">${selection.count}개 유닛 선택됨</span>`;
+            // [NEW] 다중 선택 시 작업자 포함 여부 확인
+            if (this.checkWorkerSelected()) {
+                info.innerHTML = `
+                    <div class="hud-worker-profile" style="display: flex; align-items: center; gap: 8px;">
+                        <div class="hud-worker-avatar" style="width: 36px; height: 36px; border: 2px solid #facc15; border-radius: 4px; background: #1e293b; display: flex; align-items: center; justify-content: center;">
+                            <span style="font-size: 18px; color: #facc15;">👷</span>
+                        </div>
+                        <div style="display: flex; flex-direction: column;">
+                            <span style="font-weight: bold; color: #facc15; font-size: 13px;">작업자</span>
+                            <span style="color: #94a3b8; font-size: 10px;">건설</span>
+                        </div>
+                    </div>
+                `;
+            } else {
+                info.innerHTML = `<span style="color: #22c55e; font-weight: bold;">${selection.count}개 유닛 선택됨</span>`;
+            }
         }
 
         this.updateProductionArea();
@@ -553,7 +581,7 @@ const HUD = {
         const stockCount = game.playerStock.worker || 0;
         btn.innerHTML = `
             <span class="font-bold text-sm" style="color: ${workerData.color}">${workerData.name}</span>
-            <span class="text-yellow-400">${workerData.cost}💰</span>
+            <span class="text-yellow-400">${workerData.cost}</span>
             <span class="text-gray-300 text-xs">${stockCount}명</span>
         `;
 
@@ -647,7 +675,7 @@ const HUD = {
             const stockCount = game.playerStock[key] || 0;
             btn.innerHTML = `
                 <span class="font-bold text-xs" style="color: ${data.color}">${data.name}</span>
-                <span class="text-yellow-400 text-[10px]">${data.cost}💰</span>
+                <span class="text-yellow-400 text-[10px]">${data.cost}</span>
                 <span class="text-gray-300 text-[10px]">${stockCount}대</span>
             `;
 
@@ -736,9 +764,10 @@ const HUD = {
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
             }
 
+            // [FIX] 돈 이모티콘 제거, 텍스트만 표시
             btn.innerHTML = `
                 <span class="font-bold text-sm">${bData.name}</span>
-                <span class="text-yellow-400">${bData.cost} 💰</span>
+                <span class="text-yellow-400">${bData.cost}</span>
             `;
 
             btn.addEventListener('click', (e) => {
