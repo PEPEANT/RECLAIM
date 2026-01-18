@@ -123,32 +123,20 @@ const HUD = {
     },
 
     /**
-     * Portrait mode detection and game pause
+     * [MODIFIED] Portrait mode detection - NO LONGER PAUSES GAME
+     * Game continues to run in both portrait and landscape modes
      */
     setupPortraitDetection() {
         const checkOrientation = () => {
             const isPortrait = window.innerHeight > window.innerWidth;
+            this.isPortrait = isPortrait;
 
-            if (isPortrait && !this.isPortrait) {
-                // Entered portrait mode
-                this.isPortrait = true;
-                this.wasRunningBeforePortrait = game.running;
+            // [REMOVED] No longer pause/resume game based on orientation
+            // Game runs in both modes now
 
-                // Pause game in portrait mode
-                if (game.running) {
-                    game.running = false;
-                    console.log('[HUD] Game paused (portrait mode)');
-                }
-            } else if (!isPortrait && this.isPortrait) {
-                // Returned to landscape
-                this.isPortrait = false;
-
-                // Resume game if it was running before
-                if (this.wasRunningBeforePortrait && !game.isGameOver) {
-                    game.running = true;
-                    game.loop();
-                    console.log('[HUD] Game resumed (landscape mode)');
-                }
+            // Just log for debugging
+            if (isPortrait) {
+                console.log('[HUD] Portrait mode detected - game continues');
             }
         };
 

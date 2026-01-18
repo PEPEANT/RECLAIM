@@ -923,17 +923,14 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 /* ============================================
-   Portrait Mode Overlay
+   Portrait Mode Overlay - DISABLED
+   세로 모드에서도 게임 플레이 가능
    ============================================ */
 .portrait-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 9999;
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    justify-content: center;
-    align-items: center;
-    pointer-events: auto;
+    display: none !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+    opacity: 0 !important;
 }
 
 .portrait-content {
@@ -998,17 +995,32 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 }
 
-/* Show portrait overlay only in portrait mode */
-@media (orientation: portrait) {
-    .portrait-overlay {
-        display: flex !important;
-    }
-}
-
-/* Hide HUD in portrait mode */
+/* [REMOVED] Portrait overlay disabled - game works in both orientations */
+/* Portrait mode: Keep HUD visible, just make it more compact */
 @media (orientation: portrait) {
     .hud-footer {
-        display: none !important;
+        height: 18vh;
+        min-height: 100px;
+        max-height: 140px;
+    }
+
+    .hud-left {
+        flex: 0 0 160px;
+    }
+
+    .hud-right {
+        flex: 0 0 120px;
+    }
+
+    .hud-ctrl-btn {
+        font-size: 10px;
+        padding: 3px 6px;
+    }
+
+    .hud-cmd-btn {
+        padding: 4px 2px;
+        font-size: 9px;
+        min-height: 36px;
     }
 }
 
