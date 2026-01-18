@@ -117,8 +117,22 @@ const game = {
     init() {
         this.ctx = this.canvas.getContext('2d');
         this.resize();
-        window.addEventListener('resize', () => this.resize()); // 회전 시 즉시 반응
-        window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 50));
+
+        // [FIX] 모바일 뷰포트 변화에 안정적으로 대응
+        let resizeTimeout = null;
+        const debouncedResize = () => {
+            if (resizeTimeout) clearTimeout(resizeTimeout);
+            resizeTimeout = setTimeout(() => this.resize(), 50);
+        };
+
+        window.addEventListener('resize', debouncedResize);
+        window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 150));
+
+        // [NEW] 주소창 변화 대응 (visualViewport API)
+        if (window.visualViewport) {
+            window.visualViewport.addEventListener('resize', debouncedResize);
+            window.visualViewport.addEventListener('scroll', debouncedResize);
+        }
 
         this.setupInputs();
         this.initGameObjects();
@@ -311,8 +325,11 @@ const game = {
     // [핵심] 흔들림 없는 리사이즈 로직
     resize() {
         const wrapper = document.getElementById('game-wrapper');
-        const winW = window.innerWidth;
-        const winH = window.innerHeight;
+
+        // [FIX] visualViewport API 사용하여 실제 가시 영역 계산 (주소창/키보드 대응)
+        const vv = window.visualViewport;
+        const winW = vv ? vv.width : window.innerWidth;
+        const winH = vv ? vv.height : window.innerHeight;
         const prevViewW = Camera.viewW(this);
 
         // 1. 배율 계산 (세로 높이를 720px에 맞춤)
