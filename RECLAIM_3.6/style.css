@@ -1064,34 +1064,103 @@ input[type=range]::-webkit-slider-runnable-track {
     display: flex !important;
 }
 
-/* --- Mobile Landscape Adjustments --- */
+/* --- Mobile Landscape Adjustments (Short screens) --- */
 @media (orientation: landscape) and (max-height: 480px) {
     .hud-footer {
-        height: 25vh;
-        min-height: 110px;
+        height: 28vh;
+        min-height: 90px;
+        max-height: 120px;
+        padding-bottom: max(env(safe-area-inset-bottom, 0px), 4px);
     }
 
     .hud-left {
-        flex: 0 0 180px;
+        flex: 0 0 150px;
+        padding: 4px;
     }
 
     .hud-right {
-        flex: 0 0 140px;
+        flex: 0 0 110px;
+        padding: 4px;
+    }
+
+    .hud-center {
+        padding: 4px;
     }
 
     .hud-ctrl-btn {
-        font-size: 10px;
-        padding: 3px 6px;
+        font-size: 9px;
+        padding: 2px 5px;
     }
 
     .hud-cmd-btn {
-        padding: 6px 3px;
-        font-size: 10px;
-        min-height: 40px;
+        padding: 4px 2px;
+        font-size: 9px;
+        min-height: 32px;
     }
 
     .hud-building-label {
-        flex: 0 0 60px;
-        font-size: 10px;
+        flex: 0 0 50px;
+        font-size: 9px;
+    }
+
+    #hud-zoom-display {
+        font-size: 9px;
+        min-width: 36px;
+    }
+
+    #hud-controls-bar {
+        padding: 2px 0 0 0;
+        gap: 2px;
+    }
+
+    #hud-info-area {
+        padding: 2px 4px;
+    }
+
+    #hud-selection-info {
+        min-height: 24px;
+        font-size: 11px;
+    }
+
+    #hud-command-grid {
+        gap: 3px;
+        padding: 2px;
+    }
+}
+
+/* --- Extra short screens (height < 400px) --- */
+@media (orientation: landscape) and (max-height: 400px) {
+    .hud-footer {
+        height: 32vh;
+        min-height: 80px;
+        max-height: 100px;
+    }
+
+    .hud-left {
+        flex: 0 0 130px;
+    }
+
+    .hud-right {
+        flex: 0 0 90px;
+    }
+
+    .hud-ctrl-btn {
+        font-size: 8px;
+        padding: 2px 4px;
+    }
+
+    .hud-cmd-btn {
+        padding: 3px 2px;
+        font-size: 8px;
+        min-height: 28px;
+    }
+
+    .hud-cmd-btn .cmd-icon {
+        font-size: 12px;
+    }
+
+    .hud-divider {
+        height: 12px;
+        margin: 0 2px;
     }
 }
