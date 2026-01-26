@@ -186,6 +186,14 @@
             splash: true, splashRadius: 180,
             role: '고고도 강습', description: '지정 지점으로 고고도 침투 후 급강하 폭발합니다. (광역 피해)'
         },
+        recon: {
+            id: 'recon', name: '정찰기', cost: 100, cooldown: 300, maxCount: 1,
+            hp: 80, damage: 0, range: 0, speed: 2.5, mobility: 5,
+            width: 30, height: 12, color: '#cbd5e1', type: 'air', category: 'drone',
+            invulnerable: true, stealth: true,
+            role: '정찰 지원', description: '고고도 정찰 드론. 생성 시 적군 전력을 분석합니다.',
+            isSkill: true, skillType: 'recon'
+        },
 
         // [SPECIAL] - EMP / Nuke integrated as virtual units for UI
         emp: {

@@ -285,6 +285,17 @@ class Unit extends Entity {
         }
 
 
+        // 정찰기 (Recon Drone)
+        if (this.stats.id === 'recon') {
+            const dir = this.team === 'player' ? 1 : -1;
+            this.x += this.stats.speed * dir;
+            // 화면 밖으로 나가면 제거
+            if (this.x < -100 || this.x > CONFIG.mapWidth + 100) {
+                this.dead = true;
+            }
+            return;
+        }
+
         // ?꾨왂 ??꺽湲?
         if (this.stats.id === 'bomber') {
             const dir = this.team === 'player' ? 1 : -1;
@@ -712,6 +723,59 @@ class Unit extends Entity {
         else if (id === 'nuke') { ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 0, Math.PI / 3); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 2 * Math.PI / 3, Math.PI); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 4 * Math.PI / 3, 5 * Math.PI / 3); ctx.lineTo(0, 0); ctx.fill(); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); }
         else if (id === 'tactical_missile') { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(-12, -3, 24, 6); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(12, -3); ctx.lineTo(18, 0); ctx.lineTo(12, 3); ctx.fill(); ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(-12, 0, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(-8, -3); ctx.lineTo(-12, -8); ctx.lineTo(-12, -3); ctx.fill(); ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(-12, 8); ctx.lineTo(-12, 3); ctx.fill(); }
         else if (id === 'stealth_drone') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, 9); ctx.lineTo(-4, 0); ctx.lineTo(-10, -9); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(1, 0, 3.5, 2.2, 0, 0, Math.PI * 2); ctx.fill(); if (this.team === 'player' && this.targetX !== null && this.targetX !== undefined && !this.exploded) { const gx = (game && game.groundY) ? game.groundY : this.y; const tx = this.targetX; const ty = gx - 8; const dd = Math.hypot(this.x - tx, this.y - ty); if (dd > 70) { ctx.save(); ctx.translate(-this.x + tx, -this.y + ty); ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2; const s = 7; ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke(); ctx.restore(); } } }
+        else if (id === 'recon') {
+            // 정찰 드론 (Global Hawk 스타일)
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const bodyColor = '#cbd5e1';
+            const darkColor = '#475569';
+
+            // 1. Fuselage (동체)
+            ctx.fillStyle = bodyColor;
+            ctx.beginPath();
+            ctx.moveTo(30, 5);
+            ctx.bezierCurveTo(35, -10, 10, -15, -10, -12);
+            ctx.lineTo(-40, -5);
+            ctx.lineTo(-35, 2);
+            ctx.lineTo(20, 10);
+            ctx.fill();
+
+            // 2. V-Tail (V자 꼬리)
+            ctx.fillStyle = darkColor;
+            ctx.beginPath();
+            ctx.moveTo(-30, -5);
+            ctx.lineTo(-45, -20);
+            ctx.lineTo(-38, -5);
+            ctx.fill();
+
+            // 3. Dorsal Engine Intake (엔진 흡입구)
+            ctx.fillStyle = '#334155';
+            ctx.beginPath();
+            ctx.ellipse(-5, -14, 8, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 4. Main Wing
+            ctx.fillStyle = '#64748b';
+            ctx.beginPath();
+            ctx.moveTo(5, -5);
+            ctx.lineTo(-15, -2);
+            ctx.lineTo(-20, 2);
+            ctx.lineTo(0, 2);
+            ctx.fill();
+
+            // 5. Sensor Pod (카메라)
+            ctx.fillStyle = '#0f172a';
+            ctx.beginPath();
+            ctx.arc(15, 10, 4, 0, Math.PI);
+            ctx.fill();
+            ctx.fillStyle = '#38bdf8';
+            ctx.beginPath();
+            ctx.arc(16, 11, 1.5, 0, Math.PI * 2);
+            ctx.fill();
+
+            // 6. Team Identification Strip
+            ctx.fillStyle = teamColor;
+            ctx.fillRect(-15, -8, 10, 4);
+        }
         else if (id === 'bomber') {
             const teamColor = (this.team === 'player') ? '#3b82f6' : '#ef4444';
 

@@ -121,6 +121,16 @@ window.UNITDEX_LANG_EN = {
             name: "Tactical Nuke",
             role: "Mass Destruction",
             desc: "Drops tactical nuclear bomb devastating a wide area."
+        },
+        tactical_missile: {
+            name: "Tactical Missile",
+            role: "Precision Strike",
+            desc: "Precision strike missile launched from HQ."
+        },
+        recon: {
+            name: "Recon Drone",
+            role: "Reconnaissance",
+            desc: "High-altitude recon drone. Reveals enemy force composition."
         }
     }
 };

@@ -1472,6 +1472,34 @@ const game = {
     queueUnit(key) {
         const u = CONFIG.units[key];
 
+        // 정찰기: 바로 정찰 UI 열기
+        if (key === 'recon') {
+            if (this.supply >= u.cost && this.playerStock[key] > 0) {
+                this.supply -= u.cost;
+                this.playerStock[key]--;
+                this.cooldowns[key] = u.cooldown;
+
+                // 정찰 드론 생성 (화면 위에서 날아감)
+                const hq = this.buildings.find(b => b.type === 'hq_player');
+                if (hq) {
+                    const recon = new Unit('recon', hq.x, this.groundY - 200, 'player');
+                    this.players.push(recon);
+                }
+
+                // 정찰 UI 열기
+                this.toggleScope();
+                ui.showToast("정찰 드론 발진! 적군 전력 분석 중...");
+
+                if (typeof app !== 'undefined') {
+                    app.markUiDirty();
+                    app.commit('recon');
+                }
+            } else {
+                ui.showToast("자원 또는 재고 부족!");
+            }
+            return;
+        }
+
         // Special logic for targeting
         const needsTargeting = ['tactical_drone', 'stealth_drone', 'blackhawk', 'chinook', 'emp', 'nuke', 'tactical_missile'].includes(key);
         if (needsTargeting) {
