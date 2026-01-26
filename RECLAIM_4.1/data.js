@@ -203,7 +203,7 @@
             isSkill: true, chargeKey: 'nuke'
         },
         tactical_missile: {
-            id: 'tactical_missile', name: '전술미사일', cost: 700, cooldown: 45, maxCount: 3,
+            id: 'tactical_missile', name: '전술미사일', cost: 700, cooldown: 45, maxCount: 5,
             hp: 0, damage: 350, range: 800, speed: 0,
             width: 40, height: 40, color: '#ff3333', type: 'skill', category: 'special',
             role: '정밀 타격', description: '본부에서 전술미사일을 발사해 지정 지점을 강타합니다. 넓은 범위에 강력한 피해를 입힙니다.',

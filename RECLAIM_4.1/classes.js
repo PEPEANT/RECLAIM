@@ -289,7 +289,7 @@ class Unit extends Entity {
         if (this.stats.id === 'bomber') {
             const dir = this.team === 'player' ? 1 : -1;
             this.x += this.stats.speed * dir;
-            if (game.frame - this.lastBomb > 40 && this.x > 0 && this.x < CONFIG.mapWidth) {
+            if (game.frame - this.lastBomb > 70 && this.x > 0 && this.x < CONFIG.mapWidth) {
                 const targets = [...enemies, ...buildings];
                 const hasTarget = targets.some(t => t && !t.dead && t.team !== 'neutral' && !(t.stats && t.stats.invulnerable) && Math.abs(t.x - this.x) < 50);
                 if (hasTarget) {
