@@ -543,36 +543,37 @@ class Unit extends Entity {
         }
 
         // ===== 단순화된 facing 로직 =====
-        // 규칙: 실제 이동 방향만 사용, 정지 시 팀 기본 방향
+        // 적 유닛: 항상 왼쪽(-1) 고정 - 이동 방향이 항상 왼쪽이므로
+        // 플레이어 유닛: 이동 방향 또는 공격대상 방향
         const frameNow = game?.frame ?? 0;
-        const defaultFacing = (this.team === 'player') ? 1 : -1;
-        if (this.facing == null) this.facing = defaultFacing;
 
-        if (this._faceLastX == null) this._faceLastX = this.x;
-        const dx = this.x - this._faceLastX;
-
-        // 실제 이동량이 임계값 이상이면 이동 방향으로 facing
-        const MOVING_THRESHOLD = 0.5;
-        let desired = this.facing;
-
-        if (Math.abs(dx) > MOVING_THRESHOLD) {
-            // 이동 중: 이동 방향으로 facing
-            desired = dx > 0 ? 1 : -1;
-            this._faceLastX = this.x;
+        if (this.team === 'enemy') {
+            // 적 유닛은 항상 왼쪽을 봄 (깜빡임 완전 방지)
+            this.facing = -1;
         } else {
-            // 정지 상태: 팀 기본 방향 유지 (적=-1, 아군=1)
-            // 플레이어 유닛만 공격대상 방향으로 바라봄
-            if (this.team === 'player' && this.attackTarget && !this.attackTarget.dead) {
+            // 플레이어 유닛
+            if (this.facing == null) this.facing = 1;
+
+            if (this._faceLastX == null) this._faceLastX = this.x;
+            const dx = this.x - this._faceLastX;
+            this._faceLastX = this.x; // 매 프레임 업데이트
+
+            let desired = this.facing;
+
+            if (Math.abs(dx) > 0.3) {
+                // 이동 중: 이동 방향
+                desired = dx > 0 ? 1 : -1;
+            } else if (this.attackTarget && !this.attackTarget.dead) {
+                // 정지 + 공격대상: 공격대상 방향
                 desired = (this.attackTarget.x < this.x) ? -1 : 1;
             }
-            // 적 유닛은 정지 시 기본 방향(-1) 유지 - 깜빡임 방지
-        }
 
-        // 쿨다운으로 깜빡임 차단 (15프레임 = 0.25초)
-        if (this._faceLockUntil == null) this._faceLockUntil = 0;
-        if (frameNow >= this._faceLockUntil && desired !== this.facing) {
-            this.facing = desired;
-            this._faceLockUntil = frameNow + 15;
+            // 쿨다운으로 깜빡임 차단
+            if (this._faceLockUntil == null) this._faceLockUntil = 0;
+            if (frameNow >= this._faceLockUntil && desired !== this.facing) {
+                this.facing = desired;
+                this._faceLockUntil = frameNow + 12;
+            }
         }
 
         ctx.scale(this.facing, 1);
