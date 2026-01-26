@@ -585,12 +585,14 @@
                 <button class="hud-cmd-btn" data-hud-cmd="move"><span class="cmd-icon">➡</span><span>이동</span></button>
                 <button class="hud-cmd-btn" data-hud-cmd="stop"><span class="cmd-icon">⏹</span><span>정지</span></button>
 
-                <!-- 2행: 공격 - 후퇴 - 빈칸 -->
+                <!-- 2행: 공격 - 후퇴 - 정찰(정찰기 선택시만) -->
                 <button class="hud-cmd-btn" data-hud-cmd="attack"><span
                         class="cmd-icon">⚔</span><span>공격</span></button>
                 <button class="hud-cmd-btn" data-hud-cmd="retreat"><span
                         class="cmd-icon">◀</span><span>후퇴</span></button>
-                <div class="hud-cmd-slot-empty" aria-hidden="true"></div>
+                <button id="recon-cmd-btn" class="hud-cmd-btn hidden" data-hud-cmd="recon"><span
+                        class="cmd-icon">🔭</span><span>정찰</span></button>
+                <div id="recon-slot-empty" class="hud-cmd-slot-empty" aria-hidden="true"></div>
             </div>
         </section>
     </footer>

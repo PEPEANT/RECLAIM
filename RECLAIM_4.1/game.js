@@ -1472,23 +1472,21 @@ const game = {
     queueUnit(key) {
         const u = CONFIG.units[key];
 
-        // 정찰기: 바로 정찰 UI 열기
+        // 정찰기: 일반 유닛처럼 생성 (명령탭에서 정찰 버튼 사용)
         if (key === 'recon') {
             if (this.supply >= u.cost && this.playerStock[key] > 0) {
                 this.supply -= u.cost;
                 this.playerStock[key]--;
                 this.cooldowns[key] = u.cooldown;
 
-                // 정찰 드론 생성 (화면 위에서 날아감)
+                // 정찰 드론 생성
                 const hq = this.buildings.find(b => b.type === 'hq_player');
                 if (hq) {
-                    const recon = new Unit('recon', hq.x, this.groundY - 200, 'player');
+                    const recon = new Unit('recon', hq.x + 50, this.groundY - 180, 'player');
                     this.players.push(recon);
                 }
 
-                // 정찰 UI 열기
-                this.toggleScope();
-                ui.showToast("정찰 드론 발진! 적군 전력 분석 중...");
+                ui.showToast("정찰기 발진!");
 
                 if (typeof app !== 'undefined') {
                     app.markUiDirty();

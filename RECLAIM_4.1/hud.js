@@ -229,6 +229,11 @@ const HUD = {
                     cmdBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     return;
+                } else if (cmd === 'recon') {
+                    // 정찰 명령: 적군 전력 분석 UI 열기
+                    game.toggleScope();
+                    ui.showToast('적군 전력 분석 중...');
+                    return;
                 } else {
                     // Apply command to selected units
                     game.selectedUnits.forEach(u => {
@@ -262,12 +267,40 @@ const HUD = {
         const cmdBtns = document.querySelectorAll('[data-hud-cmd]');
         const hasSelection = game.selectedUnits && game.selectedUnits.size > 0;
 
+        // 정찰기가 선택되어 있는지 확인
+        let hasRecon = false;
+        if (game.selectedUnits) {
+            for (const u of game.selectedUnits) {
+                if (u && !u.dead && u.stats && u.stats.id === 'recon') {
+                    hasRecon = true;
+                    break;
+                }
+            }
+        }
+
+        // 정찰 버튼 표시/숨김
+        const reconBtn = document.getElementById('recon-cmd-btn');
+        const reconSlotEmpty = document.getElementById('recon-slot-empty');
+        if (reconBtn && reconSlotEmpty) {
+            if (hasRecon) {
+                reconBtn.classList.remove('hidden');
+                reconSlotEmpty.classList.add('hidden');
+            } else {
+                reconBtn.classList.add('hidden');
+                reconSlotEmpty.classList.remove('hidden');
+            }
+        }
+
         cmdBtns.forEach(btn => {
             const cmd = btn.dataset.hudCmd;
             // Clear button always enabled, others depend on selection
             if (cmd === 'clear') {
                 btn.disabled = false;
                 btn.classList.remove('disabled');
+            } else if (cmd === 'recon') {
+                // 정찰 버튼은 정찰기 선택시에만 활성화
+                btn.disabled = !hasRecon;
+                btn.classList.toggle('disabled', !hasRecon);
             } else {
                 btn.disabled = !hasSelection;
                 btn.classList.toggle('disabled', !hasSelection);
