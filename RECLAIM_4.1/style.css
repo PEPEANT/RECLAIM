@@ -1115,97 +1115,28 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 /* ========================================
-   정찰 모달 (scope-modal) 스타일
+   정찰 모달 (scope-modal) - 가로형 카드 디자인
    ======================================== */
-.recon-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
+#scope-modal {
+    /* 모달 기본 스타일 */
 }
 
-.recon-table th,
-.recon-table td {
-    padding: 8px 12px;
-    border-bottom: 1px solid #334155;
+#enemy-status-cards {
+    display: flex;
+    gap: 8px;
+    padding: 4px 0;
 }
 
-.recon-table th {
-    color: #94a3b8;
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.05em;
+#enemy-status-cards::-webkit-scrollbar {
+    height: 6px;
 }
 
-.recon-table td {
-    color: #e2e8f0;
+#enemy-status-cards::-webkit-scrollbar-track {
+    background: #1e293b;
+    border-radius: 3px;
 }
 
-.recon-table tr:hover {
-    background-color: rgba(59, 130, 246, 0.1);
-}
-
-/* 모바일 가로 모드에서 정찰 모달 최적화 */
-@media (max-height: 500px) and (orientation: landscape) {
-    #scope-modal > div {
-        max-width: 90vw !important;
-        max-height: 85vh !important;
-        flex-direction: row !important;
-        width: auto !important;
-    }
-
-    #scope-modal > div > div:first-child {
-        /* 헤더를 좌측 세로로 */
-        writing-mode: vertical-rl;
-        text-orientation: mixed;
-        padding: 12px 8px;
-        border-bottom: none;
-        border-right: 1px solid #1e40af;
-    }
-
-    #scope-modal > div > div:nth-child(2) {
-        /* 테이블 영역 */
-        max-height: 80vh !important;
-        overflow-x: auto;
-        overflow-y: hidden;
-        padding: 8px;
-    }
-
-    #scope-modal .recon-table {
-        display: flex;
-        flex-direction: row;
-    }
-
-    #scope-modal .recon-table thead,
-    #scope-modal .recon-table tbody {
-        display: flex;
-        flex-direction: row;
-    }
-
-    #scope-modal .recon-table tr {
-        display: flex;
-        flex-direction: column;
-        min-width: 80px;
-        border-right: 1px solid #334155;
-    }
-
-    #scope-modal .recon-table th,
-    #scope-modal .recon-table td {
-        padding: 6px 8px;
-        border-bottom: none;
-        text-align: center;
-        white-space: nowrap;
-    }
-
-    #scope-modal > div > div:last-child {
-        /* 닫기 버튼 영역 */
-        padding: 8px;
-        display: flex;
-        align-items: center;
-    }
-
-    #scope-modal > div > div:last-child button {
-        padding: 8px 12px;
-        font-size: 12px;
-    }
+#enemy-status-cards::-webkit-scrollbar-thumb {
+    background: #475569;
+    border-radius: 3px;
 }

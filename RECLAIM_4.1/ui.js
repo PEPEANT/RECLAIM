@@ -237,19 +237,39 @@ const ui = {
     },
 
     updateEnemyStatus(enemyStock) {
-        const tbody = document.getElementById('enemy-status-tbody');
-        if (!tbody) return;
-        tbody.innerHTML = ''; // 여기는 자주 열지 않으므로 innerHTML 유지
+        // 가로형 카드 렌더링
+        const container = document.getElementById('enemy-status-cards');
+        if (!container) return;
+
+        let html = '';
         for (let k in enemyStock) {
             const count = enemyStock[k];
             const data = CONFIG.units[k];
             if (!data) continue;
-            let statusClass = 'text-green-400';
-            let statusText = '양호';
-            if (count <= 0) { statusClass = 'text-red-500 font-bold'; statusText = '전멸'; }
-            else if (count < 3) { statusClass = 'text-yellow-400'; statusText = '위험'; }
-            tbody.innerHTML += `<tr><td>${data.name}</td><td class="text-right ${count <= 0 ? 'text-gray-600 line-through' : ''}">${count}</td><td class="text-right ${statusClass}">${statusText}</td></tr>`;
+
+            let statusBg = 'bg-green-900/50 border-green-700';
+            let statusText = '활동';
+            let countColor = 'text-green-400';
+
+            if (count <= 0) {
+                statusBg = 'bg-red-900/50 border-red-700';
+                statusText = '전멸';
+                countColor = 'text-red-500 line-through';
+            } else if (count < 3) {
+                statusBg = 'bg-yellow-900/50 border-yellow-700';
+                statusText = '위험';
+                countColor = 'text-yellow-400';
+            }
+
+            html += `
+                <div class="flex-shrink-0 ${statusBg} border rounded px-3 py-2 min-w-[70px] text-center">
+                    <div class="text-[10px] text-gray-400 uppercase tracking-wide">${data.name}</div>
+                    <div class="text-lg font-bold ${countColor}">${count}</div>
+                    <div class="text-[9px] ${countColor}">${statusText}</div>
+                </div>
+            `;
         }
+        container.innerHTML = html;
     },
 
     setSkillCount(type, count) {

@@ -6,11 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <!-- OpenGraph : DCInside thumbnail -->
     <meta property="og:type" content="website">
-    <meta property="og:title" content="RECLAIM (수복) - Ver R 4.0">
+    <meta property="og:title" content="RECLAIM (수복) - Ver R 4.1">
     <meta property="og:description" content="2D 현대판 전쟁 게임">
     <meta property="og:image" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/png/RECLAIM.jpg">
     <meta property="og:url" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/">
-    <title>RECLAIM (수복) - Ver R 4.0</title>
+    <title>RECLAIM (수복) - Ver R 4.1</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="style.css">
@@ -197,30 +197,24 @@
         </div>
 
         <div id="scope-modal"
-            class="hidden absolute inset-0 z-40 bg-black/90 flex items-center justify-center pointer-events-auto p-4">
-            <div
-                class="bg-slate-900 border border-blue-800 rounded-lg max-w-sm w-full relative shadow-2xl flex flex-col overflow-hidden">
-                <div class="bg-slate-950 p-4 border-b border-blue-900 flex justify-between items-center">
-                    <h2 class="text-blue-400 font-bold text-lg tracking-widest"><i
-                            class="fa-solid fa-crosshairs mr-2"></i>적군 전력 분석</h2>
-                    <button onclick="game.toggleScope()" class="text-gray-500 hover:text-white text-lg"><i
-                            class="fa-solid fa-xmark"></i></button>
+            class="hidden absolute inset-0 z-40 bg-black/80 flex items-center justify-center pointer-events-auto p-2">
+            <!-- 가로형 컴팩트 디자인 -->
+            <div class="bg-slate-900/95 border border-blue-800 rounded-lg w-full max-w-4xl relative shadow-2xl">
+                <!-- 헤더 (한 줄) -->
+                <div class="bg-slate-950 px-4 py-2 border-b border-blue-900 flex justify-between items-center">
+                    <h2 class="text-blue-400 font-bold text-sm tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-satellite"></i>
+                        <span>적군 전력 분석</span>
+                    </h2>
+                    <button onclick="game.toggleScope()" class="text-gray-500 hover:text-white text-lg px-2">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
                 </div>
-                <div class="p-4 bg-slate-900/80 max-h-96 overflow-y-auto">
-                    <table class="recon-table">
-                        <thead>
-                            <tr>
-                                <th>유닛명</th>
-                                <th class="text-right">수량</th>
-                                <th class="text-right">상태</th>
-                            </tr>
-                        </thead>
-                        <tbody id="enemy-status-tbody"></tbody>
-                    </table>
-                </div>
-                <div class="p-3 bg-slate-950 border-t border-blue-900 text-center">
-                    <button onclick="game.toggleScope()"
-                        class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-6 py-2 rounded border border-slate-600">닫기</button>
+                <!-- 가로 스크롤 영역 -->
+                <div class="p-3 overflow-x-auto">
+                    <div id="enemy-status-cards" class="flex gap-2 min-w-max">
+                        <!-- JS에서 카드 형태로 채움 -->
+                    </div>
                 </div>
             </div>
         </div>
@@ -236,7 +230,7 @@
                     data-lang="title">
                     RECLAIM
                 </h1>
-                <div class="text-xl text-gray-400 font-serif mb-12 tracking-widest">Ver R 4.0</div>
+                <div class="text-xl text-gray-400 font-serif mb-12 tracking-widest">Ver R 4.1</div>
 
                 <!-- 로비 버튼 4개 세로 배치 -->
                 <div class="flex flex-col gap-3 w-full max-w-md px-4">
