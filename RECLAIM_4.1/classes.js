@@ -542,46 +542,37 @@ class Unit extends Entity {
             ctx.restore();
         }
 
-        // ===== Stable facing (movement-first) =====
+        // ===== 단순화된 facing 로직 =====
+        // 규칙: 실제 이동 방향만 사용, 정지 시 팀 기본 방향
         const frameNow = game?.frame ?? 0;
-        if (this.facing == null) this.facing = (this.team === 'player') ? 1 : -1;
+        const defaultFacing = (this.team === 'player') ? 1 : -1;
+        if (this.facing == null) this.facing = defaultFacing;
 
         if (this._faceLastX == null) this._faceLastX = this.x;
         const dx = this.x - this._faceLastX;
 
-        // 1) 실제로 움직이는 중이면(dx가 크면) 이동 방향이 최우선 (거꾸로 걷기 방지)
-        const MOVING_EPS = 0.6; // 너무 작으면 흔들림, 너무 크면 늦게 반응
+        // 실제 이동량이 임계값 이상이면 이동 방향으로 facing
+        const MOVING_THRESHOLD = 0.5;
         let desired = this.facing;
 
-        if (Math.abs(dx) > MOVING_EPS) {
+        if (Math.abs(dx) > MOVING_THRESHOLD) {
+            // 이동 중: 이동 방향으로 facing
             desired = dx > 0 ? 1 : -1;
             this._faceLastX = this.x;
         } else {
-            // 2) 거의 정지 상태일 때만: 공격대상 > 이동명령 > targetX > 복귀
-            let refX = null;
-
-            if (this.attackTarget && !this.attackTarget.dead &&
-                this.attackTarget.team !== this.team && this.attackTarget.team !== 'neutral') {
-                refX = this.attackTarget.x;
+            // 정지 상태: 팀 기본 방향 유지 (적=-1, 아군=1)
+            // 플레이어 유닛만 공격대상 방향으로 바라봄
+            if (this.team === 'player' && this.attackTarget && !this.attackTarget.dead) {
+                desired = (this.attackTarget.x < this.x) ? -1 : 1;
             }
-
-            if (refX == null) {
-                if (this.commandMode === 'move' && this.commandTargetX != null) refX = this.commandTargetX;
-                else if (this.targetX != null) refX = this.targetX;
-                else if (this.returnToBase) refX = (this.team === 'player') ? -999999 : 999999;
-            }
-
-            const deadband = 10;
-            if (refX != null && Math.abs(refX - this.x) > deadband) {
-                desired = (refX < this.x) ? -1 : 1;
-            }
+            // 적 유닛은 정지 시 기본 방향(-1) 유지 - 깜빡임 방지
         }
 
-        // 3) 짧은 lock으로 깜빡임 차단
+        // 쿨다운으로 깜빡임 차단 (15프레임 = 0.25초)
         if (this._faceLockUntil == null) this._faceLockUntil = 0;
         if (frameNow >= this._faceLockUntil && desired !== this.facing) {
             this.facing = desired;
-            this._faceLockUntil = frameNow + 8; // 조금 짧게
+            this._faceLockUntil = frameNow + 15;
         }
 
         ctx.scale(this.facing, 1);

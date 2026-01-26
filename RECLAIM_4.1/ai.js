@@ -597,29 +597,11 @@ const AI = {
         }
 
         // ===== 상태 전이 규칙 =====
-        // (1) 아군이 많거나 몰려오면 -> RETREAT(잠깐 뒤로)
-        if (threat && threat.shouldRetreat) {
-            this.wave.phase = 'RETREAT';
-            this.wave.retreatUntil = frame + (early ? 60 * 6 : 60 * 4); // 6초/4초
-            this.wave.wpIndex = 0; // BASE로
-            this._orderRetreatTo(wps[0].x);
-            this.wave.lastCommandFrame = frame;
-            return;
-        }
-
-        // RETREAT 상태 지속
+        // [DISABLED] 후퇴 로직 제거 - 적은 오직 공격만 수행
+        // RETREAT 상태였으면 HOLD로 강제 전환
         if (this.wave.phase === 'RETREAT') {
-            if (frame < this.wave.retreatUntil) {
-                // 수비 재정비: BASE/FORT 근처로 모으고 정지
-                this._orderHoldAt(wps[1]?.x ?? wps[0].x, 280);
-                this.wave.lastCommandFrame = frame;
-                return;
-            } else {
-                // 후퇴 끝 → HOLD로 복귀
-                this.wave.phase = 'HOLD';
-                this.wave.wpIndex = 1; // FORT부터 재정비
-                this.wave.holdUntil = frame + baseHold;
-            }
+            this.wave.phase = 'HOLD';
+            this.wave.holdUntil = frame + baseHold;
         }
 
         // (2) HOLD: 거점에서 잠시 정지(대열 정비) + 거점 방어 우선
@@ -669,12 +651,11 @@ const AI = {
         // 적 전선 병력
         const enemyFront = countNear(game.enemies, frontX - 260, frontX + 320);
 
-        // “몰려온다” 감지: 플레이어가 7명 이상이거나, 적 대비 1.6배 이상
+        // "몰려온다" 감지 (참고용)
         const outnumbered = (playerPush >= 7) || (playerPush >= Math.ceil(enemyFront * 1.6) && playerPush >= 4);
 
-        // 초반이면 더 예민하게 후퇴
-        const early = (game.frame < 60 * 70);
-        const shouldRetreat = early ? (outnumbered || playerPush >= 6) : outnumbered;
+        // [DISABLED] 후퇴 비활성화 - 적은 항상 공격만 수행
+        const shouldRetreat = false;
 
         return { playerPush, enemyFront, shouldRetreat };
     },
@@ -697,20 +678,9 @@ const AI = {
         }
     },
 
+    // [DISABLED] 후퇴 명령 비활성화 - 적은 공격만 수행
     _orderRetreatTo(xBack) {
-        for (const u of game.enemies) {
-            if (!u || u.dead) continue;
-
-            // 전선에 있는 애들만 후퇴(너무 뒤에 있는 애는 유지)
-            if (u.x < xBack + 220) continue;
-
-            u.commandMode = 'retreat';
-            u.returnToBase = true;
-
-            // 혹시 retreat가 returnToBase 기반이면, targetX도 같이
-            u.targetX = xBack + (Math.random() * 80 - 40);
-            u.commandTargetX = u.targetX;
-        }
+        // 아무것도 하지 않음
     },
 
     _orderPushTo(xNext, xHold) {
