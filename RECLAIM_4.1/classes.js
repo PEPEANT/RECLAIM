@@ -542,29 +542,48 @@ class Unit extends Entity {
             ctx.restore();
         }
 
-        // [NEW] Unit facing based on movement direction
+        // ===== Stable facing (movement-first) =====
+        const frameNow = game?.frame ?? 0;
         if (this.facing == null) this.facing = (this.team === 'player') ? 1 : -1;
 
-        // Update facing based on movement target (retreat/move included)
-        const fxTarget = (this.commandMode === 'move' && this.commandTargetX != null)
-            ? this.commandTargetX
-            : this.targetX;
-
-        if (fxTarget != null && Math.abs(fxTarget - this.x) > 1) {
-            this.facing = (fxTarget < this.x) ? -1 : 1;
-        } else if (this.returnToBase) {
-            this.facing = (this.team === 'player') ? -1 : 1;
-        }
-
-        // [FIX] facing fallback: when no clear target, use real movement delta
         if (this._faceLastX == null) this._faceLastX = this.x;
-        const dxFace = this.x - this._faceLastX;
-        if (Math.abs(dxFace) > 0.5) {
-            this.facing = dxFace > 0 ? 1 : -1;
+        const dx = this.x - this._faceLastX;
+
+        // 1) 실제로 움직이는 중이면(dx가 크면) 이동 방향이 최우선 (거꾸로 걷기 방지)
+        const MOVING_EPS = 0.6; // 너무 작으면 흔들림, 너무 크면 늦게 반응
+        let desired = this.facing;
+
+        if (Math.abs(dx) > MOVING_EPS) {
+            desired = dx > 0 ? 1 : -1;
             this._faceLastX = this.x;
+        } else {
+            // 2) 거의 정지 상태일 때만: 공격대상 > 이동명령 > targetX > 복귀
+            let refX = null;
+
+            if (this.attackTarget && !this.attackTarget.dead &&
+                this.attackTarget.team !== this.team && this.attackTarget.team !== 'neutral') {
+                refX = this.attackTarget.x;
+            }
+
+            if (refX == null) {
+                if (this.commandMode === 'move' && this.commandTargetX != null) refX = this.commandTargetX;
+                else if (this.targetX != null) refX = this.targetX;
+                else if (this.returnToBase) refX = (this.team === 'player') ? -999999 : 999999;
+            }
+
+            const deadband = 10;
+            if (refX != null && Math.abs(refX - this.x) > deadband) {
+                desired = (refX < this.x) ? -1 : 1;
+            }
         }
 
-        // Apply facing scale
+        // 3) 짧은 lock으로 깜빡임 차단
+        if (this._faceLockUntil == null) this._faceLockUntil = 0;
+        if (frameNow >= this._faceLockUntil && desired !== this.facing) {
+            this.facing = desired;
+            this._faceLockUntil = frameNow + 8; // 조금 짧게
+        }
+
         ctx.scale(this.facing, 1);
         // [R 2.2] ?좊떅 ?됱긽 ?듭씪 (?덉쇅: blackhawk, chinook, special_forces)
         const colorExceptions = ['blackhawk', 'chinook', 'special_forces'];
