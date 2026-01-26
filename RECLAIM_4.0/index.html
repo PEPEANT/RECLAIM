@@ -1,0 +1,632 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- OpenGraph : DCInside thumbnail -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="RECLAIM (수복) - Ver R 4.0">
+    <meta property="og:description" content="2D 현대판 전쟁 게임">
+    <meta property="og:image" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/png/RECLAIM.jpg">
+    <meta property="og:url" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/">
+    <title>RECLAIM (수복) - Ver R 4.0</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Google Fonts for Cyberpunk/Sci-fi look -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&family=Noto+Sans+KR:wght@300;500;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+
+    <div id="game-wrapper">
+        <canvas id="game-canvas" class="absolute inset-0"></canvas>
+        <div id="emp-flash" class="emp-effect"></div>
+
+        <!-- [NEW] Fake Loading Screen -->
+        <div id="loading-screen"
+            class="absolute inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4">
+            <h1 class="text-6xl md:text-8xl font-black text-white mb-2 tracking-tighter title-shadow"
+                style="font-family: 'Orbitron', sans-serif;">
+                RECLAIM
+            </h1>
+            <div class="text-2xl text-blue-500 font-bold mb-12 tracking-[0.5em]">PROJECT: 수복</div>
+
+            <div class="w-full max-w-md bg-gray-900 h-2 rounded-full overflow-hidden relative mb-4">
+                <div id="loading-bar" class="absolute top-0 left-0 h-full bg-blue-500 w-0 transition-all duration-300">
+                </div>
+            </div>
+            <!-- Start Button (Simplified) -->
+            <div id="loading-text" class="text-sm text-gray-400 font-mono animate-pulse" data-lang="loading_system">
+                System Initializing...
+            </div>
+
+            <button id="btn-start-game" onclick="game.completeLoading()"
+                class="hidden mt-12 group relative px-8 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-full transition-all hover:scale-105 shadow-[0_0_20px_rgba(37,99,235,0.5)]">
+                <span class="tracking-widest text-lg">작전 시작</span>
+                <div class="absolute inset-0 rounded-full ring-2 ring-white/30 animate-pulse"></div>
+            </button>
+
+            <div id="start-btn-group" class="hidden"></div>
+            <!-- Deprecated container kept or removed? User asked to remove completely. -->
+        </div>
+        <!-- HUD Minimap & Options Button -->
+        <div id="hud-minimap-container" class="hidden pointer-events-auto">
+            <canvas id="hud-minimap" class="w-full h-full block"></canvas>
+        </div>
+
+        <!-- Minimap Toggle (Open/Close) -->
+        <button id="hud-minimap-toggle" onclick="game.toggleMinimap()" class="hidden pointer-events-auto absolute z-50">
+            🗺
+        </button>
+
+        <!-- Speed Controls (moved under minimap) -->
+        <div id="hud-ctrl-wrapper" class="hidden pointer-events-auto">
+            <button id="hud-ctrl-toggle" class="btn-speed" aria-label="Toggle controls">➕</button>
+            <div id="hud-ctrl-body" class="hidden">
+                <div id="hud-speed-controls">
+                    <button id="btn-speed-0.5" onclick="game.setSpeed(0.5)" class="btn-speed">x0.5</button>
+                    <button id="btn-speed-1" onclick="game.setSpeed(1)" class="btn-speed">x1</button>
+                    <button id="btn-speed-2" onclick="game.setSpeed(2)" class="btn-speed">x2</button>
+                    <div id="hud-zoom-controls">
+                        <button id="btn-zoom-out" onclick="game.zoomOut()" class="btn-speed">-</button>
+                        <span id="hud-zoom-text">100%</span>
+                        <button id="btn-zoom-in" onclick="game.zoomIn()" class="btn-speed">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [R 2.4] Unit Command Panel (Multi-Select + Drag) -->
+        <div id="unit-cmd-wrapper" class="hidden pointer-events-auto">
+            <div id="unit-cmd-panel">
+                <div id="cmd-header">
+                    <button id="cmd-panel-toggle" class="cmd-toggle-btn"
+                        onclick="game.toggleCmdPanel(event)">📡</button>
+                    <div class="cmd-header-right">
+                        <button id="cmd-layout-toggle" class="cmd-layout-toggle" aria-label="Toggle layout">↕️</button>
+                        <button id="clear-units-btn" class="cmd-btn-clear-mini"><span class="cmd-ico">X</span></button>
+                    </div>
+                </div>
+                <div id="cmd-actions" class="hidden">
+                    <!-- Row1: 후퇴 / 정지 / (빈칸) -->
+                    <button data-cmd="retreat" class="cmd-btn-action"><span
+                            class="cmd-ico">◀</span><span>후퇴</span></button>
+                    <button data-cmd="stop" class="cmd-btn-action"><span
+                            class="cmd-ico">||</span><span>정지</span></button>
+                    <div class="cmd-slot-empty" aria-hidden="true"></div>
+
+                    <!-- Row2: 공격 / 해산 / 이동 -->
+                    <button data-cmd="attack" class="cmd-btn-action"><span
+                            class="cmd-ico">▶</span><span>공격</span></button>
+                    <button data-cmd="disband" class="cmd-btn-action"><span
+                            class="cmd-ico">✕</span><span>해산</span></button>
+                    <button data-cmd="move" class="cmd-btn-action"><span
+                            class="cmd-ico">⤴</span><span>이동</span></button>
+                </div>
+            </div>
+        </div>
+
+
+        <button onclick="ui.openOptions()"
+            class="hidden pointer-events-auto absolute top-4 right-4 z-40 text-gray-500 hover:text-white text-2xl transition-colors"
+            id="hud-option-btn">
+            <i class="fa-solid fa-gear"></i>
+        </button>
+
+        <div id="unit-info-panel">
+            <h3 id="info-name">Unit Name</h3>
+            <span id="info-role" class="role-badge">Role</span>
+            <p id="info-desc">Description</p>
+        </div>
+
+        <div id="targeting-overlay"
+            class="hidden absolute top-24 left-1/2 transform -translate-x-1/2 bg-yellow-600/90 text-white px-6 py-3 rounded-full shadow-2xl z-30 flex items-center gap-3 animate-bounce">
+            <i class="fa-solid fa-crosshairs text-xl"></i>
+            <span id="target-msg" class="font-bold text-lg">목표 지점 선택</span>
+            <button onclick="game.cancelTargeting()"
+                class="ml-2 bg-black/30 rounded-full px-2 py-1 text-xs hover:bg-black/50">취소</button>
+        </div>
+
+        <div id="hud-overlay" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4">
+
+            <div class="flex justify-between items-start pointer-events-auto w-full mt-2 px-2">
+                <div class="flex gap-2">
+                    <!-- Map Button Removed (Replaced by HUD Minimap) -->
+                    <button onclick="game.toggleScope()"
+                        class="cmd-btn text-blue-400 border-blue-800 hover:bg-slate-700 whitespace-nowrap">
+                        <i class="fa-solid fa-binoculars"></i> <span data-lang="enemy_analysis">적군 정찰</span>
+                    </button>
+                </div>
+
+                <div id="spawn-indicator"
+                    class="hidden bg-slate-800/90 border border-yellow-500 text-yellow-400 px-4 py-2 rounded shadow-lg font-bold text-sm animate-pulse">
+                    <i class="fa-solid fa-tent-arrow-down-to-line mr-2"></i>전진 기지 모드 (보병/드론만 가능)
+                    <button onclick="game.selectSpawn(null)"
+                        class="ml-3 text-white text-xs bg-slate-600 px-2 py-1 rounded">본부 복귀</button>
+                </div>
+            </div>
+
+            <div id="toast-msg"
+                class="hidden absolute top-32 left-1/2 transform -translate-x-1/2 bg-slate-800/90 border border-slate-500 text-white px-6 py-3 rounded-lg font-bold text-sm shadow-2xl z-20 transition-opacity duration-300">
+            </div>
+
+            <div class="flex w-full items-end gap-2 overflow-hidden pointer-events-auto">
+
+                <div class="hidden"></div>
+
+                <div id="unit-panel-container"
+                    class="flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <div class="flex w-full bg-slate-800 border-b border-slate-700">
+                        <button onclick="game.setCategory('infantry')" id="tab-infantry"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm active">보병</button>
+                        <button onclick="game.setCategory('armored')" id="tab-armored"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm">기갑</button>
+                        <button onclick="game.setCategory('air')" id="tab-air"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm">공중</button>
+                        <button onclick="game.setCategory('drone')" id="tab-drone"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm">드론</button>
+                        <button onclick="game.setCategory('special')" id="tab-special"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm text-yellow-500">특수</button>
+                    </div>
+
+                    <div id="unit-list-container"
+                        class="flex gap-2 p-2 overflow-x-auto hide-scrollbar h-24 md:h-20 items-center touch-pan-x">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="map-modal"
+            class="hidden absolute inset-0 z-40 bg-black/80 flex items-center justify-center pointer-events-auto p-4">
+            <div class="bg-slate-800 border-2 border-slate-600 p-3 rounded-lg max-w-2xl w-full relative shadow-2xl">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-green-500 font-bold text-sm tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish"></i> SATELLITE VIEW
+                    </h2>
+                    <button onclick="game.toggleMap()"
+                        class="text-gray-400 hover:text-white text-xl font-bold px-2">✕</button>
+                </div>
+                <div class="w-full h-64 bg-black rounded border border-slate-700 relative overflow-hidden">
+                    <canvas id="map-canvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="scope-modal"
+            class="hidden absolute inset-0 z-40 bg-black/90 flex items-center justify-center pointer-events-auto p-4">
+            <div
+                class="bg-slate-900 border border-blue-800 rounded-lg max-w-sm w-full relative shadow-2xl flex flex-col overflow-hidden">
+                <div class="bg-slate-950 p-4 border-b border-blue-900 flex justify-between items-center">
+                    <h2 class="text-blue-400 font-bold text-lg tracking-widest"><i
+                            class="fa-solid fa-crosshairs mr-2"></i>적군 전력 분석</h2>
+                    <button onclick="game.toggleScope()" class="text-gray-500 hover:text-white text-lg"><i
+                            class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-4 bg-slate-900/80 max-h-96 overflow-y-auto">
+                    <table class="recon-table">
+                        <thead>
+                            <tr>
+                                <th>유닛명</th>
+                                <th class="text-right">수량</th>
+                                <th class="text-right">상태</th>
+                            </tr>
+                        </thead>
+                        <tbody id="enemy-status-tbody"></tbody>
+                    </table>
+                </div>
+                <div class="p-3 bg-slate-950 border-t border-blue-900 text-center">
+                    <button onclick="game.toggleScope()"
+                        class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-6 py-2 rounded border border-slate-600">닫기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 로비 화면 (메인 메뉴) -->
+        <div id="lobby-screen"
+            class="absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
+            <div class="max-w-4xl w-full flex flex-col items-center">
+                <div class="text-yellow-500 text-xs md:text-sm font-mono tracking-widest md:tracking-[0.5em] mb-4 text-center"
+                    data-lang="subtitle">TACTICAL COMMAND
+                    SYSTEM</div>
+                <h1 class="text-5xl md:text-7xl font-black text-white mb-2 tracking-tighter title-shadow font-orbitron"
+                    data-lang="title">
+                    RECLAIM
+                </h1>
+                <div class="text-xl text-gray-400 font-serif mb-12 tracking-widest">Ver R 4.0</div>
+
+                <!-- 로비 버튼 4개 세로 배치 -->
+                <div class="flex flex-col gap-3 w-full max-w-md px-4">
+                    <!-- 1. 스토리모드 (준비중) -->
+                    <button onclick="ui.showToast('스토리 모드는 준비중입니다.')"
+                        class="group relative h-16 bg-slate-900 border border-slate-700 hover:border-yellow-500 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-yellow-900/10 group-hover:bg-yellow-600/20 transition-colors">
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-start px-6 z-10 gap-4">
+                            <i class="fa-solid fa-book text-2xl text-yellow-500 group-hover:text-white w-8"></i>
+                            <div class="flex flex-col items-start">
+                                <span class="text-lg font-bold text-gray-200 group-hover:text-white">STORY MODE</span>
+                                <span class="text-xs text-gray-500">스토리 모드 (준비중)</span>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- 2. 캠페인모드 (맵선택) -->
+                    <button onclick="game.openMapSelect('campaign')"
+                        class="group relative h-16 bg-slate-900 border border-slate-700 hover:border-blue-500 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-blue-900/10 group-hover:bg-blue-600/20 transition-colors"></div>
+                        <div class="absolute inset-0 flex items-center justify-start px-6 z-10 gap-4">
+                            <i class="fa-solid fa-earth-americas text-2xl text-blue-400 group-hover:text-white w-8"></i>
+                            <div class="flex flex-col items-start">
+                                <span class="text-lg font-bold text-gray-200 group-hover:text-white">CAMPAIGN</span>
+                                <span class="text-xs text-gray-500">커스텀 모드</span>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- 3. 유닛도감 -->
+                    <button onclick="game.openUnitDex()"
+                        class="group relative h-16 bg-slate-900 border border-slate-700 hover:border-green-500 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-green-900/10 group-hover:bg-green-600/20 transition-colors">
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-start px-6 z-10 gap-4">
+                            <i class="fa-solid fa-list text-2xl text-green-400 group-hover:text-white w-8"></i>
+                            <div class="flex flex-col items-start">
+                                <span class="text-lg font-bold text-gray-200 group-hover:text-white">UNIT
+                                    ENCYCLOPEDIA</span>
+                                <span class="text-xs text-gray-500">유닛 도감</span>
+                            </div>
+                        </div>
+                    </button>
+
+                    <!-- 4. 설정 -->
+                    <button onclick="ui.openOptions()"
+                        class="group relative h-16 bg-slate-900 border border-slate-700 hover:border-purple-500 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-purple-900/10 group-hover:bg-purple-600/20 transition-colors">
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-start px-6 z-10 gap-4">
+                            <i class="fa-solid fa-gear text-2xl text-purple-400 group-hover:text-white w-8"></i>
+                            <div class="flex flex-col items-start">
+                                <span class="text-lg font-bold text-gray-200 group-hover:text-white">SETTINGS</span>
+                                <span class="text-xs text-gray-500">설정</span>
+                            </div>
+                        </div>
+                    </button>
+                </div>
+
+                <div class="mt-8 text-gray-600 text-xs font-mono">
+                    SYSTEM READY... WAITING FOR COMMAND
+                </div>
+            </div>
+        </div>
+
+        <!-- 유닛 도감 화면 -->
+        <div id="unitdex-screen"
+            class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col pointer-events-auto overflow-hidden">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-slate-700">
+                <h1 class="text-xl md:text-2xl font-bold text-blue-400 tracking-wider"
+                    style="font-family: 'Orbitron', sans-serif;">
+                    <i class="fa-solid fa-book-open mr-2"></i>
+                    <span id="unitdex-title">UNIT ENCYCLOPEDIA</span>
+                </h1>
+                <button onclick="game.closeUnitDex()" class="text-gray-400 hover:text-white text-2xl transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <!-- Category Tabs -->
+            <div class="flex gap-2 px-6 py-3 bg-slate-900/50 overflow-x-auto">
+                <button onclick="UnitDex.filter('all')" class="unitdex-tab active" data-cat="all">전체</button>
+                <button onclick="UnitDex.filter('infantry')" class="unitdex-tab" data-cat="infantry">보병</button>
+                <button onclick="UnitDex.filter('armored')" class="unitdex-tab" data-cat="armored">기갑</button>
+                <button onclick="UnitDex.filter('air')" class="unitdex-tab" data-cat="air">공중</button>
+                <button onclick="UnitDex.filter('drone')" class="unitdex-tab" data-cat="drone">드론</button>
+                <button onclick="UnitDex.filter('special')" class="unitdex-tab" data-cat="special">특수</button>
+            </div>
+            <!-- Cards Grid -->
+            <div id="unitdex-grid" class="flex-1 overflow-y-auto p-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto"
+                    id="unitdex-cards">
+                    <!-- Cards generated by UnitDex.render() -->
+                </div>
+            </div>
+        </div>
+
+        <!-- 맵 선택 화면 -->
+        <div id="map-select-screen"
+            class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
+            <!-- Difficulty Selection -->
+            <h3 class="text-white text-lg font-bold mb-4 tracking-widest border-b border-gray-700 pb-1 w-full max-w-2xl text-center"
+                data-lang="difficulty_select">난이도 선택</h3>
+
+            <div class="grid grid-cols-3 gap-2 mb-8 w-full max-w-2xl">
+                <button onclick="AI.setDifficulty('recruit'); ui.updateDiffBtn(this)"
+                    class="btn-diff group relative flex flex-col items-center justify-center p-3 bg-slate-900 border-2 border-slate-700 rounded-xl hover:border-green-500 transition-all hover:-translate-y-1"
+                    data-diff="recruit">
+                    <i
+                        class="fa-solid fa-face-smile text-2xl mb-1 text-gray-500 group-hover:text-green-500 transition-colors"></i>
+                    <span class="text-sm font-bold text-gray-400 group-hover:text-white"
+                        data-lang="diff_recruit">쉬움</span>
+                </button>
+
+                <button onclick="AI.setDifficulty('veteran'); ui.updateDiffBtn(this)"
+                    class="btn-diff active group relative flex flex-col items-center justify-center p-3 bg-slate-900 border-2 border-blue-600 rounded-xl shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all hover:-translate-y-1"
+                    data-diff="veteran">
+                    <i class="fa-solid fa-shield-halved text-2xl mb-1 text-blue-500"></i>
+                    <span class="text-sm font-bold text-white" data-lang="diff_veteran">보통</span>
+                </button>
+
+                <button onclick="AI.setDifficulty('elite'); ui.updateDiffBtn(this)"
+                    class="btn-diff group relative flex flex-col items-center justify-center p-3 bg-slate-900 border-2 border-slate-700 rounded-xl hover:border-red-500 transition-all hover:-translate-y-1"
+                    data-diff="elite">
+                    <i
+                        class="fa-solid fa-skull text-2xl mb-1 text-gray-500 group-hover:text-red-500 transition-colors"></i>
+                    <span class="text-sm font-bold text-gray-400 group-hover:text-white"
+                        data-lang="diff_elite">어려움</span>
+                </button>
+            </div>
+
+            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest border-b-2 border-blue-500 pb-2"
+                data-lang="map_select">SELECT OPERATION ZONE</h2>
+
+            <!-- [NEW] 커스텀 옵션 -->
+            <label class="flex items-center gap-2 mb-6 text-sm text-gray-300 select-none">
+                <input id="opt-forward-defense" type="checkbox" class="accent-blue-500">
+                <span>1차 방어시설 포함 (맵 가로 확장)</span>
+            </label>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 w-full max-w-6xl px-2 md:px-4">
+                <button onclick="game.startGame('plain')" class="map-card group">
+                    <div class="h-32 bg-sky-300 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/3 bg-green-500"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/50 group-hover:text-white"
+                            data-lang="map_plain">
+                            PLAINS</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_plain">PLAINS</h3>
+                    </div>
+                </button>
+
+                <button onclick="game.startGame('city')" class="map-card group">
+                    <div class="h-32 bg-slate-300 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/3 bg-slate-600"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/50 group-hover:text-white"
+                            data-lang="map_city">
+                            CITY</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_city">CITY</h3>
+                    </div>
+                </button>
+
+                <button onclick="game.startGame('mountain')" class="map-card group">
+                    <div class="h-32 bg-blue-100 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-1/2 h-full bg-gray-500 rotate-45 transform origin-bottom-left">
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-black/30 group-hover:text-black/60"
+                            data-lang="map_mountain">
+                            MOUNTAIN</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_mountain">MOUNTAIN</h3>
+                    </div>
+                </button>
+
+                <button onclick="game.startGame('village')" class="map-card group">
+                    <div class="h-32 bg-orange-100 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/3 bg-amber-700"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-black/30 group-hover:text-black/60"
+                            data-lang="map_village">
+                            VILLAGE</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_village">VILLAGE</h3>
+                    </div>
+                </button>
+            </div>
+
+            <div class="mt-8 text-gray-500 text-xs text-center flex flex-col items-center gap-4">
+                <div>SYSTEM STATUS: ONLINE</div>
+
+                <button onclick="game.backToLobby()"
+                    class="group flex items-center gap-2 px-6 py-2 rounded-full border border-slate-700 hover:border-white hover:bg-slate-800 transition-all text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+                    <span data-lang="back_to_lobby">메인으로 복귀 (Back)</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <!-- Option Modal -->
+    <div id="option-modal" class="modal-overlay">
+        <div class="option-panel">
+            <h2 class="text-2xl font-bold text-white mb-6 border-b border-slate-700 pb-2" data-lang="options">
+                SETTINGS
+            </h2>
+
+            <div class="mb-6">
+                <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio">AUDIO</h3>
+                <div class="space-y-4">
+                    <div>
+                        <div class="flex justify-between text-xs text-gray-400 mb-1"><span>Master Volume</span><span
+                                id="vol-master-val">50%</span></div>
+                        <input type="range" min="0" max="100" value="50" oninput="ui.setVolume('master', this.value)">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM</span><span
+                                id="vol-bgm-val">40%</span></div>
+                        <input type="range" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-gray-400 mb-1"><span>SFX</span><span
+                                id="vol-sfx-val">60%</span></div>
+                        <input type="range" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
+                    </div>
+                    <div>
+                        <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM Select</span></div>
+                        <select onchange="ui.changeBGM(this.value)"
+                            class="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-xs">
+                            <option value="0">BGM 0 (Default)</option>
+                            <option value="1">BGM 1</option>
+                            <option value="2">BGM 2</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Language -->
+            <div class="mb-6">
+                <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="language">LANGUAGE</h3>
+                <div class="flex gap-2">
+                    <button onclick="Lang.setLang('ko')"
+                        class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300">한국어</button>
+                    <button onclick="Lang.setLang('en')"
+                        class="flex-1 py-2 rounded bg-slate-800 border-slate-600 hover:border-blue-500 text-gray-300">English</button>
+                </div>
+            </div>
+
+            <div class="mb-6 flex gap-3">
+                <button onclick="ui.closeOptions(); game.backToLobby();"
+                    class="flex-1 py-3 bg-red-900/30 hover:bg-red-800/50 border border-red-800 text-red-200 rounded font-bold"
+                    data-lang="exit_game">
+                    Main Menu
+                </button>
+                <button onclick="ui.closeOptions()"
+                    class="flex-1 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold"
+                    data-lang="close">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="end-screen"
+        class="hidden absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center pointer-events-auto p-6">
+        <h1 id="end-title" class="text-5xl font-bold mb-4"></h1>
+        <p id="end-desc"
+            class="text-gray-300 mb-8 text-xl text-center font-serif border-t border-b border-gray-700 py-4"></p>
+        <button onclick="game.backToLobby()"
+            class="px-8 py-3 bg-white text-black font-bold rounded hover:bg-gray-200 flex items-center gap-2">
+            <i class="fa-solid fa-house"></i> 메인으로
+        </button>
+    </div>
+
+    <!-- [NEW] Exit Confirmation Modal -->
+    <div id="exit-modal"
+        class="hidden absolute inset-0 z-[100] bg-black/80 flex items-center justify-center pointer-events-auto p-4 backdrop-blur-sm">
+        <div
+            class="bg-slate-900 border border-slate-600 rounded-lg p-6 max-w-sm w-full shadow-2xl transform scale-100 transition-transform">
+            <h3 class="text-xl font-bold text-white mb-2" data-lang="exit_confirm_title">게임 종료</h3>
+            <p class="text-gray-400 mb-6 text-sm" data-lang="exit_confirm_desc">정말 종료하시겠습니까?</p>
+            <div class="flex gap-3">
+                <button onclick="ui.confirmExit(true)"
+                    class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded font-bold transition-colors"
+                    data-lang="yes">예</button>
+                <button onclick="ui.confirmExit(false)"
+                    class="flex-1 bg-slate-700 hover:bg-slate-600 text-gray-200 py-2 rounded font-bold transition-colors"
+                    data-lang="no">아니오</button>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- /game-wrapper -->
+
+    <!-- ============================================
+         [NEW] Fixed Bottom HUD (StarCraft-style)
+         - Left: Minimap + Controls
+         - Center: Info/Production Panel
+         - Right: Command Panel
+         ============================================ -->
+    <footer id="hud-footer" class="hud-footer hidden">
+        <!-- Left Panel: Minimap -->
+        <section id="hud-left" class="hud-panel hud-left">
+            <div id="hud-minimap-wrapper">
+                <canvas id="hud-minimap-new" class="hud-minimap-canvas"></canvas>
+            </div>
+            <div id="hud-controls-bar">
+                <button id="hud-btn-speed-05" class="hud-ctrl-btn" data-speed="0.5">x0.5</button>
+                <button id="hud-btn-speed-1" class="hud-ctrl-btn active" data-speed="1">x1</button>
+                <button id="hud-btn-speed-2" class="hud-ctrl-btn" data-speed="2">x2</button>
+                <span class="hud-divider"></span>
+                <button id="hud-btn-zoom-out" class="hud-ctrl-btn">-</button>
+                <span id="hud-zoom-display">100%</span>
+                <button id="hud-btn-zoom-in" class="hud-ctrl-btn">+</button>
+            </div>
+        </section>
+
+        <!-- Center Panel: Info/Production -->
+        <section id="hud-center" class="hud-panel hud-center">
+            <div id="hud-info-area">
+                <div id="hud-selection-info">
+                    <span class="hud-placeholder-text">유닛/건물을 선택하세요</span>
+                </div>
+            </div>
+            <div id="hud-production-area">
+                <!-- Production grid will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Building Label Column (between production and commands) -->
+        <div id="hud-building-label" class="hud-building-label"></div>
+
+        <!-- Right Panel: Commands -->
+        <section id="hud-right" class="hud-panel hud-right">
+            <div id="hud-command-grid">
+                <!-- 1행: 해산 - 이동 - 정지 -->
+                <button class="hud-cmd-btn" data-hud-cmd="clear"><span class="cmd-icon">✕</span><span>해산</span></button>
+                <button class="hud-cmd-btn" data-hud-cmd="move"><span class="cmd-icon">➡</span><span>이동</span></button>
+                <button class="hud-cmd-btn" data-hud-cmd="stop"><span class="cmd-icon">⏹</span><span>정지</span></button>
+
+                <!-- 2행: 공격 - 후퇴 - 빈칸 -->
+                <button class="hud-cmd-btn" data-hud-cmd="attack"><span
+                        class="cmd-icon">⚔</span><span>공격</span></button>
+                <button class="hud-cmd-btn" data-hud-cmd="retreat"><span
+                        class="cmd-icon">◀</span><span>후퇴</span></button>
+                <div class="hud-cmd-slot-empty" aria-hidden="true"></div>
+            </div>
+        </section>
+    </footer>
+
+    <!-- Portrait Mode Overlay (blocks game in portrait) -->
+    <div id="portrait-overlay" class="portrait-overlay">
+        <div class="portrait-content">
+            <i class="fa-solid fa-mobile-screen-button portrait-icon"></i>
+            <h2>가로 모드로 전환하세요</h2>
+            <p>이 게임은 가로 모드에서만 플레이할 수 있습니다.</p>
+            <div class="rotate-hint">
+                <i class="fa-solid fa-rotate"></i>
+            </div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="classes.js"></script>
+    <!-- VFX (explosions / particles) -->
+    <script src="src/vfx/explosion.js"></script>
+    <script src="buildings.js"></script>
+    <script src="projectiles.js"></script>
+    <script src="ui.js"></script>
+    <script src="maps.js"></script>
+    <script src="ai.js"></script>
+    <script src="audio.js"></script>
+    <script src="lang.js"></script>
+    <script src="drones.js"></script>
+    <script src="spatial.js"></script>
+    <script src="unitdex/lang_kr.js"></script>
+    <script src="unitdex/lang_en.js"></script>
+    <script src="unitdex.js"></script>
+    <script src="src/core/camera.js"></script>
+    <script src="game.js"></script>
+    <script src="hud.js"></script>
+    <script src="unit_commands.js"></script>
+</body>
+
+</html>
