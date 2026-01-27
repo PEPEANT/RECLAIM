@@ -556,34 +556,31 @@ class Unit extends Entity {
         }
     }
 
-    // [R 4.2 FIX v3] facing을 update에서 확정 (draw에서 계산 금지)
+    // [R 4.2 FIX v4] facing은 오직 실제 x 이동량으로만 결정
+    // 제자리면 마지막 방향 유지 (타겟/명령 기반 X)
     updateFacing() {
         if (this.dead) return;
 
-        const baseForward = (this.team === 'player') ? 1 : -1;
-
-        // 1) 공격 타겟 기준
-        if (this.attackTarget && !this.attackTarget.dead) {
-            const dx = this.attackTarget.x - this.x;
-            if (Math.abs(dx) > 2) this.facing = dx > 0 ? 1 : -1;
+        // 이전 x 위치 초기화
+        if (this._lastX == null) {
+            this._lastX = this.x;
+            // 초기 facing은 팀 기본 방향
+            if (this.facing == null) {
+                this.facing = (this.team === 'player') ? 1 : -1;
+            }
             return;
         }
 
-        // 2) 수동 이동 명령 기준
-        if (this.commandMode === 'move' && this.commandTargetX != null) {
-            const dx = this.commandTargetX - this.x;
-            if (Math.abs(dx) > 2) this.facing = dx > 0 ? 1 : -1;
-            return;
-        }
+        // 실제 이동량 계산
+        const dx = this.x - this._lastX;
+        this._lastX = this.x;
 
-        // 3) 후퇴는 기지방향(=전진 반대)
-        if (this.commandMode === 'retreat') {
-            this.facing = -baseForward;
-            return;
+        // 이동량이 임계값(0.5px) 이상일 때만 facing 변경
+        // 제자리면 마지막 방향 유지
+        if (Math.abs(dx) > 0.5) {
+            this.facing = dx > 0 ? 1 : -1;
         }
-
-        // 4) 기본 전진 방향
-        this.facing = baseForward;
+        // else: 제자리 → facing 유지 (아무것도 안 함)
     }
 
     findNearestEnemy(enemies, buildings) {
