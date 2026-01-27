@@ -45,6 +45,8 @@ class Unit extends Entity {
         // [FIX] Stealth Drone Height adjustment (Higher than normal air units)
         if (stats.id === 'stealth_drone') startY = groundY - 420 - Math.random() * 60;
         else if (stats.id === 'bomber') startY = groundY - 240 - Math.random() * 80; // Higher altitude
+        // [R 4.2 FIX v4] 자폭/대전차 드론은 발밑에서 시작 (상승 애니메이션용)
+        else if (stats.id === 'drone_suicide' || stats.id === 'drone_at') startY = groundY;
         else if (stats.type === 'air') startY = groundY - 150 - Math.random() * 100;
 
         super(x, startY, team, stats.hp, stats.width, stats.height);
@@ -492,10 +494,9 @@ class Unit extends Entity {
             if (shouldDeploy && deployType) {
                 this.opState = 'laptop';
 
-                // [R 4.2 FIX] 드론 생성 위치: 더 멀리서 + 땅 근처에서 시작
-                const frontSpawnOffset = stats.frontSpawnOffset || 120;  // 확대
-                const droneX = isPlayer ? this.x + frontSpawnOffset : this.x - frontSpawnOffset;
-                const droneY = game.groundY - 6;  // [FIX v3] 발까지 내려옴
+                // [R 4.2 FIX v4] 드론 생성 위치: 드론병 바로 아래 (발밑)
+                const droneX = this.x;  // 드론병 바로 아래
+                const droneY = game.groundY;  // 지면 레벨
 
                 // 드론 스폰 (bypassBlock=true로 스폰 가드 우회)
                 if (game && game.spawnUnitDirect) {
