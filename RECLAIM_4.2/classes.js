@@ -429,6 +429,9 @@ class Unit extends Entity {
             const moveDir = this.team === 'player' ? 1 : -1;
             this.x += this.stats.speed * moveDir;
         }
+
+        // [R 4.2 FIX v3] facing 확정 (draw에서 계산 금지)
+        this.updateFacing();
     }
 
     updateDrone(enemies, buildings) {
@@ -759,30 +762,8 @@ class Unit extends Entity {
             ctx.restore();
         }
 
-        // [NEW] Unit facing based on movement direction
-        if (this.facing == null) this.facing = (this.team === 'player') ? 1 : -1;
-
-        // Update facing based on movement target (retreat/move included)
-        const fxTarget = (this.commandMode === 'move' && this.commandTargetX != null)
-            ? this.commandTargetX
-            : this.targetX;
-
-        if (fxTarget != null && Math.abs(fxTarget - this.x) > 1) {
-            this.facing = (fxTarget < this.x) ? -1 : 1;
-        } else if (this.returnToBase) {
-            this.facing = (this.team === 'player') ? -1 : 1;
-        }
-
-        // [FIX] facing fallback: when no clear target, use real movement delta
-        if (this._faceLastX == null) this._faceLastX = this.x;
-        const dxFace = this.x - this._faceLastX;
-        if (Math.abs(dxFace) > 0.5) {
-            this.facing = dxFace > 0 ? 1 : -1;
-            this._faceLastX = this.x;
-        }
-
-        // Apply facing scale
-        ctx.scale(this.facing, 1);
+        // [R 4.2 FIX v3] facing은 update()에서 확정됨 - draw()에서는 단순 적용만
+        ctx.scale(this.facing || 1, 1);
         // [R 2.2] ?좊떅 ?됱긽 ?듭씪 (?덉쇅: blackhawk, chinook, special_forces)
         const colorExceptions = ['blackhawk', 'chinook', 'special_forces'];
         if (colorExceptions.includes(this.stats.id)) {

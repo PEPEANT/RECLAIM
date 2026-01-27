@@ -54,6 +54,9 @@ const HUD = {
         // Setup command buttons
         this.setupCommandButtons();
 
+        // [R 4.2 FIX] Setup drone launch popup
+        this.setupDroneLaunchPopup();
+
         // Setup minimap interaction
         this.setupMinimap();
 
@@ -229,6 +232,11 @@ const HUD = {
                     cmdBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     return;
+                } else if (cmd === 'droneLaunch') {
+                    // [R 4.2 FIX] 드론 발진 팝업 열기
+                    const popup = document.getElementById('hud-drone-popup');
+                    if (popup) popup.classList.toggle('hidden');
+                    return;
                 } else {
                     // Apply command to selected units
                     game.selectedUnits.forEach(u => {
@@ -256,11 +264,105 @@ const HUD = {
     },
 
     /**
+     * [R 4.2 FIX] Setup drone launch popup event handlers
+     */
+    setupDroneLaunchPopup() {
+        const popup = document.getElementById('hud-drone-popup');
+        const btnSuicide = document.getElementById('hud-btn-drone-suicide');
+        const btnAt = document.getElementById('hud-btn-drone-at');
+
+        if (!popup || !btnSuicide || !btnAt) return;
+
+        // 발진 가능한 드론병 찾기
+        const getDeployableOperators = () => {
+            if (!game.selectedUnits || game.selectedUnits.size === 0) return [];
+            return Array.from(game.selectedUnits).filter(u =>
+                u && !u.dead && u.stats?.operator === true &&
+                u.droneChargesLeft > 0 && !u.ownedDrone
+            );
+        };
+
+        // 자폭 드론 선택
+        btnSuicide.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const operators = getDeployableOperators();
+            operators.forEach(u => {
+                u.manualDeployType = 'drone_suicide';
+                u.manualDeployRequested = true;
+                u.commandMode = 'stop';
+            });
+            popup.classList.add('hidden');
+            if (typeof ChatPanel !== 'undefined' && operators.length > 0) {
+                ChatPanel.push(`[수동 발진] 자폭드론 ${operators.length}기 요청`, 'ACTION');
+            }
+        });
+
+        // 대전차 드론 선택
+        btnAt.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const operators = getDeployableOperators();
+            operators.forEach(u => {
+                u.manualDeployType = 'drone_at';
+                u.manualDeployRequested = true;
+                u.commandMode = 'stop';
+            });
+            popup.classList.add('hidden');
+            if (typeof ChatPanel !== 'undefined' && operators.length > 0) {
+                ChatPanel.push(`[수동 발진] 대전차드론 ${operators.length}기 요청`, 'ACTION');
+            }
+        });
+
+        // 외부 클릭 시 팝업 닫기
+        document.addEventListener('click', (e) => {
+            if (!popup.classList.contains('hidden')) {
+                const launchBtn = document.getElementById('hud-cmd-droneLaunch');
+                if (launchBtn && !launchBtn.contains(e.target) && !popup.contains(e.target)) {
+                    popup.classList.add('hidden');
+                }
+            }
+        });
+    },
+
+    /**
      * Update command button states based on selection
      */
     updateCommandButtons() {
         const cmdBtns = document.querySelectorAll('[data-hud-cmd]');
         const hasSelection = game.selectedUnits && game.selectedUnits.size > 0;
+
+        // [R 4.2 FIX] 드론병 선택 체크
+        const droneLaunchBtn = document.getElementById('hud-cmd-droneLaunch');
+        const emptySlot = document.getElementById('hud-cmd-slot-empty');
+        let hasDroneOperator = false;
+        let canDeploy = false;
+
+        if (hasSelection) {
+            for (const u of game.selectedUnits) {
+                if (u && !u.dead && u.stats?.operator === true) {
+                    hasDroneOperator = true;
+                    if (u.droneChargesLeft > 0 && !u.ownedDrone) {
+                        canDeploy = true;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // 드론 발진 버튼 가시성
+        if (droneLaunchBtn && emptySlot) {
+            if (hasDroneOperator) {
+                droneLaunchBtn.classList.remove('hidden');
+                emptySlot.classList.add('hidden');
+                droneLaunchBtn.disabled = !canDeploy;
+                droneLaunchBtn.classList.toggle('disabled', !canDeploy);
+            } else {
+                droneLaunchBtn.classList.add('hidden');
+                emptySlot.classList.remove('hidden');
+                // 팝업도 숨김
+                const popup = document.getElementById('hud-drone-popup');
+                if (popup) popup.classList.add('hidden');
+            }
+        }
 
         cmdBtns.forEach(btn => {
             const cmd = btn.dataset.hudCmd;
@@ -268,6 +370,8 @@ const HUD = {
             if (cmd === 'clear') {
                 btn.disabled = false;
                 btn.classList.remove('disabled');
+            } else if (cmd === 'droneLaunch') {
+                // droneLaunch는 위에서 별도 처리
             } else {
                 btn.disabled = !hasSelection;
                 btn.classList.toggle('disabled', !hasSelection);
