@@ -16,78 +16,86 @@ const DroneBehavior = {
         }
         // [NEW] Recall override (highest priority)
         if (drone.recallRequested) {
-            const owner = drone.ownerRef || drone.recallTarget;
-            if (!owner || owner.dead) {
-                drone.recallRequested = false;
-                drone.recallPhase = null;
-                if (drone.holdFrames && drone.holdFrames > 0) {
-                    drone.holdFrames = 0;
-                    drone.launchInit = false;
+            // owner 연결이 순간 끊겨도 복귀요청을 취소하지 말고 매 프레임 복구 시도
+            let owner = drone.ownerRef || drone.recallTarget;
+            if ((!owner || owner.dead) && typeof game !== 'undefined') {
+                owner = (game.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
+                if (owner) {
+                    drone.ownerRef = owner;
+                    drone.recallTarget = owner;
+                    if (owner.ownedDrone !== drone) owner.ownedDrone = drone;
                 }
-            } else {
+            }
 
-                const facing = (owner.facing != null) ? owner.facing : ((owner.team === 'player') ? 1 : -1);
-                const tx = owner.x + facing * 22;
-                const ty = ((owner && typeof owner.y === "number") ? owner.y : game.groundY) - 6;
-                const dx = tx - drone.x;
-                const dy = ty - drone.y;
-                const dist = Math.hypot(dx, dy);
-                const speed = (drone.stats?.speed || 1) * 1.2;
-                const pickupThreshold = 22;
-
+            // 아직 owner를 못 찾으면: 복귀요청 유지 + 공격 타겟 제거 + 대기
+            if (!owner || owner.dead) {
                 drone.lockedTarget = null;
                 drone.attackTarget = null;
                 drone.swarmTarget = null;
+                return;
+            }
 
-                if (drone.holdFrames && drone.holdFrames > 0 && drone.recallPhase !== 'land') {
-                    drone.holdFrames = 0;
-                    drone.launchInit = false;
+            const facing = (owner.facing != null) ? owner.facing : ((owner.team === 'player') ? 1 : -1);
+            const tx = owner.x + facing * 22;
+            const ty = (typeof owner.y === 'number') ? (owner.y - 6) : (game.groundY - 6);
+            const dx = tx - drone.x;
+            const dy = ty - drone.y;
+            const dist = Math.hypot(dx, dy);
+            const speed = (drone.stats?.speed || 1) * 1.2;
+            const pickupThreshold = 22;
+
+            drone.lockedTarget = null;
+            drone.attackTarget = null;
+            drone.swarmTarget = null;
+
+            if (drone.holdFrames && drone.holdFrames > 0 && drone.recallPhase !== 'land') {
+                drone.holdFrames = 0;
+                drone.launchInit = false;
+            }
+
+            if (!drone.recallPhase) drone.recallPhase = 'approach';
+
+            if (drone.recallPhase === 'approach') {
+                if (drone.stats?.id === 'drone_at') {
+                    drone.facing = (dx >= 0) ? 1 : -1;
                 }
-
-                if (!drone.recallPhase) drone.recallPhase = 'approach';
-
-                if (drone.recallPhase === 'approach') {
-                    if (drone.stats?.id === 'drone_at') {
-                        drone.facing = (dx >= 0) ? 1 : -1;
-                    }
-                    if (dist <= pickupThreshold) {
-                        drone.recallPhase = 'land';
-                        drone.holdFrames = 25;
-                        drone.x = tx;
-                        drone.y = ty;
-                        return;
-                    }
-
-                    if (dist > 0) {
-                        drone.x += (dx / dist) * speed;
-                        drone.y += (dy / dist) * speed;
-                    }
-                    return;
-                }
-
-                if (drone.recallPhase === 'land') {
+                if (dist <= pickupThreshold) {
+                    drone.recallPhase = 'land';
+                    drone.holdFrames = 25;
                     drone.x = tx;
                     drone.y = ty;
-                    if (drone.holdFrames && drone.holdFrames > 0) {
-                        drone.holdFrames--;
-                        return;
-                    }
-                    drone.recallPhase = 'pickup';
+                    return;
                 }
 
-                if (drone.recallPhase === 'pickup') {
-                    if (owner.ownedDrone === drone) owner.ownedDrone = null;
-                    owner.opState = 'rifle';
-                    const maxCharges = owner.stats?.droneCharges || owner.droneChargesLeft || 1;
-                    owner.droneChargesLeft = Math.min((owner.droneChargesLeft || 0) + 1, maxCharges);
-                    drone.dead = true;
-                    if (typeof ChatPanel !== 'undefined') {
-                        ChatPanel.push('[복귀 완료]', 'INFO');
-                    }
-                    return;
+                if (dist > 0) {
+                    drone.x += (dx / dist) * speed;
+                    drone.y += (dy / dist) * speed;
                 }
                 return;
             }
+
+            if (drone.recallPhase === 'land') {
+                drone.x = tx;
+                drone.y = ty;
+                if (drone.holdFrames && drone.holdFrames > 0) {
+                    drone.holdFrames--;
+                    return;
+                }
+                drone.recallPhase = 'pickup';
+            }
+
+            if (drone.recallPhase === 'pickup') {
+                if (owner.ownedDrone === drone) owner.ownedDrone = null;
+                owner.opState = 'rifle';
+                const maxCharges = owner.stats?.droneCharges || owner.droneChargesLeft || 1;
+                owner.droneChargesLeft = Math.min((owner.droneChargesLeft || 0) + 1, maxCharges);
+                drone.dead = true;
+                if (typeof ChatPanel !== 'undefined') {
+                    ChatPanel.push('[복귀 완료]', 'INFO');
+                }
+                return;
+            }
+            return;
         }
         // [R 4.2 FIX v3] 런치 애니메이션 (앉기 → 상승 → 가속)
         if (drone.holdFrames && drone.holdFrames > 0) {

@@ -179,20 +179,11 @@ const game = {
             owner = (this.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
             if (owner) drone.ownerRef = owner;
         }
-        if (!owner || owner.dead) {
-            // Fallback: if linkage broke, try to bind to an available operator so recall still works.
-            const ops = (this.players || []).filter(p => p && !p.dead && p.stats?.operator);
-            owner = ops.find(p => !p.ownedDrone || p.ownedDrone.dead) || ops[0] || null;
-            if (owner) {
-                drone.ownerRef = owner;
-                if (!owner.ownedDrone || owner.ownedDrone.dead) owner.ownedDrone = drone;
-            }
-        }
-        if (!owner || owner.dead) return false;
-        if (owner.ownedDrone !== drone) owner.ownedDrone = drone;
+        // owner가 아직 못 잡혀도 복귀요청은 유지 (drones.js에서 매 프레임 owner 재탐색)
+        if (owner && !owner.dead && owner.ownedDrone !== drone) owner.ownedDrone = drone;
         const wasRequested = !!drone.recallRequested;
         drone.recallRequested = true;
-        drone.recallTarget = owner;
+        drone.recallTarget = owner || drone.recallTarget || null;
         drone.recallPhase = 'approach';
         drone.commandState = 'recall';
         drone.commandMode = 'move';
