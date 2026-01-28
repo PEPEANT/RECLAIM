@@ -16,7 +16,8 @@ const DroneBehavior = {
         }
         // [NEW] Recall override (highest priority)
         if (drone.recallRequested) {
-            if (!drone.ownerRef || drone.ownerRef.dead) {
+            const owner = drone.ownerRef || drone.recallTarget;
+            if (!owner || owner.dead) {
                 drone.recallRequested = false;
                 drone.recallPhase = null;
                 if (drone.holdFrames && drone.holdFrames > 0) {
@@ -24,10 +25,10 @@ const DroneBehavior = {
                     drone.launchInit = false;
                 }
             } else {
-                const owner = drone.ownerRef;
+
                 const facing = (owner.facing != null) ? owner.facing : ((owner.team === 'player') ? 1 : -1);
                 const tx = owner.x + facing * 22;
-                const ty = game.groundY - 6;
+                const ty = ((owner && typeof owner.y === "number") ? owner.y : game.groundY) - 6;
                 const dx = tx - drone.x;
                 const dy = ty - drone.y;
                 const dist = Math.hypot(dx, dy);

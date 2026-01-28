@@ -179,6 +179,15 @@ const game = {
             owner = (this.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
             if (owner) drone.ownerRef = owner;
         }
+        if (!owner || owner.dead) {
+            // Fallback: if linkage broke, try to bind to an available operator so recall still works.
+            const ops = (this.players || []).filter(p => p && !p.dead && p.stats?.operator);
+            owner = ops.find(p => !p.ownedDrone || p.ownedDrone.dead) || ops[0] || null;
+            if (owner) {
+                drone.ownerRef = owner;
+                if (!owner.ownedDrone || owner.ownedDrone.dead) owner.ownedDrone = drone;
+            }
+        }
         if (!owner || owner.dead) return false;
         if (owner.ownedDrone !== drone) owner.ownedDrone = drone;
         const wasRequested = !!drone.recallRequested;
