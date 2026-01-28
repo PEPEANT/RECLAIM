@@ -817,6 +817,11 @@ const game = {
         let pinchAnchorClientX = 0;
         let pinchAnchorClientY = 0;
 
+        // [MOBILE TAP FIX] 탭/드래그 판정은 월드좌표가 아니라 "픽셀" 기준으로 한다
+        let tapStartClientX = 0, tapStartClientY = 0;
+        let tapLastClientX = 0, tapLastClientY = 0;
+        const TAP_THRESHOLD_PX = 14; // 12~18 사이 취향, 14 추천
+
         // [MODIFIED] 건물 선택 (플레이어 건설 건물 포함)
         const selectBuildingAt = (wx, wy) => {
             // 선택 가능한 건물 타입들
@@ -1026,6 +1031,10 @@ const game = {
                 this.selectEndX = this.selectStartX;
                 this.selectEndY = this.selectStartY;
 
+                // [MOBILE TAP FIX] 탭 판정용 픽셀 좌표 기록
+                tapStartClientX = tapLastClientX = e.touches[0].clientX;
+                tapStartClientY = tapLastClientY = e.touches[0].clientY;
+
             } else if (e.touches.length >= 2) {
                 // 두 손가락: 카메라 이동 모드
                 isMobileCameraMove = true;
@@ -1053,6 +1062,11 @@ const game = {
                 const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
                 this.selectEndX = p.x + this.cameraX;
                 this.selectEndY = p.y;
+
+                // [MOBILE TAP FIX] 마지막 픽셀 좌표 갱신
+                tapLastClientX = e.touches[0].clientX;
+                tapLastClientY = e.touches[0].clientY;
+
                 return; // 카메라 로직 호출 금지
             }
 
@@ -1084,13 +1098,19 @@ const game = {
                 this.selectDragActive = false;
                 isMobileSelecting = false;
 
-                // 선택 박스 크기 체크
-                const dx = Math.abs(this.selectEndX - this.selectStartX);
-                const dy = Math.abs(this.selectEndY - this.selectStartY);
-                if (dx < 10 && dy < 10) {
-                    // 단일 탭: 클릭 처리
-                    const clickX = this.selectStartX;
-                    const clickY = this.selectStartY;
+                // [MOBILE TAP FIX] 월드좌표(dx,dy)로 탭 판정하면 모바일에서 거의 항상 드래그로 오인됨
+                // 픽셀 기준으로 탭/드래그 판정
+                const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+                const endClientX = ct ? ct.clientX : tapLastClientX;
+                const endClientY = ct ? ct.clientY : tapLastClientY;
+                const movedPx = Math.hypot(endClientX - tapStartClientX, endClientY - tapStartClientY);
+
+                if (movedPx < TAP_THRESHOLD_PX) {
+                    // 단일 탭: "끝 좌표"를 기준으로 클릭 처리(더 정확)
+                    const pTap = getScaledPos(endClientX, endClientY);
+                    const clickX = pTap.x + this.cameraX;
+                    const clickY = pTap.y;
+
                     if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
                     if (selectHQAt(clickX, clickY)) return;
                     const unitClicked = this.checkUnitClick && this.checkUnitClick(clickX, clickY);
