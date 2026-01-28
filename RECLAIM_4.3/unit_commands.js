@@ -323,36 +323,57 @@
                     return;
                 }
 
-                // [NEW] drone recall command
-                if (cmd === 'recall') {
-                    const recalled = (typeof game.requestRecallFromSelection === 'function')
-                        ? game.requestRecallFromSelection()
-                        : 0;
-                    if (recalled > 0) return;
-                    const drone = (typeof game.getSelectedDroneForRecall === 'function')
-                        ? game.getSelectedDroneForRecall()
-                        : null;
-                    if (drone && typeof game.requestDroneRecall === 'function') {
-                        game.requestDroneRecall(drone);
-                        return;
-                    }
-                    if (typeof ChatPanel !== 'undefined') {
-                        ChatPanel.push('[복귀 불가] 드론 선택 필요', 'WARN');
-                    }
-                    return;
-                }
-
                 // [NEW] disband command clears selection
                 if (cmd === 'disband') {
                     game.clearAllSelection();
                     return;
                 }
 
-                // (기존: retreat/stop/attack 등은 바로 적용)
+                // [P0-3] retreat = 드론 복귀(회수) 통합
+                if (cmd === 'retreat') {
+                    let droneRecalled = false;
+
+                    // 1순위: 선택된 드론 복귀
+                    game.selectedUnits.forEach(u => {
+                        if (u && !u.dead && (u.stats?.id === 'drone_suicide' || u.stats?.id === 'drone_at' || u.stats?.category === 'drone')) {
+                            if (typeof game.requestDroneRecall === 'function') {
+                                game.requestDroneRecall(u);
+                                droneRecalled = true;
+                            }
+                        }
+                    });
+
+                    // 2순위: 선택된 드론병의 ownedDrone 복귀
+                    if (!droneRecalled) {
+                        game.selectedUnits.forEach(u => {
+                            if (u && !u.dead && u.stats?.operator && u.ownedDrone && !u.ownedDrone.dead) {
+                                if (typeof game.requestDroneRecall === 'function') {
+                                    game.requestDroneRecall(u.ownedDrone);
+                                    droneRecalled = true;
+                                }
+                            }
+                        });
+                    }
+
+                    // 3순위: 일반 유닛 후퇴
+                    if (!droneRecalled) {
+                        game.selectedUnits.forEach(u => {
+                            if (!u.dead) {
+                                u.commandMode = 'retreat';
+                                u.returnToBase = true;
+                            }
+                        });
+                    }
+
+                    btns.forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    return;
+                }
+
+                // (기존: stop/attack 등은 바로 적용)
                 game.selectedUnits.forEach(u => {
                     if (!u.dead) {
                         u.commandMode = cmd;
-                        u.returnToBase = (cmd === 'retreat');
                     }
                 });
 

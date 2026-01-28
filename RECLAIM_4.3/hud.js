@@ -230,28 +230,49 @@ const HUD = {
                     cmdBtns.forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     return;
-                } else if (cmd === 'droneLaunch') {
-                    if (typeof game.toggleDroneLaunchMode === 'function') {
-                        game.toggleDroneLaunchMode();
-                    }
-                    const popup = document.getElementById('hud-drone-popup');
-                    if (popup) popup.classList.add('hidden');
-                    return;
-                } else if (cmd === 'recall') {
-                    const recalled = (typeof game.requestRecallFromSelection === 'function')
-                        ? game.requestRecallFromSelection()
-                        : 0;
-                    if (recalled > 0) return;
-                    const drone = (typeof game.getSelectedDroneForRecall === 'function')
-                        ? game.getSelectedDroneForRecall()
-                        : null;
-                    if (drone && typeof game.requestDroneRecall === 'function') {
-                        game.requestDroneRecall(drone);
-                    } else {
-                        if (typeof ChatPanel !== 'undefined') {
-                            ChatPanel.push('[복귀 불가] 드론 선택 필요', 'WARN');
+                } else if (cmd === 'retreat') {
+                    // [P0-3] 후퇴 = 드론 복귀(회수) 통합
+                    // 1순위: 선택된 드론이 있으면 복귀
+                    // 2순위: 선택된 드론병의 ownedDrone 복귀
+                    // 3순위: 일반 유닛 후퇴
+                    let droneRecalled = false;
+
+                    // 선택된 유닛 중 드론 찾기
+                    for (const u of game.selectedUnits) {
+                        if (u && !u.dead && (u.stats?.id === 'drone_suicide' || u.stats?.id === 'drone_at' || u.stats?.category === 'drone')) {
+                            if (typeof game.requestDroneRecall === 'function') {
+                                game.requestDroneRecall(u);
+                                droneRecalled = true;
+                            }
                         }
                     }
+
+                    // 드론이 없으면 드론병의 ownedDrone 복귀
+                    if (!droneRecalled) {
+                        for (const u of game.selectedUnits) {
+                            if (u && !u.dead && u.stats?.operator && u.ownedDrone && !u.ownedDrone.dead) {
+                                if (typeof game.requestDroneRecall === 'function') {
+                                    game.requestDroneRecall(u.ownedDrone);
+                                    droneRecalled = true;
+                                }
+                            }
+                        }
+                    }
+
+                    // 드론 복귀가 없으면 일반 후퇴
+                    if (!droneRecalled) {
+                        game.selectedUnits.forEach(u => {
+                            if (!u.dead) {
+                                u.commandMode = 'retreat';
+                                u.returnToBase = true;
+                            }
+                        });
+                        ui.showToast(`${game.selectedUnits.size}개 유닛: 후퇴 명령`);
+                    }
+
+                    cmdBtns.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    game.updateHUDSelection();
                     return;
                 } else {
                     // Apply command to selected units
@@ -280,127 +301,17 @@ const HUD = {
     },
 
     /**
-     * [R 4.2 FIX] Setup drone launch popup event handlers
-     */
-    setupDroneLaunchPopup() {
-        const popup = document.getElementById('hud-drone-popup');
-        const btnSuicide = document.getElementById('hud-btn-drone-suicide');
-        const btnAt = document.getElementById('hud-btn-drone-at');
-
-        if (!popup || !btnSuicide || !btnAt) return;
-
-        // 발진 가능한 드론병 찾기
-        const getDeployableOperators = () => {
-            if (!game.selectedUnits || game.selectedUnits.size === 0) return [];
-            return Array.from(game.selectedUnits).filter(u =>
-                u && !u.dead && u.stats?.operator === true &&
-                u.droneChargesLeft > 0 && !u.ownedDrone
-            );
-        };
-
-        // 자폭 드론 선택
-        btnSuicide.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const operators = getDeployableOperators();
-            operators.forEach(u => {
-                u.manualDeployType = 'drone_suicide';
-                u.manualDeployRequested = true;
-                u.commandMode = 'stop';
-            });
-            popup.classList.add('hidden');
-            if (typeof ChatPanel !== 'undefined' && operators.length > 0) {
-                ChatPanel.push(`[수동 발진] 자폭드론 ${operators.length}기 요청`, 'ACTION');
-            }
-        });
-
-        // 대전차 드론 선택
-        btnAt.addEventListener('click', (e) => {
-            e.stopPropagation();
-            const operators = getDeployableOperators();
-            operators.forEach(u => {
-                u.manualDeployType = 'drone_at';
-                u.manualDeployRequested = true;
-                u.commandMode = 'stop';
-            });
-            popup.classList.add('hidden');
-            if (typeof ChatPanel !== 'undefined' && operators.length > 0) {
-                ChatPanel.push(`[수동 발진] 대전차드론 ${operators.length}기 요청`, 'ACTION');
-            }
-        });
-
-        // 외부 클릭 시 팝업 닫기
-        document.addEventListener('click', (e) => {
-            if (!popup.classList.contains('hidden')) {
-                const launchBtn = document.getElementById('hud-cmd-droneLaunch');
-                if (launchBtn && !launchBtn.contains(e.target) && !popup.contains(e.target)) {
-                    popup.classList.add('hidden');
-                }
-            }
-        });
-    },
-
-    /**
      * Update command button states based on selection
      */
     updateCommandButtons() {
         const cmdBtns = document.querySelectorAll('[data-hud-cmd]');
         const hasSelection = game.selectedUnits && game.selectedUnits.size > 0;
 
-        // [R 4.2 FIX] 드론병 선택 체크
-        const droneLaunchBtn = document.getElementById('hud-cmd-droneLaunch');
-        const recallBtn = document.getElementById('hud-cmd-droneRecall');
-        const emptySlot = document.getElementById('hud-cmd-slot-empty');
-        let hasDroneOperator = false;
-        let canDeploy = false;
-
-        if (hasSelection) {
-            for (const u of game.selectedUnits) {
-                if (u && !u.dead && u.stats?.operator === true) {
-                    hasDroneOperator = true;
-                    if (u.droneChargesLeft > 0 && !u.ownedDrone) {
-                        canDeploy = true;
-                    }
-                    break;
-                }
-            }
-        }
-
-        const recallDrone = (typeof game.getSelectedDroneForRecall === 'function')
-            ? game.getSelectedDroneForRecall()
-            : null;
-
-        if (recallBtn) {
-            if (recallDrone) recallBtn.classList.remove('hidden');
-            else recallBtn.classList.add('hidden');
-        }
-
-        // 드론 발진/복귀 버튼 가시성
-        if (recallDrone) {
-            if (droneLaunchBtn) droneLaunchBtn.classList.add('hidden');
-            if (emptySlot) emptySlot.classList.add('hidden');
-            if (game.droneLaunchMode) game.exitDroneLaunchMode();
-        } else if (droneLaunchBtn && emptySlot) {
-            if (hasDroneOperator) {
-                droneLaunchBtn.classList.remove('hidden');
-                emptySlot.classList.add('hidden');
-                droneLaunchBtn.disabled = !canDeploy;
-                droneLaunchBtn.classList.toggle('disabled', !canDeploy);
-            } else {
-                droneLaunchBtn.classList.add('hidden');
-                emptySlot.classList.remove('hidden');
-                const popup = document.getElementById('hud-drone-popup');
-                if (popup) popup.classList.add('hidden');
-                if (game.droneLaunchMode) game.exitDroneLaunchMode();
-            }
-        }
-
         cmdBtns.forEach(btn => {
             const cmd = btn.dataset.hudCmd;
             if (cmd === 'clear') {
                 btn.disabled = false;
                 btn.classList.remove('disabled');
-            } else if (cmd === 'droneLaunch' || cmd === 'recall') {
-                // droneLaunch/recall은 위에서 별도 처리
             } else {
                 btn.disabled = !hasSelection;
                 btn.classList.toggle('disabled', !hasSelection);

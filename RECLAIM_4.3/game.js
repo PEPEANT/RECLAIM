@@ -64,9 +64,6 @@ const game = {
 
     // [Category & Spawn]
     currentCategory: 'infantry',
-    droneLaunchMode: false,
-    _prevCategoryBeforeDroneLaunch: null,
-    droneLockCursor: 0,
 
     getSelectedOperators() {
         if (!this.selectedUnits || this.selectedUnits.size === 0) return [];
@@ -87,44 +84,8 @@ const game = {
 
     getDeployableOperators() {
         return this.getSelectedOperators().filter(u =>
-            u.droneChargesLeft > 0 && !u.ownedDrone
+            u.droneChargesLeft > 0 && (!u.ownedDrone || u.ownedDrone.dead)
         );
-    },
-
-    enterDroneLaunchMode() {
-        this._prevCategoryBeforeDroneLaunch = this.currentCategory;
-        this.droneLaunchMode = true;
-        if (typeof app !== 'undefined') app.markUiDirty();
-    },
-
-    exitDroneLaunchMode() {
-        if (!this.droneLaunchMode) return;
-        this.droneLaunchMode = false;
-        this._prevCategoryBeforeDroneLaunch = null;
-        if (typeof app !== 'undefined') app.markUiDirty();
-    },
-
-    toggleDroneLaunchMode() {
-        if (this.droneLaunchMode) {
-            this.exitDroneLaunchMode();
-            return;
-        }
-
-        const deployable = this.getDeployableOperators();
-        if (deployable.length === 0) {
-            if (typeof ChatPanel !== 'undefined') {
-                ChatPanel.push('[발진 불가] 드론 충전 없음', 'WARN');
-            }
-            return;
-        }
-
-        deployable.forEach(u => {
-            u.commandState = 'stop';
-            u.commandMode = 'stop';
-            u.attackTarget = null;
-        });
-
-        this.enterDroneLaunchMode();
     },
 
     spawnDroneForOperator(op, droneKey) {
@@ -174,13 +135,49 @@ const game = {
 
     requestDroneRecall(drone) {
         if (!drone || drone.dead) return false;
+
+        // [P0-4] owner 재탐색 우선순위:
+        // 1. 기존 ownerRef
+        // 2. ownedDrone이 이 드론인 operator
+        // 3. 가장 가까운 사용 가능한 operator (강제 재결속)
         let owner = drone.ownerRef;
+
+        // 1차: 기존 ownerRef 확인
         if (!owner || owner.dead) {
             owner = (this.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
             if (owner) drone.ownerRef = owner;
         }
-        // owner가 아직 못 잡혀도 복귀요청은 유지 (drones.js에서 매 프레임 owner 재탐색)
-        if (owner && !owner.dead && owner.ownedDrone !== drone) owner.ownedDrone = drone;
+
+        // 2차: 그래도 없으면 가장 가까운 operator를 강제 결속
+        if (!owner || owner.dead) {
+            const availableOps = (this.players || []).filter(p =>
+                p && !p.dead && p.stats?.operator && (!p.ownedDrone || p.ownedDrone.dead)
+            );
+            if (availableOps.length > 0) {
+                // 가장 가까운 operator 찾기
+                let nearest = availableOps[0];
+                let minDist = Math.abs(drone.x - nearest.x);
+                for (let i = 1; i < availableOps.length; i++) {
+                    const dist = Math.abs(drone.x - availableOps[i].x);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        nearest = availableOps[i];
+                    }
+                }
+                owner = nearest;
+                drone.ownerRef = owner;
+                owner.ownedDrone = drone;
+                if (typeof ChatPanel !== 'undefined') {
+                    ChatPanel.push('[복귀] 드론병 재연결됨', 'INFO');
+                }
+            }
+        }
+
+        // owner 결속 동기화
+        if (owner && !owner.dead && owner.ownedDrone !== drone) {
+            owner.ownedDrone = drone;
+        }
+
         const wasRequested = !!drone.recallRequested;
         drone.recallRequested = true;
         drone.recallTarget = owner || drone.recallTarget || null;
@@ -196,6 +193,7 @@ const game = {
         drone.swarmTarget = null;
         drone.holdFrames = 0;
         drone.launchInit = false;
+
         if (!wasRequested && typeof ChatPanel !== 'undefined') {
             ChatPanel.push('[복귀] 드론 회수 중', 'ACTION');
         }
@@ -1751,7 +1749,8 @@ const game = {
     // Queue System
     startHold(key) {
         if (!this.running || this.holdTimer) return;
-        if (this.droneLaunchMode && (key === 'drone_suicide' || key === 'drone_at')) {
+        // [P0-2] 드론은 단일 클릭으로 즉시 스폰 (hold 반복 안 함)
+        if (key === 'drone_suicide' || key === 'drone_at') {
             this.queueUnit(key);
             return;
         }
@@ -1769,16 +1768,29 @@ const game = {
     queueUnit(key) {
         const u = CONFIG.units[key];
 
-        // [Drone Launch Mode] Intercept drone buttons for manual deploy request
-        if (this.droneLaunchMode && (key === 'drone_suicide' || key === 'drone_at')) {
+        // [P0-2] 드론 탭 클릭 = 즉시 출격
+        // 드론병이 선택된 상태에서 드론 버튼 클릭 시 즉시 스폰
+        if (key === 'drone_suicide' || key === 'drone_at') {
             const operators = this.getDeployableOperators ? this.getDeployableOperators() : [];
-            if (operators.length === 0) {
+            const allOperators = this.getSelectedOperators ? this.getSelectedOperators() : [];
+
+            // 드론병이 선택 안 된 경우
+            if (allOperators.length === 0) {
                 if (typeof ChatPanel !== 'undefined') {
-                    ChatPanel.push('[발진 불가] 드론 충전 없음', 'WARN');
+                    ChatPanel.push('[발진 불가] 드론병 선택 필요', 'WARN');
                 }
                 return;
             }
 
+            // 드론병은 있지만 발진 가능한 드론병이 없는 경우
+            if (operators.length === 0) {
+                if (typeof ChatPanel !== 'undefined') {
+                    ChatPanel.push('[발진 불가] 드론 충전 없음 또는 이미 드론 운용중', 'WARN');
+                }
+                return;
+            }
+
+            // 발진 가능한 드론병들에게 드론 스폰
             operators.forEach(op => {
                 op.commandState = 'stop';
                 op.commandMode = 'stop';
@@ -1796,8 +1808,6 @@ const game = {
                 this.holdTimer = null;
             }
             this.holdKey = null;
-
-            this.exitDroneLaunchMode();
 
             if (typeof ChatPanel !== 'undefined' && spawned > 0) {
                 const label = key === 'drone_suicide' ? '자폭드론' : '대전차드론';
@@ -2433,71 +2443,5 @@ const app = {
         this.markDirty();
     }
 };
-
-// [R 4.2 FIX] 드론 발진 UI 초기화
-function setupDroneLaunchUI() {
-    const launchBtn = document.getElementById('btn-drone-launch');
-    const placeholder = document.getElementById('cmd-slot-placeholder');
-    const popup = document.getElementById('drone-select-popup');
-    const recallBtn = document.getElementById('btn-drone-recall');
-
-    if (!launchBtn) return;
-
-    // 발진 버튼 가시성 업데이트
-    function updateDroneLaunchButton() {
-        const allOps = game.getSelectedOperators ? game.getSelectedOperators() : [];
-        const deployable = game.getDeployableOperators ? game.getDeployableOperators() : [];
-        const recallDrone = game.getSelectedDroneForRecall ? game.getSelectedDroneForRecall() : null;
-
-        if (recallBtn) {
-            if (recallDrone) recallBtn.classList.remove('hidden');
-            else recallBtn.classList.add('hidden');
-        }
-
-        if (recallDrone) {
-            launchBtn.classList.add('hidden');
-            if (placeholder) placeholder.classList.add('hidden');
-            if (popup) popup.classList.add('hidden');
-            if (game.droneLaunchMode) game.exitDroneLaunchMode();
-            return;
-        }
-
-        if (allOps.length > 0) {
-            launchBtn.classList.remove('hidden');
-            if (placeholder) placeholder.classList.add('hidden');
-
-            // charges 없으면 비활성/회색 처리
-            if (deployable.length === 0) {
-                launchBtn.classList.add('disabled');
-                launchBtn.style.opacity = '0.5';
-            } else {
-                launchBtn.classList.remove('disabled');
-                launchBtn.style.opacity = '1';
-            }
-        } else {
-            launchBtn.classList.add('hidden');
-            if (placeholder) placeholder.classList.remove('hidden');
-            if (popup) popup.classList.add('hidden');
-            if (game.droneLaunchMode) game.exitDroneLaunchMode();
-        }
-
-        if (popup) popup.classList.add('hidden');
-    }
-
-    // 발진 버튼 클릭 → 발진모드 토글 (팝업 사용 안 함)
-    launchBtn.addEventListener('click', e => {
-        e.stopImmediatePropagation();
-        if (typeof game.toggleDroneLaunchMode === 'function') {
-            game.toggleDroneLaunchMode();
-        }
-        if (popup) popup.classList.add('hidden');
-    });
-
-    // [G. 최적화] 선택 변경 시 버튼 가시성 업데이트 (200ms 폴링)
-    setInterval(updateDroneLaunchButton, 200);
-}
-
-// 초기화 시 드론 발진 UI 설정
-document.addEventListener('DOMContentLoaded', setupDroneLaunchUI);
 
 window.onload = () => game.init();

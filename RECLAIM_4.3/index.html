@@ -92,16 +92,11 @@
                     </div>
                 </div>
                 <div id="cmd-actions" class="hidden">
-                    <!-- Row1: 후퇴 / 정지 / 드론발진 -->
+                    <!-- Row1: 후퇴 / 정지 -->
                     <button data-cmd="retreat" class="cmd-btn-action"><span
                             class="cmd-ico">◀</span><span>후퇴</span></button>
                     <button data-cmd="stop" class="cmd-btn-action"><span
                             class="cmd-ico">||</span><span>정지</span></button>
-                    <button data-cmd="droneLaunch" id="btn-drone-launch" class="cmd-btn-action hidden"><span
-                            class="cmd-ico">💻</span><span>발진</span></button>
-                    <button data-cmd="recall" id="btn-drone-recall" class="cmd-btn-action hidden"><span
-                            class="cmd-ico">↩</span><span>복귀</span></button>
-                    <div id="cmd-slot-placeholder" class="cmd-slot-empty" aria-hidden="true"></div>
 
                     <!-- Row2: 공격 / 해산 / 이동 -->
                     <button data-cmd="attack" class="cmd-btn-action"><span
@@ -110,23 +105,6 @@
                             class="cmd-ico">✕</span><span>해산</span></button>
                     <button data-cmd="move" class="cmd-btn-action"><span
                             class="cmd-ico">⤴</span><span>이동</span></button>
-                </div>
-
-                <!-- [R 4.2] 드론 선택 팝업 -->
-                <div id="drone-select-popup"
-                    class="hidden absolute bg-slate-800/95 border border-blue-500 rounded-lg p-3 shadow-xl z-50"
-                    style="bottom: 100%; left: 0; margin-bottom: 8px;">
-                    <div class="text-xs text-gray-400 mb-2 text-center">드론 종류 선택</div>
-                    <div class="flex gap-2">
-                        <button id="btn-deploy-suicide"
-                            class="px-3 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-bold transition-all">
-                            자폭드론
-                        </button>
-                        <button id="btn-deploy-at"
-                            class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm font-bold transition-all">
-                            대전차드론
-                        </button>
-                    </div>
                 </div>
             </div>
         </div>
@@ -615,32 +593,11 @@
                 <button class="hud-cmd-btn" data-hud-cmd="move"><span class="cmd-icon">➡</span><span>이동</span></button>
                 <button class="hud-cmd-btn" data-hud-cmd="stop"><span class="cmd-icon">⏹</span><span>정지</span></button>
 
-                <!-- 2행: 공격 - 후퇴 - 드론발진 -->
+                <!-- 2행: 공격 - 후퇴 -->
                 <button class="hud-cmd-btn" data-hud-cmd="attack"><span
                         class="cmd-icon">⚔</span><span>공격</span></button>
                 <button class="hud-cmd-btn" data-hud-cmd="retreat"><span
                         class="cmd-icon">◀</span><span>후퇴</span></button>
-                <button id="hud-cmd-droneLaunch" class="hud-cmd-btn hidden" data-hud-cmd="droneLaunch"><span
-                        class="cmd-icon">💻</span><span>발진</span></button>
-                <button id="hud-cmd-droneRecall" class="hud-cmd-btn hidden" data-hud-cmd="recall"><span
-                        class="cmd-icon">↩</span><span>복귀</span></button>
-                <div id="hud-cmd-slot-empty" class="hud-cmd-slot-empty" aria-hidden="true"></div>
-            </div>
-            <!-- [R 4.2] 드론 선택 팝업 (HUD용) -->
-            <div id="hud-drone-popup"
-                class="hidden absolute bg-slate-800/95 border border-blue-500 rounded-lg p-3 shadow-xl z-50"
-                style="bottom: 100%; right: 0; margin-bottom: 8px;">
-                <div class="text-xs text-gray-400 mb-2 text-center">드론 종류 선택</div>
-                <div class="flex gap-2">
-                    <button id="hud-btn-drone-suicide"
-                        class="px-3 py-2 bg-orange-600 hover:bg-orange-500 text-white rounded text-sm font-bold transition-all">
-                        자폭드론
-                    </button>
-                    <button id="hud-btn-drone-at"
-                        class="px-3 py-2 bg-red-600 hover:bg-red-500 text-white rounded text-sm font-bold transition-all">
-                        대전차드론
-                    </button>
-                </div>
             </div>
         </section>
     </footer>

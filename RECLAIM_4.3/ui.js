@@ -33,7 +33,16 @@ const ui = {
         container.innerHTML = ''; // 초기화
         this.elementCache = {};
         this.lastValues = {};
-        const droneLaunchMode = (typeof game !== 'undefined' && game.droneLaunchMode);
+
+        // [P0-2] 드론병이 선택되면 드론 버튼 표시
+        let hasOperatorSelected = false;
+        if (typeof game !== 'undefined' && game.selectedUnits && game.selectedUnits.size > 0) {
+            game.selectedUnits.forEach(u => {
+                if (u && !u.dead && u.stats?.operator === true) {
+                    hasOperatorSelected = true;
+                }
+            });
+        }
 
         Object.keys(CONFIG.units).forEach(key => {
             const u = CONFIG.units[key];
@@ -46,7 +55,8 @@ const ui = {
             btn.id = `btn-${key}`;
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none';
             const isDroneOnly = (u.droneLaunchOnly === true);
-            const isVisible = isDroneOnly ? droneLaunchMode : (!droneLaunchMode && u.category === currentCategory);
+            // 드론 버튼은 드론병 선택 시에만 표시
+            const isVisible = isDroneOnly ? hasOperatorSelected : (!hasOperatorSelected && u.category === currentCategory);
             btn.style.display = isVisible ? 'flex' : 'none';
 
             // 캔버스 아이콘 (한 번만 그림)
@@ -173,12 +183,16 @@ const ui = {
     },
 
     updateUnitButtons(cat, stock, cooldowns, supply, queue) {
-        const droneLaunchMode = (typeof game !== 'undefined' && game.droneLaunchMode);
+        // [P0-2] 드론병이 선택되면 드론 버튼 표시
+        let hasOperatorSelected = false;
         let deployableOperatorsCount = 0;
         if (typeof game !== 'undefined' && game.selectedUnits && game.selectedUnits.size > 0) {
             game.selectedUnits.forEach(u => {
-                if (u && !u.dead && u.stats?.operator === true && u.droneChargesLeft > 0 && !u.ownedDrone) {
-                    deployableOperatorsCount++;
+                if (u && !u.dead && u.stats?.operator === true) {
+                    hasOperatorSelected = true;
+                    if (u.droneChargesLeft > 0 && (!u.ownedDrone || u.ownedDrone.dead)) {
+                        deployableOperatorsCount++;
+                    }
                 }
             });
         }
@@ -189,7 +203,8 @@ const ui = {
 
             const u = CONFIG.units[key];
             const isDroneOnly = (u.droneLaunchOnly === true);
-            const isVisible = isDroneOnly ? droneLaunchMode : (!droneLaunchMode && u.category === cat);
+            // 드론 버튼은 드론병 선택 시에만 표시
+            const isVisible = isDroneOnly ? hasOperatorSelected : (!hasOperatorSelected && u.category === cat);
 
             // 1. 카테고리 표시/숨김 최적화
             if (cache.btn.style.display !== (isVisible ? 'flex' : 'none')) {
@@ -290,11 +305,21 @@ const ui = {
     },
 
     updateCategoryTab(currentCategory) {
-        const isDroneLaunch = (typeof game !== 'undefined' && game.droneLaunchMode);
+        // [P0-2] 드론병 선택 시 드론 탭 표시
+        let hasOperatorSelected = false;
+        if (typeof game !== 'undefined' && game.selectedUnits && game.selectedUnits.size > 0) {
+            game.selectedUnits.forEach(u => {
+                if (u && !u.dead && u.stats?.operator === true) {
+                    hasOperatorSelected = true;
+                }
+            });
+        }
+
         const tabs = document.querySelectorAll('.btn-category');
         const droneOnlyTab = document.getElementById('tab-drone-only');
 
-        if (isDroneLaunch) {
+        if (hasOperatorSelected) {
+            // 드론병 선택 시 드론 탭만 표시
             tabs.forEach(btn => {
                 if (btn.id === 'tab-drone-only') {
                     btn.classList.remove('hidden');
@@ -305,6 +330,7 @@ const ui = {
                 }
             });
         } else {
+            // 일반 상태: 모든 탭 표시 (드론 탭 제외)
             tabs.forEach(btn => {
                 btn.classList.remove('hidden');
                 btn.classList.remove('active');
