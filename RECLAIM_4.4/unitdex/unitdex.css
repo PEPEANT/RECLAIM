@@ -1,0 +1,129 @@
+/* Unitdex Styles */
+.cat-btn {
+    padding: 0.5rem 1rem;
+    border-radius: 9999px;
+    background: #1e293b;
+    border: 1px solid #334155;
+    color: #94a3b8;
+    font-weight: 600;
+    font-size: 0.875rem;
+    white-space: nowrap;
+    transition: all 0.2s;
+}
+
+.cat-btn:hover {
+    border-color: #3b82f6;
+    color: #fff;
+}
+
+.cat-btn.active {
+    background: #3b82f6;
+    border-color: #3b82f6;
+    color: #fff;
+}
+
+.unit-card {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border: 1px solid #334155;
+    border-radius: 1rem;
+    overflow: hidden;
+    transition: all 0.3s;
+}
+
+.unit-card:hover {
+    border-color: #3b82f6;
+    transform: translateY(-4px);
+    box-shadow: 0 10px 40px rgba(59, 130, 246, 0.2);
+}
+
+.unit-card-header {
+    background: linear-gradient(135deg, #334155 0%, #1e293b 100%);
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.unit-icon {
+    width: 64px;
+    height: 64px;
+    background: #0f172a;
+    border-radius: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    color: #3b82f6;
+}
+
+.unit-icon img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+}
+
+.unit-name {
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #fff;
+}
+
+.unit-role {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 0.25rem;
+}
+
+.unit-card-body {
+    padding: 1rem;
+}
+
+.unit-desc {
+    font-size: 0.875rem;
+    color: #cbd5e1;
+    line-height: 1.5;
+    margin-bottom: 1rem;
+    min-height: 3rem;
+}
+
+.stat-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0.5rem;
+}
+
+.stat-item {
+    background: #0f172a;
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+    text-align: center;
+}
+
+.stat-label {
+    font-size: 0.625rem;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.stat-value {
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #3b82f6;
+}
+
+.category-badge {
+    display: inline-block;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.625rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.category-infantry { background: #166534; color: #bbf7d0; }
+.category-armored { background: #1e40af; color: #bfdbfe; }
+.category-air { background: #7c3aed; color: #ddd6fe; }
+.category-drone { background: #b45309; color: #fef3c7; }
+.category-special { background: #be123c; color: #fecdd3; }
