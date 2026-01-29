@@ -1,0 +1,674 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Unit Skin Editor MVP</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --panel:#0f172a;
+      --panel-2:#111827;
+      --border:#1f2937;
+      --text:#e5e7eb;
+      --muted:#94a3b8;
+      --accent:#38bdf8;
+      --accent-2:#22c55e;
+    }
+    *{box-sizing:border-box;}
+    html,body{height:100%;}
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    }
+    #app{
+      display:flex;
+      height:100vh;
+      gap:12px;
+      padding:12px;
+    }
+    #sidebar{
+      width:280px;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:12px;
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+    #sidebar header{
+      padding:12px;
+      border-bottom:1px solid var(--border);
+    }
+    #sidebar h1{
+      margin:0 0 8px 0;
+      font-size:16px;
+      font-weight:700;
+      letter-spacing:0.4px;
+    }
+    #search{
+      width:100%;
+      padding:8px 10px;
+      border-radius:8px;
+      border:1px solid var(--border);
+      background:#0b1326;
+      color:var(--text);
+      outline:none;
+    }
+    #unit-list{
+      flex:1;
+      overflow:auto;
+      padding:8px;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+    }
+    .unit-item{
+      text-align:left;
+      padding:8px 10px;
+      background:var(--panel-2);
+      border:1px solid var(--border);
+      border-radius:8px;
+      color:var(--text);
+      cursor:pointer;
+    }
+    .unit-item.active{
+      border-color:var(--accent);
+      box-shadow:0 0 0 1px rgba(56,189,248,0.3) inset;
+    }
+    #main{
+      flex:1;
+      display:flex;
+      flex-direction:column;
+      gap:10px;
+    }
+    #toolbar{
+      display:flex;
+      align-items:center;
+      gap:8px;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:12px;
+      padding:10px;
+      flex-wrap:wrap;
+    }
+    #toolbar .spacer{flex:1;}
+    button{
+      background:#0b1326;
+      border:1px solid var(--border);
+      color:var(--text);
+      padding:8px 12px;
+      border-radius:8px;
+      cursor:pointer;
+    }
+    button:hover{border-color:var(--accent);}
+    button.primary{border-color:var(--accent);}
+    button.good{border-color:var(--accent-2);}
+    #canvas-wrap{
+      flex:1;
+      background:var(--panel);
+      border:1px solid var(--border);
+      border-radius:12px;
+      position:relative;
+      overflow:hidden;
+    }
+    #mainCanvas{
+      width:100%;
+      height:100%;
+      display:block;
+      touch-action:none;
+    }
+    #status{
+      position:absolute;
+      left:10px;
+      bottom:10px;
+      background:rgba(2,6,23,0.7);
+      border:1px solid rgba(148,163,184,0.3);
+      padding:6px 10px;
+      border-radius:8px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    #status b{color:var(--text);}
+    #hint{
+      font-size:12px;
+      color:var(--muted);
+      margin-left:auto;
+    }
+    #grid-toggle{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      font-size:12px;
+      color:var(--muted);
+    }
+    #importFile{display:none;}
+  </style>
+</head>
+<body>
+  <div id="app">
+    <aside id="sidebar">
+      <header>
+        <h1>Unit Skin Editor (MVP)</h1>
+        <input id="search" type="text" placeholder="Search unit key..." />
+      </header>
+      <div id="unit-list"></div>
+    </aside>
+
+    <main id="main">
+      <div id="toolbar">
+        <div><b id="selected-label">No unit selected</b></div>
+        <div class="spacer"></div>
+        <label id="grid-toggle"><input type="checkbox" id="gridCheck" checked /> Grid</label>
+        <label id="grid-toggle"><input type="checkbox" id="overwriteCheck" /> Overwrite</label>
+        <button id="btnSave" class="good">Save</button>
+        <button id="btnReset">Reset</button>
+        <button id="btnExport">Export</button>
+        <button id="btnImport">Import</button>
+        <button id="btnBack">Back</button>
+        <div id="hint">Click: select · Drag: move · Shift+Click: add · Del: remove · Space+Drag: pan</div>
+      </div>
+      <div id="canvas-wrap">
+        <canvas id="mainCanvas"></canvas>
+        <div id="status"><b>Unit</b>: <span id="statusUnit">-</span> | <b>Points</b>: <span id="statusPoints">0</span> | <b>Zoom</b>: <span id="statusZoom">1.0</span></div>
+      </div>
+    </main>
+  </div>
+
+  <input id="importFile" type="file" accept="application/json" />
+
+  <script src="../../data.js"></script>
+  <script>
+  (()=>{
+    "use strict";
+
+    const PICK_PX = 18;
+    const LS_KEY = "reclaim_skins_mvp_v1";
+    const DEFAULT_SCALE = 1.6;
+
+    const hardcodedUnits = [
+      "infantry","sniper","rocket","medic",
+      "tank","apc","mech","artillery",
+      "drone","heli"
+    ];
+
+    const els = {
+      list: document.getElementById("unit-list"),
+      search: document.getElementById("search"),
+      canvas: document.getElementById("mainCanvas"),
+      ctx: null,
+      label: document.getElementById("selected-label"),
+      statusUnit: document.getElementById("statusUnit"),
+      statusPoints: document.getElementById("statusPoints"),
+      statusZoom: document.getElementById("statusZoom"),
+      gridCheck: document.getElementById("gridCheck"),
+      overwriteCheck: document.getElementById("overwriteCheck"),
+      btnSave: document.getElementById("btnSave"),
+      btnReset: document.getElementById("btnReset"),
+      btnExport: document.getElementById("btnExport"),
+      btnImport: document.getElementById("btnImport"),
+      btnBack: document.getElementById("btnBack"),
+      importFile: document.getElementById("importFile")
+    };
+
+    const state = {
+      units: [],
+      filtered: [],
+      selectedKey: null,
+      skins: {},
+      points: [],
+      selectedIdx: null,
+      camera: { x: 0, y: 0, scale: DEFAULT_SCALE },
+      dragging: false,
+      dragMode: null,
+      lastPos: { x: 0, y: 0 },
+      spaceDown: false,
+      grid: true,
+      dpr: 1
+    };
+
+    function initUnits(){
+      if(window.CONFIG && CONFIG.units){
+        state.units = Object.keys(CONFIG.units);
+      }else{
+        state.units = hardcodedUnits.slice();
+      }
+      state.filtered = state.units.slice();
+      renderList();
+    }
+
+    function renderList(){
+      els.list.innerHTML = "";
+      state.filtered.forEach(key => {
+        const btn = document.createElement("button");
+        btn.className = "unit-item" + (key === state.selectedKey ? " active" : "");
+        btn.textContent = key;
+        btn.addEventListener("click", () => selectUnit(key));
+        els.list.appendChild(btn);
+      });
+    }
+
+    function filterList(){
+      const q = (els.search.value || "").trim().toLowerCase();
+      if(!q){
+        state.filtered = state.units.slice();
+      }else{
+        state.filtered = state.units.filter(k => k.toLowerCase().includes(q));
+      }
+      renderList();
+    }
+
+    function defaultPointsForKey(key){
+      let w = 40, h = 24;
+      if(window.CONFIG && CONFIG.units && CONFIG.units[key]){
+        const u = CONFIG.units[key];
+        w = Number(u.width) || w;
+        h = Number(u.height) || h;
+      }
+      const hw = w / 2;
+      return [
+        {x:-hw, y:-h},
+        {x: hw, y:-h},
+        {x: hw, y: 0},
+        {x:-hw, y: 0}
+      ];
+    }
+
+    function clonePoints(pts){
+      return pts.map(p => ({x: p.x, y: p.y}));
+    }
+
+    function loadLS(){
+      try{
+        const raw = localStorage.getItem(LS_KEY);
+        if(!raw) return;
+        const parsed = JSON.parse(raw);
+        if(parsed && parsed.version === 1 && parsed.units && typeof parsed.units === "object"){
+          state.skins = parsed.units;
+        }
+      }catch(_){
+        state.skins = {};
+      }
+    }
+
+    function saveLS(){
+      const payload = { version: 1, units: state.skins };
+      try{ localStorage.setItem(LS_KEY, JSON.stringify(payload)); }catch(_){ }
+    }
+
+    function selectUnit(key){
+      state.selectedKey = key;
+      state.selectedIdx = null;
+      const skin = state.skins[key];
+      if(skin && Array.isArray(skin.points) && skin.points.length){
+        state.points = clonePoints(skin.points);
+      }else{
+        state.points = defaultPointsForKey(key);
+      }
+      state.camera.x = 0;
+      state.camera.y = 0;
+      state.camera.scale = DEFAULT_SCALE;
+      updateUI();
+      render();
+      renderList();
+    }
+
+    function updateUI(){
+      const label = state.selectedKey ? `Selected: ${state.selectedKey}` : "No unit selected";
+      els.label.textContent = label;
+      els.statusUnit.textContent = state.selectedKey || "-";
+      els.statusPoints.textContent = String(state.points.length || 0);
+      els.statusZoom.textContent = state.camera.scale.toFixed(2);
+    }
+
+    function getCanvasPos(e){
+      const r = els.canvas.getBoundingClientRect();
+      const cw = els.canvas.width / state.dpr;
+      const ch = els.canvas.height / state.dpr;
+      const sx = (e.clientX - r.left) * (cw / r.width);
+      const sy = (e.clientY - r.top) * (ch / r.height);
+      return { x: sx, y: sy };
+    }
+
+    function toWorld(sx, sy){
+      const cw = els.canvas.width / state.dpr;
+      const ch = els.canvas.height / state.dpr;
+      return {
+        x: (sx - cw/2 - state.camera.x) / state.camera.scale,
+        y: (sy - ch/2 - state.camera.y) / state.camera.scale
+      };
+    }
+
+    function toScreen(wx, wy){
+      const cw = els.canvas.width / state.dpr;
+      const ch = els.canvas.height / state.dpr;
+      return {
+        x: (wx * state.camera.scale) + cw/2 + state.camera.x,
+        y: (wy * state.camera.scale) + ch/2 + state.camera.y
+      };
+    }
+
+    function hitPointIndex(pos){
+      for(let i=0;i<state.points.length;i++){
+        const p = state.points[i];
+        const sp = toScreen(p.x, p.y);
+        if(Math.hypot(sp.x - pos.x, sp.y - pos.y) <= PICK_PX){
+          return i;
+        }
+      }
+      return -1;
+    }
+
+    function pointSegDist(px, py, ax, ay, bx, by){
+      const abx = bx - ax, aby = by - ay;
+      const apx = px - ax, apy = py - ay;
+      const ab2 = abx*abx + aby*aby;
+      let t = ab2 > 0 ? (apx*abx + apy*aby) / ab2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const cx = ax + abx * t;
+      const cy = ay + aby * t;
+      const dx = px - cx, dy = py - cy;
+      return Math.hypot(dx, dy);
+    }
+
+    function insertPointAt(pos){
+      const wpos = toWorld(pos.x, pos.y);
+      if(state.points.length < 2){
+        state.points.push({x:wpos.x, y:wpos.y});
+        return;
+      }
+      let bestIdx = -1;
+      let bestDist = Infinity;
+      const n = state.points.length;
+      for(let i=0;i<n;i++){
+        const a = state.points[i];
+        const b = state.points[(i+1)%n];
+        const sa = toScreen(a.x, a.y);
+        const sb = toScreen(b.x, b.y);
+        const d = pointSegDist(pos.x, pos.y, sa.x, sa.y, sb.x, sb.y);
+        if(d < bestDist){
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      const TH = 20;
+      if(bestDist <= TH){
+        state.points.splice(bestIdx + 1, 0, {x:wpos.x, y:wpos.y});
+      }else{
+        state.points.push({x:wpos.x, y:wpos.y});
+      }
+    }
+
+    function deleteSelected(){
+      if(state.selectedIdx === null) return;
+      if(state.points.length <= 1) return;
+      state.points.splice(state.selectedIdx, 1);
+      state.selectedIdx = null;
+      updateUI();
+      render();
+    }
+
+    function commitCurrent(){
+      if(!state.selectedKey) return;
+      state.skins[state.selectedKey] = { points: clonePoints(state.points) };
+    }
+
+    function exportJSON(){
+      const payload = { version: 1, units: state.skins };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:"application/json"});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "unit-skins-mvp.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    }
+
+    function importJSON(file){
+      if(!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try{
+          const parsed = JSON.parse(reader.result);
+          if(!parsed || parsed.version !== 1 || !parsed.units){
+            return;
+          }
+          if(els.importFile.dataset.overwrite === "1"){
+            state.skins = parsed.units;
+          }else{
+            state.skins = Object.assign({}, state.skins, parsed.units);
+          }
+          saveLS();
+          if(state.selectedKey){
+            selectUnit(state.selectedKey);
+          }else{
+            render();
+          }
+        }catch(_){ }
+      };
+      reader.readAsText(file);
+    }
+
+    function resize(){
+      const r = els.canvas.getBoundingClientRect();
+      state.dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+      els.canvas.width = Math.floor(r.width * state.dpr);
+      els.canvas.height = Math.floor(r.height * state.dpr);
+      if(els.ctx){
+        els.ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+      }
+      render();
+    }
+
+    function drawGrid(){
+      if(!state.grid) return;
+      const ctx = els.ctx;
+      const cw = els.canvas.width / state.dpr;
+      const ch = els.canvas.height / state.dpr;
+      const scale = state.camera.scale;
+      let step = 50;
+      while(step * scale < 25) step *= 2;
+      while(step * scale > 200) step /= 2;
+      const left = -state.camera.x/scale - cw/2/scale;
+      const top  = -state.camera.y/scale - ch/2/scale;
+      const right = left + cw/scale;
+      const bottom = top + ch/scale;
+      const startX = Math.floor(left / step) * step;
+      const startY = Math.floor(top / step) * step;
+      ctx.save();
+      ctx.strokeStyle = "rgba(148,163,184,0.15)";
+      ctx.lineWidth = 1;
+      for(let x=startX; x<=right; x+=step){
+        const sx = toScreen(x, 0).x;
+        ctx.beginPath();
+        ctx.moveTo(sx, 0);
+        ctx.lineTo(sx, ch);
+        ctx.stroke();
+      }
+      for(let y=startY; y<=bottom; y+=step){
+        const sy = toScreen(0, y).y;
+        ctx.beginPath();
+        ctx.moveTo(0, sy);
+        ctx.lineTo(cw, sy);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
+    function render(){
+      if(!els.ctx) return;
+      const ctx = els.ctx;
+      const cw = els.canvas.width / state.dpr;
+      const ch = els.canvas.height / state.dpr;
+      ctx.clearRect(0,0,cw,ch);
+      ctx.fillStyle = "#0b1220";
+      ctx.fillRect(0,0,cw,ch);
+
+      drawGrid();
+
+      if(state.points.length){
+        ctx.save();
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        const first = toScreen(state.points[0].x, state.points[0].y);
+        ctx.moveTo(first.x, first.y);
+        for(let i=1;i<state.points.length;i++){
+          const sp = toScreen(state.points[i].x, state.points[i].y);
+          ctx.lineTo(sp.x, sp.y);
+        }
+        ctx.closePath();
+        ctx.stroke();
+
+        for(let i=0;i<state.points.length;i++){
+          const p = state.points[i];
+          const sp = toScreen(p.x, p.y);
+          ctx.beginPath();
+          ctx.arc(sp.x, sp.y, i === state.selectedIdx ? 6 : 4, 0, Math.PI*2);
+          ctx.fillStyle = i === state.selectedIdx ? "#ffffff" : "#38bdf8";
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      updateUI();
+    }
+
+    function zoomAt(pos, factor){
+      const before = toWorld(pos.x, pos.y);
+      state.camera.scale = Math.max(0.2, Math.min(10, state.camera.scale * factor));
+      const cw = els.canvas.width / state.dpr;
+      const ch = els.canvas.height / state.dpr;
+      state.camera.x = pos.x - (before.x * state.camera.scale) - cw/2;
+      state.camera.y = pos.y - (before.y * state.camera.scale) - ch/2;
+      render();
+    }
+
+    function bindEvents(){
+      els.ctx = els.canvas.getContext("2d", { alpha: true, desynchronized: true });
+
+      els.search.addEventListener("input", filterList);
+      els.gridCheck.addEventListener("change", () => { state.grid = els.gridCheck.checked; render(); });
+
+      els.btnSave.addEventListener("click", () => {
+        commitCurrent();
+        saveLS();
+      });
+      els.btnReset.addEventListener("click", () => {
+        if(!state.selectedKey) return;
+        delete state.skins[state.selectedKey];
+        selectUnit(state.selectedKey);
+        saveLS();
+      });
+      els.btnExport.addEventListener("click", () => { commitCurrent(); exportJSON(); });
+      els.btnImport.addEventListener("click", () => {
+        els.importFile.dataset.overwrite = els.overwriteCheck.checked ? "1" : "0";
+        els.importFile.click();
+      });
+      els.importFile.addEventListener("change", (e) => {
+        const f = e.target.files && e.target.files[0];
+        importJSON(f);
+        els.importFile.value = "";
+      });
+      els.btnBack.addEventListener("click", () => history.back());
+
+      els.canvas.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        els.canvas.setPointerCapture?.(e.pointerId);
+        const pos = getCanvasPos(e);
+        state.lastPos = pos;
+
+        if(e.button === 1 || state.spaceDown){
+          state.dragging = true;
+          state.dragMode = "pan";
+          return;
+        }
+
+        if(e.shiftKey){
+          insertPointAt(pos);
+          render();
+          return;
+        }
+
+        const hit = hitPointIndex(pos);
+        if(hit >= 0){
+          state.selectedIdx = hit;
+          state.dragging = true;
+          state.dragMode = "point";
+          render();
+        }else{
+          state.selectedIdx = null;
+          render();
+        }
+      });
+
+      els.canvas.addEventListener("pointermove", (e) => {
+        if(!state.dragging) return;
+        const pos = getCanvasPos(e);
+        const dx = pos.x - state.lastPos.x;
+        const dy = pos.y - state.lastPos.y;
+        state.lastPos = pos;
+
+        if(state.dragMode === "pan"){
+          state.camera.x += dx;
+          state.camera.y += dy;
+          render();
+        }else if(state.dragMode === "point" && state.selectedIdx !== null){
+          const w = toWorld(pos.x, pos.y);
+          state.points[state.selectedIdx] = { x: w.x, y: w.y };
+          render();
+        }
+      });
+
+      els.canvas.addEventListener("pointerup", (e) => {
+        if(state.dragging){
+          state.dragging = false;
+          state.dragMode = null;
+        }
+      });
+
+      els.canvas.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const pos = getCanvasPos(e);
+        const factor = e.deltaY > 0 ? 0.9 : 1.1;
+        zoomAt(pos, factor);
+      }, { passive: false });
+
+      window.addEventListener("keydown", (e) => {
+        if(e.target && (e.target.tagName === "INPUT" || e.target.tagName === "TEXTAREA")) return;
+        if(e.code === "Space"){
+          state.spaceDown = true;
+          e.preventDefault();
+        }
+        if(e.key === "Delete" || e.key === "Backspace"){
+          deleteSelected();
+        }
+      });
+      window.addEventListener("keyup", (e) => {
+        if(e.code === "Space"){
+          state.spaceDown = false;
+        }
+      });
+
+      window.addEventListener("resize", resize);
+    }
+
+    function init(){
+      loadLS();
+      initUnits();
+      bindEvents();
+      resize();
+      if(state.units.length){
+        selectUnit(state.units[0]);
+      }
+    }
+
+    init();
+  })();
+  </script>
+</body>
+</html>
