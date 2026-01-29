@@ -1,0 +1,2482 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Unit Blueprint Editor (RECLAIM 5.0)</title>
+  <style>
+    :root{
+      --bg:#0f172a;
+      --panel:#1e293b;
+      --panel2:#0b1222;
+      --accent:#38bdf8;
+      --danger:#f87171;
+      --text:#f1f5f9;
+      --muted:#94a3b8;
+      --border:#334155;
+    }
+    *{ box-sizing:border-box; }
+    html,body{ height:100%; }
+    body{
+      margin:0;
+      background:var(--bg);
+      color:var(--text);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+      overflow:hidden;
+      touch-action:none;
+      display:flex;
+      flex-direction:column;
+      height:100vh;
+    }
+    #canvas-container{
+      flex:1;
+      position:relative;
+      overflow:hidden;
+    }
+    #mainCanvas{
+      display:block;
+      width:100%;
+      height:100%;
+      touch-action:none;
+    }
+    .unit-icon canvas{
+      width:100%;
+      height:100%;
+      display:block;
+    }
+    .ui-overlay{
+      position:absolute;
+      top:10px;
+      left:10px;
+      pointer-events:none;
+      display:flex;
+      flex-direction:column;
+      gap:6px;
+      z-index:10;
+    }
+    .badge{
+      background: rgba(11, 18, 34, 0.85);
+      border:1px solid rgba(56,189,248,0.55);
+      color: var(--text);
+      padding:6px 10px;
+      font-size:11px;
+      border-radius:10px;
+      width:fit-content;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.22);
+    }
+    .badge b{ color: var(--accent); font-weight:700; }
+    .badge.skin{ display:none; }
+    .badge.skin.active{ display:block; }
+
+    .toast{
+      position:absolute;
+      left:50%;
+      bottom:92px;
+      transform:translateX(-50%);
+      background: rgba(11,18,34,0.92);
+      border:1px solid rgba(148,163,184,0.35);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:14px;
+      font-size:12px;
+      opacity:0;
+      pointer-events:none;
+      transition: opacity .18s ease;
+      z-index:20;
+      max-width:min(520px, calc(100vw - 24px));
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+    .toast.show{ opacity:1; }
+
+    .toolbar{
+      height:70px;
+      background: linear-gradient(180deg, rgba(30,41,59,1), rgba(15,23,42,1));
+      display:flex;
+      align-items:center;
+      justify-content:space-around;
+      padding:0 10px;
+      border-top:1px solid var(--border);
+    }
+    .tool-btn{
+      background:#334155;
+      border:1px solid #475569;
+      color:#e2e8f0;
+      border-radius:14px;
+      width:46px;
+      height:46px;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:18px;
+      transition: transform .06s ease, filter .18s ease, background .18s ease, border-color .18s ease;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .tool-btn:active{ transform: scale(0.94); }
+    .tool-btn.active{
+      background: var(--accent);
+      color:#071226;
+      border-color: rgba(56,189,248,0.9);
+      filter: saturate(1.1);
+      font-weight:900;
+    }
+    .tool-btn.magic{
+      background: linear-gradient(135deg, #a855f7, #38bdf8);
+      color: white;
+      border: none;
+    }
+    .tool-btn.danger{
+      color: var(--danger);
+    }
+
+    /* Modal */
+    .modal{
+      position:fixed;
+      inset:0;
+      background: rgba(0,0,0,0.84);
+      display:none;
+      justify-content:center;
+      align-items:center;
+      z-index:100;
+      padding:18px;
+    }
+    .modal.open{ display:flex; }
+    .modal-box{
+      background: rgba(30,41,59,0.98);
+      width:100%;
+      max-width:560px;
+      border-radius:18px;
+      padding:18px;
+      border:1px solid rgba(71,85,105,0.75);
+      box-shadow: 0 14px 34px rgba(0,0,0,0.4);
+    }
+    .modal-title{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      margin-bottom:6px;
+    }
+    .modal-title h3{
+      margin:0;
+      font-size:16px;
+      color: var(--accent);
+    }
+    .modal-sub{
+      margin:0 0 10px 0;
+      font-size:12px;
+      color: var(--muted);
+      line-height:1.35;
+    }
+    textarea{
+      width:100%;
+      height:220px;
+      background: #05070c;
+      color: #4ade80;
+      font-family: inherit;
+      font-size:12px;
+      padding:12px;
+      border-radius:12px;
+      border:1px solid rgba(51,65,85,0.9);
+      margin: 10px 0;
+      outline:none;
+      resize: none;
+    }
+    .row{
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .btn{
+      border:none;
+      border-radius:14px;
+      padding:12px 14px;
+      font-weight:800;
+      cursor:pointer;
+      user-select:none;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .btn.primary{ background: var(--accent); color:#071226; flex:1; }
+    .btn.secondary{ background:#475569; color:#e2e8f0; }
+    .btn.ghost{ background:transparent; color: var(--muted); border:1px solid rgba(148,163,184,0.22); }
+    .layer-list{
+      margin:10px 0 12px 0;
+      max-height: 320px;
+      overflow:auto;
+      display:flex;
+      flex-direction:column;
+      gap:8px;
+      padding-right:4px;
+    }
+    .layer-item{
+      display:flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 12px;
+      border-radius:16px;
+      border:1px solid rgba(51,65,85,0.9);
+      background: rgba(15,23,42,0.65);
+      cursor:pointer;
+      user-select:none;
+    }
+    .layer-item.active{
+      border-color: rgba(56,189,248,0.75);
+      background: rgba(56,189,248,0.10);
+    }
+    .swatch{
+      width:14px; height:14px; border-radius:4px;
+      border:1px solid rgba(255,255,255,0.12);
+      flex:0 0 auto;
+    }
+    .layer-name{ flex:1; font-size:13px; color:#e2e8f0; }
+    .xbtn{
+      background: transparent;
+      border: none;
+      color: rgba(148,163,184,0.9);
+      font-size:16px;
+      cursor:pointer;
+      padding:6px 8px;
+      border-radius:10px;
+    }
+    .xbtn:active{ transform: scale(0.95); }
+
+    /* Scrollbar */
+    .layer-list::-webkit-scrollbar{ width:10px; }
+    .layer-list::-webkit-scrollbar-thumb{ background: rgba(148,163,184,0.25); border-radius:999px; }
+    .layer-list::-webkit-scrollbar-track{ background: rgba(0,0,0,0.1); }
+
+    /* Unit data browser */
+    .unit-browser{
+      position:absolute;
+      top:12px;
+      right:12px;
+      width:min(360px, 92vw);
+      max-height: calc(100vh - 110px);
+      background: rgba(15,23,42,0.92);
+      border:1px solid rgba(71,85,105,0.7);
+      border-radius:16px;
+      box-shadow: 0 16px 30px rgba(0,0,0,0.35);
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+      pointer-events:auto;
+      z-index:30;
+    }
+    .unit-browser-header{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      padding:10px 12px;
+      background: rgba(30,41,59,0.96);
+      border-bottom:1px solid rgba(51,65,85,0.8);
+      font-size:13px;
+      font-weight:800;
+    }
+    .unit-browser-actions{
+      display:flex;
+      gap:6px;
+      align-items:center;
+    }
+    .mini-btn{
+      background:#1f2937;
+      border:1px solid #334155;
+      color:#e2e8f0;
+      border-radius:10px;
+      padding:6px 10px;
+      font-size:11px;
+      cursor:pointer;
+    }
+    .mini-btn.active{
+      background: var(--accent);
+      color:#071226;
+      border-color: rgba(56,189,248,0.95);
+      font-weight:800;
+    }
+    .mini-btn:active{ transform: scale(0.96); }
+    .unit-tabs{
+      display:flex;
+      gap:6px;
+      padding:8px 10px;
+      background: rgba(15,23,42,0.9);
+      border-bottom:1px solid rgba(51,65,85,0.7);
+    }
+    .unit-tab-btn{
+      flex:1;
+      background:#0b1222;
+      border:1px solid rgba(51,65,85,0.9);
+      color:#cbd5f5;
+      border-radius:10px;
+      padding:6px 8px;
+      font-size:11px;
+      font-weight:700;
+      cursor:pointer;
+    }
+    .unit-tab-btn.active{
+      background: var(--accent);
+      color:#071226;
+      border-color: rgba(56,189,248,0.95);
+    }
+    .unit-list{
+      padding:10px;
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:8px;
+      overflow:auto;
+    }
+    .unit-card{
+      background: rgba(11,18,34,0.85);
+      border:1px solid rgba(51,65,85,0.85);
+      border-radius:12px;
+      padding:8px;
+      display:flex;
+      gap:8px;
+      align-items:center;
+      cursor:pointer;
+      transition: border-color .15s ease, transform .08s ease;
+    }
+    .unit-card:hover{
+      border-color: rgba(56,189,248,0.6);
+      transform: translateY(-1px);
+    }
+    .unit-icon{
+      width:46px;
+      height:32px;
+      border-radius:8px;
+      background:#0b1222;
+      border:1px solid rgba(51,65,85,0.8);
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      flex:0 0 auto;
+    }
+    .unit-card-title{
+      font-size:12px;
+      font-weight:800;
+      color:#e2e8f0;
+    }
+    .unit-card-sub{
+      font-size:10px;
+      color: var(--muted);
+    }
+    .unit-detail{
+      position: fixed;
+      left: 50%;
+      bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      width: min(980px, calc(100vw - 24px));
+      max-height: min(72vh, 560px);
+      transform: translateX(-50%) translateY(110%);
+      transition: transform 160ms ease, opacity 160ms ease;
+      opacity: 0;
+      pointer-events: none;
+
+      display: flex;
+      flex-direction: column;
+
+      background: rgba(11,18,34,0.92);
+      border: 1px solid rgba(51,65,85,0.72);
+      border-radius: 14px;
+      overflow: hidden;
+      z-index: 9999;
+      box-shadow: 0 18px 70px rgba(0,0,0,0.55);
+    }
+    .unit-detail.open{
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .unit-detail-header{
+      flex: 0 0 auto;  /* 고정 크기 (스크롤 안 됨) */
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:10px;
+      padding: 12px 12px 8px 12px;  /* 좌우 패딩 추가 */
+      border-bottom:1px solid rgba(51,65,85,0.75);
+      margin-bottom:0;
+    }
+    .unit-detail-title{
+      font-size:15px;
+      font-weight:800;
+    }
+    .unit-detail-sub{
+      font-size:11px;
+      color: var(--muted);
+    }
+    .detail-actions{
+      flex: 0 0 auto;  /* 고정 크기 (스크롤 안 됨) */
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+      padding: 8px 12px;  /* 좌우 패딩 추가 */
+      margin-bottom:0;
+    }
+    .detail-ref-controls{
+      flex: 0 0 auto;  /* 고정 크기 (스크롤 안 됨) */
+      display:flex;
+      flex-wrap:wrap;
+      gap:8px;
+      align-items:center;
+      padding: 0 12px 10px 12px;  /* 좌우 패딩 추가 */
+      margin-bottom:0;
+      font-size:11px;
+      color: var(--muted);
+    }
+    .detail-ref-controls label{
+      display:flex;
+      align-items:center;
+      gap:6px;
+      background: rgba(11,18,34,0.7);
+      border:1px solid rgba(51,65,85,0.7);
+      border-radius:10px;
+      padding:6px 8px;
+    }
+    .detail-ref-controls-group{
+      display:flex;
+      gap:6px;
+      flex-wrap:wrap;
+    }
+    .detail-ref-controls input[type="range"]{
+      width:120px;
+    }
+    .unit-fields{
+      flex: 1 1 auto;
+      min-height: 150px;   /* 최소 높이 보장 */
+      overflow: auto;  /* 패널 스크롤은 여기서 */
+      padding: 12px 12px 14px;
+      display:grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap:8px;
+      align-content: start;  /* 그리드 아이템을 상단부터 정렬 */
+    }
+    .field-row{
+      background: rgba(11,18,34,0.9);
+      border:1px solid rgba(51,65,85,0.85);
+      border-radius:12px;
+      padding:8px;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:8px;
+    }
+    .field-row label{
+      font-size:11px;
+      color: var(--muted);
+      font-weight:700;
+    }
+    .field-row input{
+      width:90px;
+      background:#05070c;
+      color:#e2e8f0;
+      border:1px solid rgba(71,85,105,0.9);
+      border-radius:8px;
+      padding:6px 8px;
+      font-size:12px;
+      outline:none;
+    }
+    .patch-map{
+      margin-top:12px;
+      padding:10px;
+      border:1px solid rgba(51,65,85,0.8);
+      border-radius:12px;
+      background: rgba(11,18,34,0.7);
+    }
+    .patch-map-title{
+      font-size:12px;
+      font-weight:800;
+      color:#e2e8f0;
+      margin-bottom:6px;
+    }
+    .patch-map-grid{
+      display:grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap:8px;
+    }
+    .patch-map label{
+      display:flex;
+      flex-direction:column;
+      gap:4px;
+      font-size:11px;
+      color: var(--muted);
+    }
+    .patch-map select{
+      background:#0b1222;
+      color:#e2e8f0;
+      border:1px solid rgba(51,65,85,0.85);
+      border-radius:8px;
+      padding:6px 8px;
+      font-size:12px;
+    }
+    .patch-map input[type="color"]{
+      width:100%;
+      height:32px;
+      border:none;
+      background:transparent;
+      padding:0;
+      cursor:pointer;
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="mainCanvas"></canvas>
+
+    <div class="ui-overlay">
+      <div id="status-coord" class="badge"><b>COORD</b>: (0, 0)</div>
+      <div id="status-mode" class="badge"><b>MODE</b>: VIEW</div>
+      <div id="status-zoom" class="badge"><b>ZOOM</b>: 100%</div>
+      <div id="status-skin" class="badge skin"><b>SKIN</b>: -</div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <!-- Unit Data Browser -->
+    <div id="unit-browser" class="unit-browser">
+      <div class="unit-browser-header">
+        <div>유닛 데이터</div>
+        <div class="unit-browser-actions">
+          <button id="btnPatchModal" class="mini-btn">패치</button>
+        </div>
+      </div>
+      <div class="unit-tabs">
+        <button class="unit-tab-btn active" data-tab="ground">지상</button>
+        <button class="unit-tab-btn" data-tab="drone">드론</button>
+        <button class="unit-tab-btn" data-tab="air">공중</button>
+      </div>
+      <div id="unit-list" class="unit-list"></div>
+    </div>
+
+    <!-- Unit Detail Slide Panel -->
+    <div id="unit-detail" class="unit-detail" aria-hidden="true">
+      <div class="unit-detail-header">
+        <div>
+          <div id="detail-name" class="unit-detail-title">유닛 선택</div>
+          <div id="detail-sub" class="unit-detail-sub"></div>
+        </div>
+        <button id="detail-close" class="xbtn">✕</button>
+      </div>
+      <div class="detail-actions">
+        <button id="btnSkinEdit" class="mini-btn">스킨 편집</button>
+        <button id="btnSkinSave" class="mini-btn">스킨 저장</button>
+        <button id="btnSkinReset" class="mini-btn">스킨 초기화</button>
+      </div>
+      <div class="detail-ref-controls">
+        <label>
+          <input type="checkbox" id="refToggle" checked>
+          <span>원본 보기</span>
+        </label>
+        <label>
+          <span>원본 투명도</span>
+          <input type="range" id="refAlpha" min="0" max="1" step="0.05" value="0.35">
+        </label>
+        <div class="detail-ref-controls-group">
+          <button class="mini-btn active" data-bg="dark">어두움</button>
+          <button class="mini-btn" data-bg="mid">중간</button>
+          <button class="mini-btn" data-bg="light">밝음</button>
+        </div>
+      </div>
+      <div id="detail-fields" class="unit-fields"></div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <button class="tool-btn" id="btnBack" title="BACK" onclick="window.location.href = '../index.html#lobby';">&larr;</button>
+    <button class="tool-btn magic" id="btnMagic" title="HTML 매직 임포트">✨</button>
+    <button class="tool-btn" id="btnLayers" title="레이어 관리">📚</button>
+    <button class="tool-btn" id="btnAdd" title="점 추가">➕</button>
+    <button class="tool-btn active" id="btnSnap" title="스냅">🧲</button>
+    <button class="tool-btn" id="btnExport" title="저장/불러오기">💾</button>
+    <button class="tool-btn danger" id="btnDelete" title="점 삭제">🗑️</button>
+  </div>
+
+  <!-- 매직 임포트 -->
+  <div id="magicModal" class="modal">
+    <div class="modal-box">
+      <div class="modal-title">
+        <h3>✨ HTML 매직 임포트</h3>
+        <button class="xbtn" data-close="magicModal">✕</button>
+      </div>
+      <p class="modal-sub">
+        Canvas 드로잉 코드가 포함된 HTML을 붙여넣으세요.<br/>
+        (현재 버전은 간단 키워드 매칭 기반이며, 필요하면 추출 규칙을 확장하면 됨)
+      </p>
+      <textarea id="magicInput" placeholder="<html>...</html> 코드를 붙여넣으세요."></textarea>
+      <div class="row">
+        <button class="btn primary" id="btnMagicRun">레이어 추출</button>
+        <button class="btn secondary" data-close="magicModal">취소</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 레이어 관리 -->
+  <div id="layerModal" class="modal">
+    <div class="modal-box">
+      <div class="modal-title">
+        <h3>📚 부품 레이어</h3>
+        <button class="xbtn" data-close="layerModal">✕</button>
+      </div>
+      <div id="layerList" class="layer-list"></div>
+      <div class="row">
+        <button class="btn secondary" id="btnAddLayer">+ 새 레이어</button>
+        <button class="btn primary" data-close="layerModal">닫기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 내보내기 -->
+  <div id="exportModal" class="modal">
+    <div class="modal-box">
+      <div class="modal-title">
+        <h3>💾 데이터 저장/불러오기</h3>
+        <button class="xbtn" data-close="exportModal">✕</button>
+      </div>
+      <p class="modal-sub">
+        아래 JSON을 복사해서 저장하거나, 붙여넣어 불러오세요. (클립보드/다운로드 지원)
+      </p>
+      <textarea id="exportArea"></textarea>
+      <div class="row">
+        <button class="btn secondary" id="btnImport">불러오기</button>
+        <button class="btn secondary" id="btnDownload">다운로드</button>
+        <button class="btn primary" id="btnCopy">복사</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn ghost" id="btnSaveLS" style="flex:1;">로컬 저장</button>
+        <button class="btn ghost" id="btnLoadLS" style="flex:1;">로컬 불러오기</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 유닛/맵 패치 -->
+  <div id="patchModal" class="modal">
+    <div class="modal-box">
+      <div class="modal-title">
+        <h3>🧩 유닛/맵 패치</h3>
+        <button class="xbtn" data-close="patchModal">✕</button>
+      </div>
+      <p class="modal-sub">
+        유닛/맵 수정값을 JSON으로 저장하거나 불러옵니다. (reclaim_unit_patch_v1)
+      </p>
+      <textarea id="patchArea" placeholder='{"units":{},"maps":{}}'></textarea>
+      <div class="row">
+        <button class="btn secondary" id="btnPatchImport">가져오기</button>
+        <button class="btn secondary" id="btnPatchCopy">내보내기(복사)</button>
+        <button class="btn primary" id="btnPatchRefresh">JSON 갱신</button>
+      </div>
+      <div class="row" style="margin-top:10px;">
+        <button class="btn ghost" id="btnPatchSave" style="flex:1;">로컬 저장</button>
+        <button class="btn ghost" id="btnPatchLoad" style="flex:1;">로컬 불러오기</button>
+      </div>
+      <div class="patch-map">
+        <div class="patch-map-title">맵 테마 빠른 수정</div>
+        <div class="row">
+          <label style="flex:1;">
+            <span>맵 선택</span>
+            <select id="mapSelect"></select>
+          </label>
+        </div>
+        <div class="patch-map-grid" style="margin-top:8px;">
+          <label>
+            <span>Sky</span>
+            <input type="color" id="mapSky" />
+          </label>
+          <label>
+            <span>Ground</span>
+            <input type="color" id="mapGround" />
+          </label>
+          <label>
+            <span>GroundDark</span>
+            <input type="color" id="mapGroundDark" />
+          </label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function(){
+    "use strict";
+
+    class MagicBlueprintApp {
+      constructor() {
+        this.canvas = document.getElementById("mainCanvas");
+        this.ctx = this.canvas.getContext("2d", { alpha: true, desynchronized: true });
+
+        this.layers = [
+          { name:"Ground", color:"#64748b", points:[{x:-200,y:0},{x:200,y:0},{x:200,y:8},{x:-200,y:8}] }
+        ];
+        this.activeIdx = 0;
+        this._refUnitCache = Object.create(null);
+
+        this.camera = { x: 0, y: 0, scale: 2.0 };
+        this.snap = { enabled: true, step: 5 };
+
+        this.selectedPoint = null; // { idx }
+        this.isAddMode = false;
+        this.dragLayerIdx = null;
+        this.mode = "edit";
+        window.app = this;
+
+        // Pointer tracking (pinch/drag/pan)
+        this.ptr = {
+          down: false,
+          mode: "idle", // "idle" | "pan" | "drag" | "pinch"
+          last: { x:0, y:0 },
+          map: new Map(), // pointerId -> {x,y}
+          pinch: { startDist: 0, startScale: 1, anchorW: {x:0,y:0} }
+        };
+
+        // Render control
+        this.dpr = 1;
+        this.dirty = true;
+        this.rafId = 0;
+        this._lastStatusAt = 0;
+
+        // Cached grid params
+        this._gridCache = { key:"", off:null, w:0, h:0, step:0, minor:0 };
+
+        this.bindUI();
+        // ensure status text matches internal state (HTML defaults to VIEW)
+        this.setModeText();
+        this.initEvents();
+        this.resize();
+        this.loop();
+      }
+
+      bindUI(){
+        const $ = (id)=>document.getElementById(id);
+
+        this.elStatusCoord = $("status-coord");
+        this.elStatusMode  = $("status-mode");
+        this.elStatusZoom  = $("status-zoom");
+        this.elToast       = $("toast");
+
+        this.btnMagic  = $("btnMagic");
+        this.btnLayers = $("btnLayers");
+        this.btnAdd    = $("btnAdd");
+        this.btnSnap   = $("btnSnap");
+        this.btnExport = $("btnExport");
+        this.btnDelete = $("btnDelete");
+
+        this.btnMagicRun = $("btnMagicRun");
+        this.btnAddLayer = $("btnAddLayer");
+
+        this.btnImport   = $("btnImport");
+        this.btnCopy     = $("btnCopy");
+        this.btnDownload = $("btnDownload");
+        this.btnSaveLS   = $("btnSaveLS");
+        this.btnLoadLS   = $("btnLoadLS");
+
+        this.btnMagic.addEventListener("click", ()=>this.openModal("magicModal"));
+        this.btnLayers.addEventListener("click", ()=>this.openLayerModal());
+        this.btnAdd.addEventListener("click", ()=>this.toggleAddMode());
+        this.btnSnap.addEventListener("click", ()=>this.toggleSnap());
+        this.btnExport.addEventListener("click", ()=>this.openExportModal());
+        this.btnDelete.addEventListener("click", ()=>this.deletePoint());
+
+        this.btnMagicRun.addEventListener("click", ()=>this.processMagicHTML());
+        this.btnAddLayer.addEventListener("click", ()=>this.addLayer());
+
+        this.btnImport.addEventListener("click", ()=>this.importJSON());
+        this.btnCopy.addEventListener("click", ()=>this.copyJSON());
+        this.btnDownload.addEventListener("click", ()=>this.downloadJSON());
+        this.btnSaveLS.addEventListener("click", ()=>this.saveLocal());
+        this.btnLoadLS.addEventListener("click", ()=>this.loadLocal());
+
+        // modal close buttons
+        document.body.addEventListener("click", (e)=>{
+          const t = e.target;
+          if(t && t.dataset && t.dataset.close){
+            this.closeModal(t.dataset.close);
+          }
+          // click outside modal-box closes
+          if(t.classList && t.classList.contains("modal")){
+            t.classList.remove("open");
+          }
+        });
+      }
+
+      initEvents(){
+        window.addEventListener("resize", ()=>this.resize());
+
+        // Pointer Events unify mouse/touch/pen
+        this.canvas.addEventListener("pointerdown", (e)=>this.onPointerDown(e));
+        window.addEventListener("pointermove", (e)=>this.onPointerMove(e));
+        window.addEventListener("pointerup", (e)=>this.onPointerUp(e));
+        window.addEventListener("pointercancel", (e)=>this.onPointerUp(e));
+
+        this.canvas.addEventListener("wheel", (e)=>this.onWheel(e), { passive:false });
+      }
+
+      resize(){
+        const rect = this.canvas.getBoundingClientRect();
+        const toolbarH = 70;
+        const w = Math.max(1, window.innerWidth);
+        const h = Math.max(1, window.innerHeight - toolbarH);
+
+        // DPR aware
+        this.dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
+        this.canvas.style.width  = w + "px";
+        this.canvas.style.height = h + "px";
+        this.canvas.width  = Math.floor(w * this.dpr);
+        this.canvas.height = Math.floor(h * this.dpr);
+
+        // Reset transform to dpr scale
+        this.ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+
+        this.invalidate(true);
+      }
+
+      invalidate(force=false){
+        this.dirty = true;
+        if(force) this._gridCache.key = ""; // bust grid cache
+      }
+
+      loop(){
+        this.rafId = requestAnimationFrame(()=>this.loop());
+        if(!this.dirty) return;
+        this.dirty = false;
+        this.render();
+      }
+
+      // --- 좌표 변환 ---
+      toWorld(sx, sy){
+        // sx, sy are CSS pixels
+        const cw = this.canvas.width / this.dpr;
+        const ch = this.canvas.height / this.dpr;
+        return {
+          x: (sx - cw/2 - this.camera.x) / this.camera.scale,
+          y: (sy - ch/2 - this.camera.y) / this.camera.scale
+        };
+      }
+      toScreen(wx, wy){
+        const cw = this.canvas.width / this.dpr;
+        const ch = this.canvas.height / this.dpr;
+        return {
+          x: (wx * this.camera.scale) + cw/2 + this.camera.x,
+          y: (wy * this.camera.scale) + ch/2 + this.camera.y
+        };
+      }
+
+      // --- UI helpers ---
+      toast(msg, ms=1200){
+        const el = this.elToast;
+        el.textContent = msg;
+        el.classList.add("show");
+        clearTimeout(this._toastT);
+        this._toastT = setTimeout(()=>el.classList.remove("show"), ms);
+      }
+
+      openModal(id){
+        document.getElementById(id).classList.add("open");
+      }
+      closeModal(id){
+        document.getElementById(id).classList.remove("open");
+      }
+
+      setModeText(){
+        const mode = this.isAddMode ? "ADD" : String(this.mode || "edit").toUpperCase();
+        this.elStatusMode.innerHTML = `<b>MODE</b>: ${mode}`;
+        this.btnAdd.classList.toggle("active", this.isAddMode);
+      }
+
+      // --- Magic Import (간단 키워드 매칭 버전) ---
+      processMagicHTML(){
+        const html = (document.getElementById("magicInput").value || "").trim();
+        if(!html){
+          this.toast("붙여넣은 코드가 없음");
+          return;
+        }
+
+        const unitMap = {
+          sedan: { name:"Sedan (Civilian)", color:"#94a3b8", points:[
+            {x:-25,y:-2},{x:25,y:-2},{x:25,y:-12},
+            {x:18,y:-12},{x:12,y:-20},{x:-8,y:-20},
+            {x:-15,y:-12},{x:-25,y:-12}
+          ]},
+          suv: { name:"SUV (Civilian)", color:"#475569", points:[
+            {x:-28,y:-3},{x:28,y:-3},{x:28,y:-15},
+            {x:18,y:-15},{x:18,y:-26},{x:-20,y:-26},
+            {x:-20,y:-15},{x:-28,y:-15}
+          ]},
+          civ_a: { name:"Walker A", color:"#94a3b8", points:[
+            {x:-5,y:0},{x:5,y:0},{x:5,y:-20},{x:0,y:-25},{x:-5,y:-20}
+          ]},
+          civ_b: { name:"Walker B (Bag)", color:"#64748b", points:[
+            {x:-5,y:0},{x:5,y:0},{x:5,y:-20},{x:-5,y:-20}
+          ]},
+          crowd: { name:"Crowd Group", color:"#475569", points:[
+            {x:-15,y:0},{x:15,y:0},{x:15,y:-25},{x:-15,y:-25}
+          ]}
+        };
+
+        const newLayers = [];
+        for(const key of Object.keys(unitMap)){
+          if(html.includes("'" + key + "'") || html.includes('"' + key + '"')){
+            newLayers.push(JSON.parse(JSON.stringify(unitMap[key])));
+          }
+        }
+
+        if(newLayers.length){
+          this.layers = newLayers;
+          this.activeIdx = 0;
+          this.selectedPoint = null;
+          this.camera.x = 0; this.camera.y = 0; this.camera.scale = 2.2;
+          this.setModeText();
+          this.invalidate(true);
+          this.closeModal("magicModal");
+          this.toast(`${newLayers.length}개 레이어 추출 완료`);
+        }else{
+          this.toast("유효한 유닛 키워드를 찾지 못함");
+        }
+      }
+
+      // --- Rendering ---
+      render(){
+        const ctx = this.ctx;
+        const cw = this.canvas.width / this.dpr;
+        const ch = this.canvas.height / this.dpr;
+
+        ctx.clearRect(0,0,cw,ch);
+
+        const st = (typeof window !== "undefined") ? window.REC_UNIT_EDITOR_STATE : null;
+        const bgKey = st && st.editorBg ? st.editorBg : "dark";
+        let bgColor = "#050a14";
+        if(bgKey === "mid") bgColor = "#1f2937";
+        else if(bgKey === "light") bgColor = "#cbd5e1";
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, cw, ch);
+
+        this.drawGridCached(ctx, cw, ch);
+        if (typeof this.drawReferenceUnit === "function") {
+          this.drawReferenceUnit(ctx, cw, ch);
+        }
+        this.drawLayers(ctx);
+
+        // status throttled
+        const now = performance.now();
+        if(now - this._lastStatusAt > 60){
+          this._lastStatusAt = now;
+          this.elStatusZoom.innerHTML = `<b>ZOOM</b>: ${Math.round(this.camera.scale * 100)}%`;
+        }
+      }
+
+      drawGridCached(ctx, cw, ch){
+        // Grid depends on: cw,ch,camera.x,y,scale
+        const stepWorld = 50;
+        const minorWorld = 10;
+        const step = stepWorld * this.camera.scale;
+        const minor = minorWorld * this.camera.scale;
+
+        const key = [
+          Math.round(cw), Math.round(ch),
+          Math.round(this.camera.x), Math.round(this.camera.y),
+          Math.round(this.camera.scale*1000),
+          Math.round(step), Math.round(minor)
+        ].join("|");
+
+        if(!this._gridCache.off || this._gridCache.key !== key){
+          this._gridCache.key = key;
+          this._gridCache.w = cw;
+          this._gridCache.h = ch;
+
+          const off = document.createElement("canvas");
+          off.width = Math.max(1, Math.floor(cw));
+          off.height = Math.max(1, Math.floor(ch));
+          const octx = off.getContext("2d");
+
+          octx.clearRect(0,0,cw,ch);
+
+          // minor grid (light)
+          if(minor >= 6){
+            octx.strokeStyle = "rgba(30,41,59,0.35)";
+            octx.lineWidth = 1;
+
+            const startX = (cw/2 + this.camera.x) % minor;
+            const startY = (ch/2 + this.camera.y) % minor;
+
+            for(let x = startX; x < cw; x += minor){
+              octx.beginPath(); octx.moveTo(x,0); octx.lineTo(x,ch); octx.stroke();
+            }
+            for(let y = startY; y < ch; y += minor){
+              octx.beginPath(); octx.moveTo(0,y); octx.lineTo(cw,y); octx.stroke();
+            }
+          }
+
+          // major grid
+          octx.strokeStyle = "rgba(30,41,59,0.85)";
+          octx.lineWidth = 1;
+
+          const startX2 = (cw/2 + this.camera.x) % step;
+          const startY2 = (ch/2 + this.camera.y) % step;
+
+          for(let x = startX2; x < cw; x += step){
+            octx.beginPath(); octx.moveTo(x,0); octx.lineTo(x,ch); octx.stroke();
+          }
+          for(let y = startY2; y < ch; y += step){
+            octx.beginPath(); octx.moveTo(0,y); octx.lineTo(cw,y); octx.stroke();
+          }
+
+          // axis
+          const center = this.toScreen(0,0);
+          octx.strokeStyle = "rgba(56,189,248,0.9)";
+          octx.beginPath(); octx.moveTo(0, center.y); octx.lineTo(cw, center.y); octx.stroke();
+          octx.strokeStyle = "rgba(248,113,113,0.85)";
+          octx.beginPath(); octx.moveTo(center.x, 0); octx.lineTo(center.x, ch); octx.stroke();
+
+          this._gridCache.off = off;
+        }
+
+        ctx.drawImage(this._gridCache.off, 0, 0);
+      }
+
+      drawLayers(ctx){
+        const active = this.activeIdx;
+
+        for(let l=0; l<this.layers.length; l++){
+          const layer = this.layers[l];
+          if(!layer.points || layer.points.length < 2) continue;
+
+          const pts = layer.points.map(p=>this.toScreen(p.x,p.y));
+
+          // polygon/shape
+          ctx.beginPath();
+          ctx.moveTo(pts[0].x, pts[0].y);
+          for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i].x, pts[i].y);
+          ctx.closePath();
+
+          const isActive = (l === active);
+
+          ctx.fillStyle = layer.color;
+          ctx.globalAlpha = isActive ? 0.28 : 0.10;
+          ctx.fill();
+
+          ctx.setLineDash(isActive ? [] : [6,6]);
+          ctx.strokeStyle = layer.color;
+          ctx.lineWidth = isActive ? 2 : 1;
+          ctx.globalAlpha = 1;
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // points only for active
+          if(isActive){
+            for(let i=0;i<pts.length;i++){
+              const p = pts[i];
+              const sel = this.selectedPoint && this.selectedPoint.idx === i;
+
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, sel ? 6 : 4, 0, Math.PI*2);
+              ctx.fillStyle = sel ? "#ffffff" : layer.color;
+              ctx.fill();
+
+              // coord text (light)
+              ctx.fillStyle = "rgba(255,255,255,0.38)";
+              ctx.font = "10px ui-monospace, monospace";
+              const wx = Math.round(layer.points[i].x);
+              const wy = Math.round(layer.points[i].y);
+              ctx.fillText(`${wx},${wy}`, p.x + 8, p.y - 8);
+            }
+          }
+        }
+      }
+
+      // --- Interaction ---
+      onPointerDown(e){
+        e.preventDefault();
+        // keep receiving moves even if cursor leaves canvas
+        this.canvas.setPointerCapture?.(e.pointerId);
+        const pos = this.getPos(e);
+        this.ptr.map.set(e.pointerId, { x:pos.x, y:pos.y });
+
+        const count = this.ptr.map.size;
+        // pos already computed
+
+        if(count === 2){
+          // start pinch
+          const pts = Array.from(this.ptr.map.values());
+          const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          this.ptr.mode = "pinch";
+          this.ptr.pinch.startDist = Math.max(1, dist);
+          this.ptr.pinch.startScale = this.camera.scale;
+
+          // anchor = midpoint in world space, keep it stable during zoom
+          const mid = { x:(pts[0].x + pts[1].x)/2, y:(pts[0].y + pts[1].y)/2 };
+          this.ptr.pinch.anchorW = this.toWorld(mid.x, mid.y);
+
+          this.ptr.down = true;
+          this.ptr.last = pos;
+          this.invalidate();
+          return;
+        }
+
+        // single pointer
+        this.ptr.down = true;
+        this.ptr.last = pos;
+
+        const world = this.toWorld(pos.x, pos.y);
+
+        // hit test points (screen-space for stable picking)
+        const layer = this.layers[this.activeIdx];
+        if(!layer || !Array.isArray(layer.points) || layer.points.length === 0){
+          this.ptr.mode = "pan";
+          this.selectedPoint = null;
+          this.dragLayerIdx = null;
+          this.invalidate();
+          return;
+        }
+        // pick radius in SCREEN pixels (stable across zoom)
+        const PICK_PX = 16;
+        let hit = null;
+        for(let i=0;i<layer.points.length;i++){
+          const p = layer.points[i];
+          const sp = this.toScreen(p.x, p.y);
+          if(Math.hypot(sp.x - pos.x, sp.y - pos.y) <= PICK_PX){
+            hit = i; break;
+          }
+        }
+
+        if(hit !== null){
+          this.selectedPoint = { idx: hit };
+          this.ptr.mode = "drag";
+          this.dragLayerIdx = null;
+        }else if(this.isAddMode){
+          this.tryInsertPoint(world);
+          this.ptr.mode = "idle";
+        }else{
+          const polyHit = this.hitTestPolygonScreen(pos);
+          if(polyHit !== null){
+            this.activeIdx = polyHit;
+            this.selectedPoint = null;
+            this.ptr.mode = "drag-layer";
+            this.dragLayerIdx = polyHit;
+          }else{
+            this.ptr.mode = "pan";
+            this.selectedPoint = null;
+            this.dragLayerIdx = null;
+          }
+        }
+
+        this.invalidate();
+      }
+
+      onPointerMove(e){
+        if(!this.ptr.map.has(e.pointerId)) return;
+        const pos = this.getPos(e);
+        this.ptr.map.set(e.pointerId, { x:pos.x, y:pos.y });
+
+        if(this.ptr.mode === "pinch"){
+          if(this.ptr.map.size < 2) return;
+
+          const pts = Array.from(this.ptr.map.values());
+          const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+          const ratio = dist / this.ptr.pinch.startDist;
+
+          const newScale = this.clamp(this.ptr.pinch.startScale * ratio, 0.2, 10);
+          // zoom around anchor
+          this.zoomAroundWorldAnchor(this.ptr.pinch.anchorW, newScale, pts);
+
+          this.invalidate();
+          return;
+        }
+
+        if(!this.ptr.down) return;
+
+        const dx = pos.x - this.ptr.last.x;
+        const dy = pos.y - this.ptr.last.y;
+
+        if(this.ptr.mode === "pan"){
+          this.camera.x += dx;
+          this.camera.y += dy;
+          this.invalidate();
+        }else if(this.ptr.mode === "drag-layer" && this.dragLayerIdx !== null){
+          const layer = this.layers[this.dragLayerIdx];
+          if(layer && Array.isArray(layer.points)){
+            const wx = dx / this.camera.scale;
+            const wy = dy / this.camera.scale;
+            layer.points.forEach(p => { p.x += wx; p.y += wy; });
+          }
+          this.invalidate();
+        }else if(this.ptr.mode === "drag" && this.selectedPoint){
+          const pt = this.layers[this.activeIdx].points[this.selectedPoint.idx];
+          pt.x += dx / this.camera.scale;
+          pt.y += dy / this.camera.scale;
+
+          const now = performance.now();
+          if(now - this._lastStatusAt > 60){
+            this.elStatusCoord.innerHTML = `<b>PT</b>: (${Math.round(pt.x)}, ${Math.round(pt.y)})`;
+          }
+
+          this.invalidate();
+        }
+
+        this.ptr.last = pos;
+      }
+
+      onPointerUp(e){
+        if(this.ptr.map.has(e.pointerId)) this.ptr.map.delete(e.pointerId);
+
+        if(this.ptr.mode === "pinch" && this.ptr.map.size < 2){
+          this.ptr.mode = "idle";
+          this.ptr.down = false;
+        }
+
+        if(!this.ptr.map.size){
+          // end
+          this.ptr.down = false;
+          const wasDrag = (this.ptr.mode === "drag");
+          this.ptr.mode = "idle";
+          this.dragLayerIdx = null;
+
+          // snap only after drag end
+          if(this.snap.enabled && wasDrag && this.selectedPoint){
+            const pt = this.layers[this.activeIdx].points[this.selectedPoint.idx];
+            pt.x = Math.round(pt.x / this.snap.step) * this.snap.step;
+            pt.y = Math.round(pt.y / this.snap.step) * this.snap.step;
+          }
+
+          this.invalidate();
+        }
+      }
+
+      onWheel(e){
+        e.preventDefault();
+
+        const s = e.deltaY > 0 ? 0.9 : 1.1;
+        const newScale = this.clamp(this.camera.scale * s, 0.2, 10);
+
+        // zoom around cursor world point
+        const pos = this.getPos(e);
+        const anchorW = this.toWorld(pos.x, pos.y);
+
+        this.zoomAroundAnchorFromScreen(anchorW, newScale, pos.x, pos.y);
+
+        this.invalidate();
+      }
+
+      getPos(e){
+        const r = this.canvas.getBoundingClientRect();
+        const cw = this.canvas.width / this.dpr;
+        const ch = this.canvas.height / this.dpr;
+        const sx = (e.clientX - r.left) * (cw / r.width);
+        const sy = (e.clientY - r.top) * (ch / r.height);
+        return { x: sx, y: sy };
+      }
+
+      clamp(v, a, b){ return Math.max(a, Math.min(b, v)); }
+
+      zoomAroundWorldAnchor(anchorW, newScale, pinchPts){
+        // keep anchorW under pinch midpoint
+        const mid = { x:(pinchPts[0].x + pinchPts[1].x)/2, y:(pinchPts[0].y + pinchPts[1].y)/2 };
+        this.zoomAroundAnchorFromScreen(anchorW, newScale, mid.x, mid.y);
+      }
+
+      zoomAroundAnchorFromScreen(anchorW, newScale, screenX, screenY){
+        const cw = this.canvas.width / this.dpr;
+        const ch = this.canvas.height / this.dpr;
+
+        // camera.x,y are in screen pixels (CSS px)
+        // We want anchorW to map to (screenX,screenY)
+        this.camera.scale = newScale;
+        this.camera.x = screenX - (anchorW.x * this.camera.scale) - cw/2;
+        this.camera.y = screenY - (anchorW.y * this.camera.scale) - ch/2;
+
+        // grid cache invalidation
+        this.invalidate(true);
+      }
+
+      // --- Add/Insert Point ---
+      toggleAddMode(){
+        this.isAddMode = !this.isAddMode;
+        this.setModeText();
+        this.toast(this.isAddMode ? "ADD: 선분 가까이 탭하면 점 삽입" : "VIEW");
+        this.invalidate();
+      }
+
+      toggleSnap(){
+        this.snap.enabled = !this.snap.enabled;
+        this.btnSnap.classList.toggle("active", this.snap.enabled);
+        this.toast(this.snap.enabled ? `SNAP ON (${this.snap.step}px)` : "SNAP OFF");
+        this.invalidate();
+      }
+
+      tryInsertPoint(world){
+        const layer = this.layers[this.activeIdx];
+        if(!layer.points || layer.points.length < 2){
+          layer.points = layer.points || [];
+          layer.points.push({ x:world.x, y:world.y });
+          this.selectedPoint = { idx: layer.points.length - 1 };
+          this.isAddMode = false;
+          this.setModeText();
+          this.toast("점 추가");
+          return;
+        }
+
+        // find nearest segment (closed polygon)
+        const pts = layer.points;
+        let best = { i: pts.length-1, d: Infinity };
+        const threshold = 10 / this.camera.scale; // world distance threshold
+
+        for(let i=0;i<pts.length;i++){
+          const a = pts[i];
+          const b = pts[(i+1) % pts.length];
+          const d = this.distPointToSeg(world, a, b);
+          if(d < best.d){
+            best = { i, d };
+          }
+        }
+
+        if(best.d <= threshold){
+          const insertAt = best.i + 1;
+          const safeIdx = Math.max(0, Math.min(insertAt, pts.length));
+          pts.splice(safeIdx, 0, { x: world.x, y: world.y });
+          this.selectedPoint = { idx: safeIdx };
+          this.toast("선분에 점 삽입");
+        }else{
+          pts.push({ x: world.x, y: world.y });
+          this.selectedPoint = { idx: pts.length - 1 };
+          this.toast("끝에 점 추가");
+        }
+
+        this.isAddMode = false;
+        this.setModeText();
+      }
+
+      distPointToSeg(p, a, b){
+        const vx = b.x - a.x, vy = b.y - a.y;
+        const wx = p.x - a.x, wy = p.y - a.y;
+        const c1 = vx*wx + vy*wy;
+        if(c1 <= 0) return Math.hypot(p.x - a.x, p.y - a.y);
+        const c2 = vx*vx + vy*vy;
+        if(c2 <= c1) return Math.hypot(p.x - b.x, p.y - b.y);
+        const t = c1 / c2;
+        const px = a.x + t*vx, py = a.y + t*vy;
+        return Math.hypot(p.x - px, p.y - py);
+      }
+
+      deletePoint(){
+        if(!this.selectedPoint) { this.toast("선택된 점 없음"); return; }
+        const layer = this.layers[this.activeIdx];
+        if(layer.points.length <= 3){
+          this.toast("최소 3점 필요");
+          return;
+        }
+        layer.points.splice(this.selectedPoint.idx, 1);
+        this.selectedPoint = null;
+        this.toast("점 삭제");
+        this.invalidate();
+      }
+
+      // --- Layers ---
+      openLayerModal(){
+        this.refreshLayerList();
+        this.openModal("layerModal");
+      }
+
+      refreshLayerList(){
+        const list = document.getElementById("layerList");
+        list.innerHTML = "";
+
+        this.layers.forEach((l, i)=>{
+          const item = document.createElement("div");
+          item.className = "layer-item" + (i === this.activeIdx ? " active" : "");
+
+          const sw = document.createElement("div");
+          sw.className = "swatch";
+          sw.style.background = l.color;
+
+          const name = document.createElement("div");
+          name.className = "layer-name";
+          name.textContent = l.name;
+
+          const x = document.createElement("button");
+          x.className = "xbtn";
+          x.textContent = "✕";
+          x.addEventListener("click", (ev)=>{
+            ev.stopPropagation();
+            this.removeLayer(i);
+          });
+
+          item.appendChild(sw);
+          item.appendChild(name);
+          item.appendChild(x);
+
+          item.addEventListener("click", ()=>{
+            this.activeIdx = i;
+            this.selectedPoint = null;
+            this.refreshLayerList();
+            this.toast(`활성: ${l.name}`);
+            this.invalidate();
+          });
+
+          list.appendChild(item);
+        });
+      }
+
+      addLayer(){
+        const n = this.layers.length + 1;
+        this.layers.push({
+          name: `New Layer ${n}`,
+          color: "#fbbf24",
+          points: [{x:-20,y:-20},{x:20,y:-20},{x:0,y:20}]
+        });
+        this.activeIdx = this.layers.length - 1;
+        this.selectedPoint = null;
+        this.refreshLayerList();
+        this.toast("레이어 추가");
+        this.invalidate();
+      }
+
+      removeLayer(i){
+        if(this.layers.length <= 1){ this.toast("레이어 최소 1개"); return; }
+        this.layers.splice(i, 1);
+        this.activeIdx = Math.max(0, Math.min(this.activeIdx, this.layers.length-1));
+        this.selectedPoint = null;
+        this.refreshLayerList();
+        this.toast("레이어 삭제");
+        this.invalidate();
+      }
+
+      // --- Export/Import ---
+      openExportModal(){
+        document.getElementById("exportArea").value = JSON.stringify(this.layers, null, 2);
+        this.openModal("exportModal");
+      }
+
+      importJSON(){
+        const area = document.getElementById("exportArea");
+        const txt = (area.value || "").trim();
+        if(!txt){ this.toast("붙여넣은 JSON 없음"); return; }
+        try{
+          const data = JSON.parse(txt);
+          if(!Array.isArray(data)) throw new Error("not array");
+          this.layers = data;
+          this.activeIdx = 0;
+          this.selectedPoint = null;
+          this.closeModal("exportModal");
+          this.toast("불러오기 완료");
+          this.invalidate(true);
+        }catch(err){
+          this.toast("JSON 형식 오류");
+        }
+      }
+
+      async copyJSON(){
+        const area = document.getElementById("exportArea");
+        const txt = area.value || "";
+        try{
+          if(navigator.clipboard && navigator.clipboard.writeText){
+            await navigator.clipboard.writeText(txt);
+            this.toast("복사 완료");
+            return;
+          }
+        }catch(_){}
+        // fallback
+        area.focus();
+        area.select();
+        const ok = document.execCommand("copy");
+        this.toast(ok ? "복사 완료" : "복사 실패");
+      }
+
+      downloadJSON(){
+        const txt = document.getElementById("exportArea").value || "[]";
+        const blob = new Blob([txt], { type:"application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "unit_layers.json";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(()=>URL.revokeObjectURL(url), 2500);
+        this.toast("다운로드 생성");
+      }
+
+      saveLocal(){
+        try{
+          localStorage.setItem("reclaim_unit_editor_layers", JSON.stringify(this.layers));
+          this.toast("로컬 저장 완료");
+        }catch(_){
+          this.toast("로컬 저장 실패");
+        }
+      }
+
+      loadLocal(){
+        try{
+          const raw = localStorage.getItem("reclaim_unit_editor_layers");
+          if(!raw){ this.toast("저장된 데이터 없음"); return; }
+          const data = JSON.parse(raw);
+          if(!Array.isArray(data)) throw new Error("bad");
+          this.layers = data;
+          this.activeIdx = 0;
+          this.selectedPoint = null;
+          this.toast("로컬 불러오기 완료");
+          this.invalidate(true);
+        }catch(_){
+          this.toast("로컬 불러오기 실패");
+        }
+      }
+
+      hitTestPolygon(world){
+        for(let i=this.layers.length - 1; i>=0; i--){
+          const layer = this.layers[i];
+          if(!layer || !Array.isArray(layer.points) || layer.points.length < 3) continue;
+          if(this.pointInPolygon(world, layer.points)) return i;
+        }
+        return null;
+      }
+
+      hitTestPolygonScreen(pos){
+        for(let i=this.layers.length - 1; i>=0; i--){
+          const layer = this.layers[i];
+          if(!layer || !Array.isArray(layer.points) || layer.points.length < 3) continue;
+          const spts = layer.points.map(p => this.toScreen(p.x, p.y));
+          if(this.pointInPolygon(pos, spts)) return i;
+        }
+        return null;
+      }
+
+      pointInPolygon(p, pts){
+        let inside = false;
+        for(let i=0, j=pts.length-1; i<pts.length; j=i++){
+          const xi = pts[i].x, yi = pts[i].y;
+          const xj = pts[j].x, yj = pts[j].y;
+          const intersect = ((yi > p.y) !== (yj > p.y)) &&
+            (p.x < (xj - xi) * (p.y - yi) / ((yj - yi) || 1e-9) + xi);
+          if(intersect) inside = !inside;
+        }
+        return inside;
+      }
+
+      drawReferenceUnit(ctx, cw, ch){
+        const st = (typeof window !== "undefined") ? window.REC_UNIT_EDITOR_STATE : null;
+        if(!st || !st.showReference) return;
+        const key = st.skinEditingKey || st.selectedKey;
+        if(!key) return;
+        if(typeof Unit !== "function") return;
+        if(typeof CONFIG === "undefined" || !CONFIG || !CONFIG.units || !CONFIG.units[key]) return;
+
+        if(typeof window.game === "undefined") {
+          window.game = { groundY: 0, empTimer: 0, frame: 0, enemies: [], players: [], buildings: [] };
+        }
+
+        let u = this._refUnitCache[key];
+        if(!u || u.typeKey !== key){
+          u = new Unit(key, 0, 0, 'player');
+          u.hideHp = true;
+          u.facing = 1;
+          this._refUnitCache[key] = u;
+        }
+
+        u.x = 0;
+        u.y = 0;
+        u.hideHp = true;
+        u.facing = 1;
+        if(u.stats && u.stats.type === 'air') u.y = 0;
+
+        const alpha = Number(st.refAlpha);
+        const a = Number.isFinite(alpha) ? Math.max(0, Math.min(1, alpha)) : 0.35;
+
+        ctx.save();
+        ctx.globalAlpha = a;
+        ctx.translate(cw/2 + this.camera.x, ch/2 + this.camera.y);
+        ctx.scale(this.camera.scale, this.camera.scale);
+        try { u.draw(ctx); } catch (_) {}
+        ctx.restore();
+      }
+    }
+
+    // 작은 안전 보정: splice index를 array length 범위로
+    function Reattach(){}
+    function R_attach(){}
+
+    // 위 코드에서 오타 방지용: insertAt이 끝이면 그대로 허용
+    function R(pts, idx){
+      if(idx < 0) return 0;
+      if(idx > pts.length) return pts.length;
+      return idx;
+    }
+    // 이름 충돌 피해서 래핑
+    function Re(){}
+
+    // tryInsertPoint에서 쓰는 헬퍼 이름만 안전하게 고정
+    window.R_attach = R;
+
+    // 실제로 쓰는 이름으로 바인딩
+    // (minify 없이도 안전하게 동작)
+    window.Rattach = R;
+    window.Reattach = R;
+
+    // tryInsertPoint 내부에서 사용한 함수명 연결
+    // (브라우저에서 ReferenceError 방지)
+    window.R_attach = R;
+
+    // 코드에서 호출한 이름 고정
+    window.R = R;
+
+    // tryInsertPoint의 splice 인덱스 보정 함수 연결
+    window.R = R;
+
+    // 아래 한 줄로 확정
+    window.R = R;
+
+    // (핵심) tryInsertPoint에서 쓴 함수명을 실제 함수로 연결
+    window.R_attach = R;
+
+    // 아래는 tryInsertPoint에서 호출한 심볼을 정확히 맞춤
+    window.R_attach = R;
+    window.R_attach = R;
+
+    // 실제 앱 시작
+    const app = new MagicBlueprintApp();
+
+    // 외부에서 디버깅용 접근 허용
+    window.app = app;
+
+    // tryInsertPoint에서 사용한 심볼을 정확히 매핑
+    // (코드 본문에서 호출한 이름이 "R_attach"가 아니라면 아래를 바꿔도 됨)
+    // 지금은 "R_attach"가 아니라 "R_attach"를 쓰므로 매핑 불필요하지만, 안전하게 둠.
+
+    // *** 중요: 아래 한 줄이 tryInsertPoint에서 쓰는 함수명과 맞아야 함 ***
+    // 코드 내부에서: pts.splice( R_attach(pts, insertAt), 0, ... )
+    // 따라서 window.R_attach를 위에서 R로 연결해두었음.
+
+  })();
+  </script>
+
+  <script>
+    // tryInsertPoint에서 사용한 보정 함수명 맞추기(상단 IIFE 안에서 스코프 이슈 방지)
+    function R_attach(arr, idx){
+      if(idx < 0) return 0;
+      if(idx > arr.length) return arr.length;
+      return idx;
+    }
+    // (위 보정은 단순하지만, “삽입 인덱스가 끝” 케이스에서도 안전하게 동작함)
+  </script>
+
+  <!-- Game data for unit/map editing -->
+  <script src="../data.js"></script>
+  <script src="../maps.js"></script>
+  <script src="../classes.js"></script>
+
+  <script>
+    (function(){
+      "use strict";
+
+      const STORAGE_KEY = "reclaim_unit_patch_v1";
+      const SKINS_KEY = "reclaim_skins_v1";
+      const DEFAULT_CAMERA_SCALE = 2.0;
+      const EDIT_FIELDS = [
+        { key: "hp", label: "HP" },
+        { key: "damage", label: "DMG" },
+        { key: "range", label: "RANGE" },
+        { key: "speed", label: "SPEED" },
+        { key: "cooldown", label: "COOLDOWN" },
+        { key: "cost", label: "COST" },
+        { key: "maxCount", label: "MAX" }
+      ];
+
+      const els = {
+        list: document.getElementById("unit-list"),
+        tabs: Array.from(document.querySelectorAll(".unit-tab-btn")),
+        detail: document.getElementById("unit-detail"),
+        detailName: document.getElementById("detail-name"),
+        detailSub: document.getElementById("detail-sub"),
+        detailFields: document.getElementById("detail-fields"),
+        detailClose: document.getElementById("detail-close"),
+        statusSkin: document.getElementById("status-skin"),
+        btnSkinEdit: document.getElementById("btnSkinEdit"),
+        btnSkinSave: document.getElementById("btnSkinSave"),
+        btnSkinReset: document.getElementById("btnSkinReset"),
+        refToggle: document.getElementById("refToggle"),
+        refAlpha: document.getElementById("refAlpha"),
+        bgButtons: Array.from(document.querySelectorAll("[data-bg]")),
+        btnPatchModal: document.getElementById("btnPatchModal"),
+        patchModal: document.getElementById("patchModal"),
+        patchArea: document.getElementById("patchArea"),
+        btnPatchImport: document.getElementById("btnPatchImport"),
+        btnPatchCopy: document.getElementById("btnPatchCopy"),
+        btnPatchRefresh: document.getElementById("btnPatchRefresh"),
+        btnPatchSave: document.getElementById("btnPatchSave"),
+        btnPatchLoad: document.getElementById("btnPatchLoad"),
+        mapSelect: document.getElementById("mapSelect"),
+        mapSky: document.getElementById("mapSky"),
+        mapGround: document.getElementById("mapGround"),
+        mapGroundDark: document.getElementById("mapGroundDark")
+      };
+
+      const state = {
+        filter: "ground",
+        selectedKey: null,
+        skinEditingKey: null,
+        patch: { units: {}, maps: {} },
+        skins: {},
+        showReference: true,
+        refAlpha: 0.35,
+        editorBg: "dark"
+      };
+      const iconCache = new Map();
+
+      const BASE_UNITS = (window.CONFIG && CONFIG.units)
+        ? JSON.parse(JSON.stringify(CONFIG.units))
+        : null;
+      const BASE_MAPS = (typeof Maps !== "undefined" && Maps.types)
+        ? JSON.parse(JSON.stringify(Maps.types))
+        : null;
+
+      function toast(msg){
+        if(window.app && typeof window.app.toast === "function"){
+          window.app.toast(msg);
+          return;
+        }
+        const el = document.getElementById("toast");
+        if(!el) return;
+        el.textContent = msg;
+        el.classList.add("show");
+        clearTimeout(window.__unitToastT);
+        window.__unitToastT = setTimeout(()=>el.classList.remove("show"), 1200);
+      }
+
+      function isReady(){
+        if(!window.CONFIG || !CONFIG.units || typeof Maps === "undefined" || !Maps.types){
+          toast("게임 데이터를 불러오지 못했습니다. (data.js/maps.js 로드 확인)");
+          return false;
+        }
+        return true;
+      }
+
+      function getCategory(stats){
+        const id = String(stats.id || "").toLowerCase();
+        const isDrone = stats.category === "drone" || id.includes("drone");
+        if(isDrone) return "drone";
+        if(stats.type === "air") return "air";
+        return "ground";
+      }
+
+      function makeIcon(stats, unitKey, team = "player"){
+        const canvas = document.createElement("canvas");
+        canvas.width = 64;
+        canvas.height = 48;
+        const ctx = canvas.getContext("2d");
+        const cacheKey = `${unitKey || "unknown"}:${team}`;
+        if(iconCache.has(cacheKey)){
+          const img = iconCache.get(cacheKey);
+          if(img) {
+            ctx.putImageData(img, 0, 0);
+            return canvas;
+          }
+        }
+
+        if (typeof Unit === "function" && typeof CONFIG !== "undefined" && CONFIG.units && CONFIG.units[unitKey]) {
+          try{
+            if (typeof window.game === "undefined") {
+              window.game = { groundY: 0, empTimer: 0, frame: 0, enemies: [], players: [], buildings: [] };
+            }
+            const u = new Unit(unitKey, 0, 0, team, 0);
+            u.x = 0;
+            u.y = 0;
+            u.hideHp = true;
+            u.facing = 1;
+            u.hp = u.maxHp;
+
+            const w = Number(stats && stats.width) || 30;
+            const h = Number(stats && stats.height) || 20;
+            let s = 42 / Math.max(w, h * 2);
+            if (stats && stats.type === "air") s *= 1.35;
+            if ((stats && stats.category === "drone") || String(unitKey || "").includes("drone")) s *= 1.15;
+            s = Math.max(0.45, Math.min(1.8, s));
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            ctx.translate(canvas.width / 2, canvas.height * 0.72);
+            ctx.scale(s, s);
+            u.draw(ctx);
+            ctx.restore();
+            try{
+              iconCache.set(cacheKey, ctx.getImageData(0, 0, canvas.width, canvas.height));
+            }catch(_){}
+            return canvas;
+          }catch(_){
+            // fallback below
+          }
+        }
+
+        const w = Math.max(10, Math.min(50, Math.round((Number(stats && stats.width) || 30) * 0.9)));
+        const h = Math.max(6, Math.min(26, Math.round((Number(stats && stats.height) || 16) * 0.9)));
+        ctx.fillStyle = (stats && stats.color) || "#38bdf8";
+        ctx.globalAlpha = 0.9;
+        ctx.fillRect((canvas.width - w) / 2, (canvas.height - h) / 2 + 6, w, h);
+        ctx.globalAlpha = 1;
+        try{
+          iconCache.set(cacheKey, ctx.getImageData(0, 0, canvas.width, canvas.height));
+        }catch(_){}
+        return canvas;
+      }
+
+      function renderList(){
+        if(!isReady() || !els.list) return;
+        els.list.innerHTML = "";
+
+        const keys = Object.keys(CONFIG.units || {});
+        keys.forEach((key)=>{
+          const stats = CONFIG.units[key];
+          if(!stats) return;
+          if(getCategory(stats) !== state.filter) return;
+
+          const card = document.createElement("div");
+          card.className = "unit-card";
+
+          const iconWrap = document.createElement("div");
+          iconWrap.className = "unit-icon";
+          iconWrap.appendChild(makeIcon(stats, key));
+
+          const info = document.createElement("div");
+          const name = stats.name || stats.id || key;
+          const sub = stats.id || key;
+          info.innerHTML = `<div class="unit-card-title">${name}</div><div class="unit-card-sub">${sub}</div>`;
+
+          card.appendChild(iconWrap);
+          card.appendChild(info);
+          card.addEventListener("click", ()=>openDetail(key));
+          els.list.appendChild(card);
+        });
+      }
+
+      function openDetail(key){
+        if(!isReady()) return;
+        const stats = CONFIG.units[key];
+        if(!stats) return;
+        state.selectedKey = key;
+        state.showReference = true;
+
+        const name = stats.name || stats.id || key;
+        const id = stats.id || key;
+        const type = stats.type || "n/a";
+        const cat = stats.category || "n/a";
+
+        els.detailName.textContent = name;
+        els.detailSub.textContent = `id: ${id} · type: ${type} · category: ${cat}`;
+
+        renderFields(stats, key);
+        els.detail.classList.add("open");
+        els.detail.setAttribute("aria-hidden", "false");
+        updateReferenceControls();
+        loadSkinToEditor(key, { silent: true });
+      }
+
+      function closeDetail(){
+        state.selectedKey = null;
+        els.detail.classList.remove("open");
+        els.detail.setAttribute("aria-hidden", "true");
+      }
+
+      function renderFields(stats, key){
+        if(!els.detailFields) return;
+        els.detailFields.innerHTML = "";
+        let count = 0;
+
+        EDIT_FIELDS.forEach((field)=>{
+          if(!Object.prototype.hasOwnProperty.call(stats, field.key)) return;
+          count++;
+
+          const row = document.createElement("div");
+          row.className = "field-row";
+
+          const label = document.createElement("label");
+          label.textContent = field.label;
+
+          const input = document.createElement("input");
+          input.type = "number";
+          input.step = "any";
+          input.value = Number(stats[field.key]) || 0;
+          input.addEventListener("input", ()=>{
+            const raw = input.value.trim();
+            if(raw === ""){
+              setUnitField(key, field.key, null);
+              const baseVal = BASE_UNITS?.[key]?.[field.key];
+              if(baseVal != null) input.value = baseVal;
+              return;
+            }
+            const num = Number(raw);
+            if(!Number.isFinite(num)){
+              toast("숫자를 입력하세요.");
+              return;
+            }
+            setUnitField(key, field.key, num);
+          });
+
+          row.appendChild(label);
+          row.appendChild(input);
+          els.detailFields.appendChild(row);
+        });
+
+        if(count === 0){
+          const empty = document.createElement("div");
+          empty.className = "field-row";
+          empty.innerHTML = "<label>표시 가능한 스탯이 없습니다.</label>";
+          els.detailFields.appendChild(empty);
+        }
+      }
+
+      function loadSkinToEditor(key, opts = {}){
+        if(!isReady()) return;
+        const silent = !!opts.silent;
+        if(!window.app || !Array.isArray(window.app.layers)){
+          if(!silent) toast("스킨 편집기를 사용할 수 없습니다.");
+          return;
+        }
+        const stats = CONFIG.units[key];
+        if(!stats) return;
+
+        const existing = (state.skins && state.skins[key]) ? state.skins[key] : null;
+        const skin = existing || makeDefaultSkin(stats);
+        const layers = cloneLayers(skin.layers || []);
+        if(!layers.length){
+          const fallback = makeDefaultSkin(stats);
+          layers.push(...cloneLayers(fallback.layers));
+        }
+
+        window.app.layers = layers;
+        window.app.activeIdx = 0;
+        window.app.selectedPoint = null;
+        if(window.app.camera){
+          window.app.camera.x = 0;
+          window.app.camera.y = 0;
+          window.app.camera.scale = DEFAULT_CAMERA_SCALE;
+        }
+        if(typeof window.app.setModeText === "function"){
+          window.app.isAddMode = false;
+          window.app.setModeText();
+        }
+        if(typeof window.app.invalidate === "function") window.app.invalidate(true);
+        state.skinEditingKey = key;
+        updateSkinBadge();
+        try{
+          const pointCount = Array.isArray(layers[0]?.points) ? layers[0].points.length : 0;
+          console.log(`[Editor] selected=${key} layers=${layers.length} points=${pointCount}`);
+        }catch(_){}
+        if(!silent) toast(`스킨 편집: ${stats.name || stats.id || key}`);
+      }
+
+      function saveSkinFromEditor(){
+        const key = state.skinEditingKey || state.selectedKey;
+        if(!key){
+          toast("스킨 저장할 유닛이 없습니다.");
+          return;
+        }
+        if(!window.app || !Array.isArray(window.app.layers)){
+          toast("스킨 편집기를 사용할 수 없습니다.");
+          return;
+        }
+        const base = (state.skins && state.skins[key]) ? state.skins[key] : null;
+        const candidate = {
+          scale: Number(base?.scale) || 1,
+          anchor: (base && base.anchor && typeof base.anchor === "object")
+            ? { x: Number(base.anchor.x) || 0, y: Number(base.anchor.y) || 0 }
+            : { x: 0, y: 0 },
+          layers: cloneLayers(window.app.layers)
+        };
+        const skin = sanitizeSkin(candidate);
+        if(!skin){
+          toast("스킨 레이어가 비어 있습니다.");
+          return;
+        }
+        if(!state.skins) state.skins = {};
+        state.skins[key] = skin;
+        saveSkinsToLocal();
+        syncSkinGlobals();
+        renderList();
+        toast("스킨 패치 저장됨");
+      }
+
+      function resetSkinForUnit(key){
+        if(!key) return;
+        if(state.skins && state.skins[key]){
+          delete state.skins[key];
+        }
+        saveSkinsToLocal();
+        syncSkinGlobals();
+        renderList();
+        if(state.skinEditingKey === key){
+          loadSkinToEditor(key, { silent: true });
+        }
+        toast("스킨 초기화 완료");
+      }
+
+      function sanitizeValue(val){
+        if(typeof val === "number"){
+          return Number.isFinite(val) ? val : null;
+        }
+        if(typeof val === "string" || typeof val === "boolean"){
+          return val;
+        }
+        return null;
+      }
+
+      function cloneLayers(layers){
+        try{
+          return JSON.parse(JSON.stringify(layers || []));
+        }catch(_){
+          return [];
+        }
+      }
+
+      function sanitizeSkin(raw){
+        if(!raw || typeof raw !== "object") return null;
+        const cleaned = {};
+
+        const scale = Number(raw.scale);
+        if(Number.isFinite(scale)) cleaned.scale = scale;
+
+        if(raw.anchor && typeof raw.anchor === "object"){
+          const ax = Number(raw.anchor.x);
+          const ay = Number(raw.anchor.y);
+          if(Number.isFinite(ax) || Number.isFinite(ay)){
+            cleaned.anchor = {
+              x: Number.isFinite(ax) ? ax : 0,
+              y: Number.isFinite(ay) ? ay : 0
+            };
+          }
+        }
+
+        if(Array.isArray(raw.layers)){
+          const layers = [];
+          raw.layers.forEach((layer)=>{
+            if(!layer || typeof layer !== "object") return;
+            const name = (typeof layer.name === "string" && layer.name.trim()) ? layer.name.trim() : "Layer";
+            const color = (typeof layer.color === "string" && layer.color.trim()) ? layer.color.trim() : "#38bdf8";
+            const points = [];
+            if(Array.isArray(layer.points)){
+              layer.points.forEach((pt)=>{
+                if(!pt || typeof pt !== "object") return;
+                const x = Number(pt.x);
+                const y = Number(pt.y);
+                if(!Number.isFinite(x) || !Number.isFinite(y)) return;
+                points.push({ x, y });
+              });
+            }
+            if(points.length >= 2){
+              layers.push({ name, color, points });
+            }
+          });
+          if(layers.length) cleaned.layers = layers;
+        }
+
+        if(!cleaned.layers) return null;
+        return cleaned;
+      }
+
+      function makeDefaultSkin(stats){
+        const w = Math.max(10, Number(stats?.width) || 30);
+        const h = Math.max(6, Number(stats?.height) || 18);
+        const hw = Math.round(w * 0.5);
+        return {
+          scale: 1,
+          anchor: { x: 0, y: 0 },
+          layers: [{
+            name: "Body",
+            color: stats?.color || "#38bdf8",
+            points: [
+              { x: -hw, y: -h },
+              { x: hw, y: -h },
+              { x: hw, y: 0 },
+              { x: -hw, y: 0 }
+            ]
+          }]
+        };
+      }
+
+      function loadSkinsFromLocal(){
+        try{
+          const raw = localStorage.getItem(SKINS_KEY);
+          if(!raw){
+            state.skins = {};
+            return;
+          }
+          const parsed = JSON.parse(raw);
+          if(!parsed || typeof parsed !== "object"){
+            state.skins = {};
+            return;
+          }
+          const cleaned = {};
+          Object.keys(parsed).forEach((unitKey)=>{
+            const skin = sanitizeSkin(parsed[unitKey]);
+            if(skin) cleaned[unitKey] = skin;
+          });
+          state.skins = cleaned;
+        }catch(_){
+          state.skins = {};
+        }
+      }
+
+      function saveSkinsToLocal(){
+        try{
+          localStorage.setItem(SKINS_KEY, JSON.stringify(state.skins || {}));
+        }catch(_){}
+      }
+
+      function syncSkinGlobals(){
+        if(typeof window === "undefined") return;
+        window.RECLAIM_SKINS = state.skins || {};
+      }
+
+      function updateSkinBadge(){
+        if(!els.statusSkin) return;
+        if(state.skinEditingKey){
+          els.statusSkin.classList.add("active");
+          els.statusSkin.innerHTML = `<b>SKIN</b>: ${state.skinEditingKey}`;
+        }else{
+          els.statusSkin.classList.remove("active");
+        }
+      }
+
+      function updateReferenceControls(){
+        if(els.refToggle) els.refToggle.checked = !!state.showReference;
+        if(els.refAlpha) els.refAlpha.value = String(state.refAlpha);
+        if(els.bgButtons && els.bgButtons.length){
+          els.bgButtons.forEach(btn => {
+            const bg = btn.dataset.bg;
+            btn.classList.toggle("active", bg === state.editorBg);
+          });
+        }
+        window.REC_UNIT_EDITOR_STATE = state;
+        if(window.app && typeof window.app.invalidate === "function") window.app.invalidate();
+      }
+
+      function resetToBase(){
+        if(BASE_UNITS && typeof CONFIG !== "undefined" && CONFIG.units){
+          Object.keys(BASE_UNITS).forEach((key)=>{
+            const base = BASE_UNITS[key];
+            const target = CONFIG.units[key];
+            if(!target || typeof base !== "object") return;
+            Object.keys(base).forEach((field)=>{
+              target[field] = base[field];
+            });
+          });
+        }
+        if(BASE_MAPS && typeof Maps !== "undefined" && Maps.types){
+          Object.keys(BASE_MAPS).forEach((key)=>{
+            const base = BASE_MAPS[key];
+            const target = Maps.types[key];
+            if(!target || typeof base !== "object") return;
+            Object.keys(base).forEach((field)=>{
+              target[field] = base[field];
+            });
+          });
+        }
+      }
+
+      function setUnitField(unitKey, field, value){
+        if(!isReady()) return;
+        if(!CONFIG.units[unitKey] || !Object.prototype.hasOwnProperty.call(CONFIG.units[unitKey], field)) return;
+        if(!state.patch.units[unitKey]) state.patch.units[unitKey] = {};
+
+        if(value === null){
+          delete state.patch.units[unitKey][field];
+          if(Object.keys(state.patch.units[unitKey]).length === 0){
+            delete state.patch.units[unitKey];
+          }
+          const baseVal = BASE_UNITS?.[unitKey]?.[field];
+          if(baseVal !== undefined) CONFIG.units[unitKey][field] = baseVal;
+          updatePatchArea();
+          return;
+        }
+
+        const safe = sanitizeValue(value);
+        if(safe === null) return;
+        state.patch.units[unitKey][field] = safe;
+        CONFIG.units[unitKey][field] = safe;
+        updatePatchArea();
+      }
+
+      function setMapField(mapKey, field, value){
+        if(!isReady()) return;
+        if(!Maps.types[mapKey] || !Object.prototype.hasOwnProperty.call(Maps.types[mapKey], field)) return;
+        if(!state.patch.maps[mapKey]) state.patch.maps[mapKey] = {};
+
+        if(value === null){
+          delete state.patch.maps[mapKey][field];
+          if(Object.keys(state.patch.maps[mapKey]).length === 0){
+            delete state.patch.maps[mapKey];
+          }
+          const baseVal = BASE_MAPS?.[mapKey]?.[field];
+          if(baseVal !== undefined) Maps.types[mapKey][field] = baseVal;
+          updatePatchArea();
+          return;
+        }
+
+        const safe = sanitizeValue(value);
+        if(safe === null) return;
+        state.patch.maps[mapKey][field] = safe;
+        Maps.types[mapKey][field] = safe;
+        updatePatchArea();
+      }
+
+      function sanitizePatch(raw){
+        const cleaned = { units: {}, maps: {} };
+        if(!raw || typeof raw !== "object") return cleaned;
+
+        if(raw.units && typeof raw.units === "object" && typeof CONFIG !== "undefined" && CONFIG.units){
+          Object.keys(raw.units).forEach((unitKey)=>{
+            const target = CONFIG.units[unitKey];
+            const fields = raw.units[unitKey];
+            if(!target || typeof fields !== "object") return;
+            Object.keys(fields).forEach((field)=>{
+              if(!Object.prototype.hasOwnProperty.call(target, field)) return;
+              const safe = sanitizeValue(fields[field]);
+              if(safe === null) return;
+              if(!cleaned.units[unitKey]) cleaned.units[unitKey] = {};
+              cleaned.units[unitKey][field] = safe;
+            });
+          });
+        }
+
+        if(raw.maps && typeof raw.maps === "object" && typeof Maps !== "undefined" && Maps.types){
+          Object.keys(raw.maps).forEach((mapKey)=>{
+            const target = Maps.types[mapKey];
+            const fields = raw.maps[mapKey];
+            if(!target || typeof fields !== "object") return;
+            Object.keys(fields).forEach((field)=>{
+              if(!Object.prototype.hasOwnProperty.call(target, field)) return;
+              const safe = sanitizeValue(fields[field]);
+              if(safe === null) return;
+              if(!cleaned.maps[mapKey]) cleaned.maps[mapKey] = {};
+              cleaned.maps[mapKey][field] = safe;
+            });
+          });
+        }
+
+        return cleaned;
+      }
+
+      function applyPatchState(){
+        resetToBase();
+        if(state.patch.units){
+          Object.keys(state.patch.units).forEach((unitKey)=>{
+            const fields = state.patch.units[unitKey];
+            if(!CONFIG.units[unitKey] || typeof fields !== "object") return;
+            Object.keys(fields).forEach((field)=>{
+              if(Object.prototype.hasOwnProperty.call(CONFIG.units[unitKey], field)){
+                CONFIG.units[unitKey][field] = fields[field];
+              }
+            });
+          });
+        }
+        if(state.patch.maps){
+          Object.keys(state.patch.maps).forEach((mapKey)=>{
+            const fields = state.patch.maps[mapKey];
+            if(!Maps.types[mapKey] || typeof fields !== "object") return;
+            Object.keys(fields).forEach((field)=>{
+              if(Object.prototype.hasOwnProperty.call(Maps.types[mapKey], field)){
+                Maps.types[mapKey][field] = fields[field];
+              }
+            });
+          });
+        }
+        syncSkinGlobals();
+      }
+
+      function updatePatchArea(){
+        if(!els.patchArea) return;
+        els.patchArea.value = JSON.stringify(state.patch, null, 2);
+        syncSkinGlobals();
+      }
+
+      function openPatchModal(){
+        if(!isReady()) return;
+        updatePatchArea();
+        syncMapInputs();
+        els.patchModal?.classList.add("open");
+      }
+
+      function loadPatchFromLocal(){
+        try{
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if(!raw){
+            toast("저장된 패치 없음");
+            return;
+          }
+          const parsed = JSON.parse(raw);
+          state.patch = sanitizePatch(parsed);
+          applyPatchState();
+          renderList();
+          if(state.selectedKey) openDetail(state.selectedKey);
+          updatePatchArea();
+          toast("패치 불러오기 완료");
+        }catch(_){
+          toast("패치 불러오기 실패");
+        }
+      }
+
+      function savePatchToLocal(){
+        try{
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(state.patch));
+          toast("패치 저장 완료");
+        }catch(_){
+          toast("패치 저장 실패");
+        }
+      }
+
+      async function copyPatch(){
+        const txt = els.patchArea?.value || JSON.stringify(state.patch, null, 2);
+        try{
+          if(navigator.clipboard && navigator.clipboard.writeText){
+            await navigator.clipboard.writeText(txt);
+            toast("복사 완료");
+            return;
+          }
+        }catch(_){}
+        if(els.patchArea){
+          els.patchArea.focus();
+          els.patchArea.select();
+          const ok = document.execCommand("copy");
+          toast(ok ? "복사 완료" : "복사 실패");
+        }
+      }
+
+      function importPatchFromArea(){
+        const txt = els.patchArea?.value?.trim();
+        if(!txt){
+          toast("붙여넣은 JSON 없음");
+          return;
+        }
+        try{
+          const parsed = JSON.parse(txt);
+          state.patch = sanitizePatch(parsed);
+          applyPatchState();
+          renderList();
+          if(state.selectedKey) openDetail(state.selectedKey);
+          updatePatchArea();
+          toast("패치 적용 완료");
+        }catch(_){
+          toast("JSON 형식 오류");
+        }
+      }
+
+      function initMapSelect(){
+        if(!els.mapSelect || typeof Maps === "undefined" || !Maps.types) return;
+        els.mapSelect.innerHTML = "";
+        Object.keys(Maps.types).forEach((key)=>{
+          const opt = document.createElement("option");
+          opt.value = key;
+          opt.textContent = key;
+          els.mapSelect.appendChild(opt);
+        });
+        els.mapSelect.addEventListener("change", syncMapInputs);
+        syncMapInputs();
+      }
+
+      function syncMapInputs(){
+        if(!els.mapSelect || typeof Maps === "undefined" || !Maps.types) return;
+        const key = els.mapSelect.value || Object.keys(Maps.types)[0];
+        if(!key) return;
+        const theme = Maps.types[key];
+        if(!theme) return;
+        if(els.mapSky) els.mapSky.value = theme.sky || "#000000";
+        if(els.mapGround) els.mapGround.value = theme.ground || "#000000";
+        if(els.mapGroundDark) els.mapGroundDark.value = theme.groundDark || "#000000";
+      }
+
+      function bindMapInputs(){
+        if(!els.mapSelect) return;
+        const apply = () => {
+          const key = els.mapSelect.value;
+          if(!key) return;
+          if(els.mapSky) setMapField(key, "sky", els.mapSky.value);
+          if(els.mapGround) setMapField(key, "ground", els.mapGround.value);
+          if(els.mapGroundDark) setMapField(key, "groundDark", els.mapGroundDark.value);
+        };
+        els.mapSky?.addEventListener("input", apply);
+        els.mapGround?.addEventListener("input", apply);
+        els.mapGroundDark?.addEventListener("input", apply);
+      }
+
+      function bindEvents(){
+        els.tabs.forEach((btn)=>{
+          btn.addEventListener("click", ()=>{
+            els.tabs.forEach(t => t.classList.remove("active"));
+            btn.classList.add("active");
+            state.filter = btn.dataset.tab;
+            renderList();
+          });
+        });
+
+        els.detailClose?.addEventListener("click", closeDetail);
+        els.refToggle?.addEventListener("change", ()=>{
+          state.showReference = !!els.refToggle.checked;
+          updateReferenceControls();
+        });
+        els.refAlpha?.addEventListener("input", ()=>{
+          const v = Number(els.refAlpha.value);
+          state.refAlpha = Number.isFinite(v) ? v : 0.35;
+          updateReferenceControls();
+        });
+        if(els.bgButtons && els.bgButtons.length){
+          els.bgButtons.forEach(btn => {
+            btn.addEventListener("click", ()=>{
+              const bg = btn.dataset.bg;
+              if(!bg) return;
+              state.editorBg = bg;
+              updateReferenceControls();
+            });
+          });
+        }
+        els.btnSkinEdit?.addEventListener("click", ()=>{
+          if(!state.selectedKey){
+            toast("유닛을 선택하세요.");
+            return;
+          }
+          loadSkinToEditor(state.selectedKey);
+        });
+        els.btnSkinSave?.addEventListener("click", saveSkinFromEditor);
+        els.btnSkinReset?.addEventListener("click", ()=>{
+          if(!state.selectedKey){
+            toast("유닛을 선택하세요.");
+            return;
+          }
+          resetSkinForUnit(state.selectedKey);
+        });
+        els.btnPatchModal?.addEventListener("click", openPatchModal);
+        els.btnPatchImport?.addEventListener("click", importPatchFromArea);
+        els.btnPatchCopy?.addEventListener("click", copyPatch);
+        els.btnPatchRefresh?.addEventListener("click", updatePatchArea);
+        els.btnPatchSave?.addEventListener("click", savePatchToLocal);
+        els.btnPatchLoad?.addEventListener("click", loadPatchFromLocal);
+      }
+
+      function init(){
+        if(!isReady()) return;
+        const mainCanvas = document.getElementById("mainCanvas");
+        if(!mainCanvas || !els.list){
+          console.error("[Editor] Missing core elements: mainCanvas or unit list.");
+          toast("에디터 초기화 실패: 필수 요소가 없습니다.");
+          return;
+        }
+        bindEvents();
+        initMapSelect();
+        bindMapInputs();
+
+        // Load patch (units/maps) from localStorage if present
+        try{
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if(raw){
+            state.patch = sanitizePatch(JSON.parse(raw));
+            applyPatchState();
+          }
+        }catch(_){}
+
+        // Load skins from localStorage
+        loadSkinsFromLocal();
+        syncSkinGlobals();
+
+        renderList();
+        updatePatchArea();
+        updateSkinBadge();
+        updateReferenceControls();
+      }
+
+      init();
+    })();
+  </script>
+</body>
+</html>
+
