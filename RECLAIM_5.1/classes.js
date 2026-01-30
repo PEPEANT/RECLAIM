@@ -819,7 +819,7 @@ class Unit extends Entity {
 
         const id = this.stats.id;
 
-        // ... (?꾩닠 ?쒕줎 ?쎌삩 諛뺤뒪 肄붾뱶??洹몃?濡??좎?) ...
+        // ... (전술 드론 락온 박스 코드는 그대로 유지) ...
         if (id === 'tactical_drone' && this.lockedTarget && !this.lockedTarget.dead) {
             ctx.save();
             ctx.translate(-this.x, -this.y);
@@ -835,9 +835,24 @@ class Unit extends Entity {
             ctx.restore();
         }
 
+        // ========================================
+        // [NEW] Single Source of Truth 렌더링 시스템
+        // 우선순위: RECLAIM_SKINS (커스텀) > DEFAULT_UNIT_SHAPES (기본) > 하드코딩 (fallback)
+        // ========================================
+
+        // 1. 커스텀 스킨 확인 (에디터에서 저장한 것)
         const skins = (typeof window !== 'undefined' && window.RECLAIM_SKINS) ? window.RECLAIM_SKINS : null;
-        const skin = skins ? (skins[id] || skins[this.typeKey]) : null;
+        const customSkin = skins ? (skins[id] || skins[this.typeKey]) : null;
+
+        // 2. 기본 유닛 형상 데이터 확인 (Single Source of Truth)
+        const defaultShapes = (typeof window !== 'undefined' && window.DEFAULT_UNIT_SHAPES) ? window.DEFAULT_UNIT_SHAPES : null;
+        const defaultShape = defaultShapes ? defaultShapes[id] : null;
+
+        // 3. 사용할 스킨 결정 (커스텀 > 기본)
+        const skin = customSkin || defaultShape;
+
         if (skin && Array.isArray(skin.layers) && skin.layers.length) {
+            // 폴리곤 기반 렌더링 (Single Source of Truth)
             if (id !== 'drone_at') {
                 ctx.scale(this.facing || 1, 1);
             }
@@ -850,9 +865,20 @@ class Unit extends Entity {
             ctx.scale(s, s);
             ctx.translate(ax, ay);
 
+            // 팀 색상 결정
+            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+
             skin.layers.forEach((layer) => {
                 if (!layer || !Array.isArray(layer.points) || layer.points.length < 2) return;
-                const color = (typeof layer.color === 'string' && layer.color) ? layer.color : (this.stats.color || '#3b82f6');
+
+                // 레이어 색상 결정: 팀 색상이 필요한 레이어는 동적으로 변경
+                let color = layer.color || this.stats.color || '#3b82f6';
+
+                // 팀 색상이 필요한 레이어 처리 (layer.teamColor 속성 사용)
+                if (layer.teamColor === true) {
+                    color = teamColor;
+                }
+
                 ctx.fillStyle = color;
                 ctx.beginPath();
                 ctx.moveTo(layer.points[0].x, layer.points[0].y);
@@ -867,11 +893,15 @@ class Unit extends Entity {
             return;
         }
 
+        // ========================================
+        // [FALLBACK] 하드코딩 렌더링 (DEFAULT_UNIT_SHAPES에 없는 유닛용)
+        // ========================================
+
         // [R 4.2 FIX v3] facing은 update()에서 확정됨 - draw()에서는 단순 적용만
         if (id !== 'drone_at') {
             ctx.scale(this.facing || 1, 1);
         }
-        // [R 2.2] ?좊떅 ?됱긽 ?듭씪 (?덉쇅: blackhawk, chinook, special_forces)
+        // [R 2.2] 스킨 색상 예외 (예외: blackhawk, chinook, special_forces)
         const colorExceptions = ['blackhawk', 'chinook', 'special_forces'];
         if (colorExceptions.includes(this.stats.id)) {
             ctx.fillStyle = this.stats.color;
@@ -879,7 +909,7 @@ class Unit extends Entity {
             ctx.fillStyle = this.team === 'player' ? '#3b82f6' : '#ef4444';
         }
 
-        // [湲곗〈 ?좊떅 洹몃━湲?肄붾뱶 ?좎?, 釉붾옓?명겕/移섎늻?щ쭔 ?섏젙]
+        // [기존 스킨 그리기 코드 유지, 블랙호크/치누크만 수정]
         // [NEW] Worker 유닛 렌더링
         if (id === 'worker') {
             // 몸통 (노란색 조끼)
