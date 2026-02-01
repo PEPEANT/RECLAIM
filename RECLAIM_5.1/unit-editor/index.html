@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Unit Blueprint Editor</title>
+    <link rel="stylesheet" href="css/editor.css">
+</head>
+<body>
+    <!-- Header / Menu Bar -->
+    <header id="menuBar">
+        <div class="logo">
+            <div class="logo-icon">UE</div>
+            <div class="logo-text">
+                <h1>UnitEditor</h1>
+            </div>
+        </div>
+        <nav class="menu-items" id="menuItems"></nav>
+        <div class="header-actions">
+            <button class="icon-btn" id="settingsBtn" title="설정">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="3"></circle>
+                    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+                </svg>
+            </button>
+            <div class="user-avatar"></div>
+        </div>
+    </header>
+
+    <!-- Option Bar -->
+    <div class="option-bar" id="optionBar">
+        <div class="current-tool">
+            <span id="currentToolIcon"></span>
+            <span id="currentToolName">선택 도구</span>
+        </div>
+        <div class="tool-options" id="toolOptions"></div>
+        <div class="view-status">
+            <span id="xrayStatus" class="status-badge">X-Ray: OFF</span>
+            <span id="modeStatus">모드: 편집</span>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <main>
+        <!-- Left Toolbar with Tools and Color Picker -->
+        <div class="toolbar" id="toolbar"></div>
+
+        <!-- Center - Canvas Area -->
+        <div class="editor">
+            <div class="canvas-container" id="canvasContainer">
+                <canvas id="canvas" width="600" height="500"></canvas>
+            </div>
+            <div class="zoom-controls">
+                <button id="zoomOut">-</button>
+                <span id="zoomLevel">100%</span>
+                <button id="zoomIn">+</button>
+            </div>
+            <div class="animation-panel" id="animationPanel" style="display: none;"></div>
+        </div>
+
+        <!-- Right Sidebar -->
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <h2>Unit Editor</h2>
+                <span class="badge">실시간</span>
+            </div>
+
+            <!-- Tab Buttons - Units tab first -->
+            <div class="tab-buttons">
+                <button class="tab-btn active" data-tab="units">유닛</button>
+                <button class="tab-btn" data-tab="parts">파츠</button>
+                <button class="tab-btn" data-tab="layers">레이어</button>
+            </div>
+
+            <!-- Tab Content -->
+            <div class="tab-content" id="tabContent">
+                <!-- Units Tab (Default - shows unit list) -->
+                <div class="tab-pane active" id="unitsPane">
+                    <div class="unit-list-section">
+                        <div class="section-header">
+                            <span>유닛 프로필</span>
+                            <button class="add-btn" id="newUnitBtn">+ 새 유닛</button>
+                        </div>
+                        <div class="unit-list" id="unitList"></div>
+                    </div>
+
+                    <!-- Current Unit Info (shown when unit is selected) -->
+                    <div class="current-unit-section" id="currentUnitInfo" style="display: none;">
+                        <div class="profile-card">
+                            <div class="profile-title" id="profileName">Unit</div>
+                            <div class="profile-meta">
+                                <label>
+                                    <span>타입</span>
+                                    <select id="unitTypeSelect">
+                                        <option value="infantry">infantry</option>
+                                        <option value="vehicle">vehicle</option>
+                                        <option value="air">air</option>
+                                        <option value="drone">drone</option>
+                                    </select>
+                                </label>
+                                <div id="profileParts">파츠: 0</div>
+                            </div>
+                        </div>
+                        <div class="unit-actions">
+                            <button class="btn-action" id="saveUnitBtn">저장</button>
+                            <button class="btn-action" id="resetUnitBtn">초기화</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Parts Tab -->
+                <div class="tab-pane" id="partsPane">
+                    <div class="tool-panel">
+                        <h3>파츠 추가</h3>
+                        <div class="tool-row">
+                            <label>도형</label>
+                            <select id="shapeType">
+                                <option value="rect">사각형</option>
+                                <option value="circle">원</option>
+                                <option value="arc">반원</option>
+                                <option value="polygon">다각형</option>
+                            </select>
+                            <button id="addShape">추가</button>
+                        </div>
+                        <div class="tool-row">
+                            <label>선</label>
+                            <select id="lineStyle">
+                                <option value="solid">실선</option>
+                                <option value="dash">점선</option>
+                                <option value="dot">점</option>
+                            </select>
+                            <button id="addLine">추가</button>
+                        </div>
+                    </div>
+
+                    <div class="tool-panel">
+                        <h3>선택된 파츠</h3>
+                        <div class="tool-row">
+                            <label>색상</label>
+                            <input type="color" id="colorPicker" value="#3b82f6">
+                            <button id="applyColor">적용</button>
+                            <button id="applyTeam">팀색</button>
+                        </div>
+                    </div>
+
+                    <!-- Transform Panel -->
+                    <div class="transform-panel" id="transformPanel">
+                        <div class="panel-header">
+                            <span>변형 (Transform)</span>
+                        </div>
+                        <div class="transform-grid">
+                            <div class="input-group"><span>X</span><input type="number" id="transformX" value="0"></div>
+                            <div class="input-group"><span>Y</span><input type="number" id="transformY" value="0"></div>
+                            <div class="input-group"><span>W</span><input type="number" id="transformW" value="0"></div>
+                            <div class="input-group"><span>H</span><input type="number" id="transformH" value="0"></div>
+                        </div>
+                    </div>
+
+                    <!-- Parts List -->
+                    <div id="partsPanel"></div>
+                </div>
+
+                <!-- Layers Tab -->
+                <div class="tab-pane" id="layersPane">
+                    <div id="layersList"></div>
+                </div>
+            </div>
+
+            <!-- JSON Output -->
+            <div class="json-panel">
+                <div class="json-header">
+                    <span>JSON</span>
+                    <div class="json-actions">
+                        <button class="copy-btn" id="copyJson">복사</button>
+                        <button class="copy-btn" id="pasteJson">붙여넣기</button>
+                    </div>
+                </div>
+                <textarea class="json-output" id="jsonOutput" readonly></textarea>
+            </div>
+        </div>
+    </main>
+
+    <!-- Status Bar -->
+    <footer class="status-bar">
+        <div class="status-left">
+            <span id="statusReady">준비됨</span>
+            <span id="statusPos">Pos: 0, 0</span>
+            <span id="statusParts">0 Parts</span>
+            <span id="statusXray" class="xray-indicator" style="display: none;">X-RAY</span>
+        </div>
+        <div class="status-right"><span>v2.0</span></div>
+    </footer>
+
+    <!-- Toast -->
+    <div class="toast" id="toast"></div>
+
+    <!-- Unit Select Modal -->
+    <div class="modal" id="unitSelectModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>유닛 선택</h3>
+                <button class="close-btn" onclick="document.getElementById('unitSelectModal').style.display='none'">✕</button>
+            </div>
+            <div class="modal-body">
+                <div class="unit-grid" id="unitGrid"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Scripts -->
+    <script src="js/constants.js"></script>
+    <script src="js/state.js"></script>
+    <script src="js/unit-loader.js"></script>
+    <script src="js/canvas.js"></script>
+    <script src="js/interaction.js"></script>
+    <script src="js/ui-panel.js"></script>
+    <script src="js/menu-bar.js"></script>
+    <script src="js/main.js"></script>
+</body>
+</html>

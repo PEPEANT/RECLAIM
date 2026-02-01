@@ -1,0 +1,66 @@
+{
+  "version": "2.0",
+  "lastUpdated": "2025-01-31",
+  "units": [
+    {
+      "id": "special_forces",
+      "name": "특수부대",
+      "type": "infantry",
+      "file": "special_forces.json"
+    },
+    {
+      "id": "apc",
+      "name": "APC",
+      "type": "vehicle",
+      "file": "apc.json"
+    },
+    {
+      "id": "uh60",
+      "name": "블랙호크",
+      "type": "air",
+      "file": "uh60.json"
+    },
+    {
+      "id": "infantry",
+      "name": "보병",
+      "type": "infantry",
+      "file": "infantry.json"
+    },
+    {
+      "id": "rpg",
+      "name": "RPG",
+      "type": "infantry",
+      "file": "rpg.json"
+    },
+    {
+      "id": "mbt",
+      "name": "전차",
+      "type": "vehicle",
+      "file": "mbt.json"
+    },
+    {
+      "id": "apache",
+      "name": "아파치",
+      "type": "air",
+      "file": "apache.json"
+    },
+    {
+      "id": "bomber",
+      "name": "폭격기",
+      "type": "air",
+      "file": "bomber.json"
+    },
+    {
+      "id": "humvee",
+      "name": "험비",
+      "type": "vehicle",
+      "file": "humvee.json"
+    },
+    {
+      "id": "aa_tank",
+      "name": "대공전차",
+      "type": "vehicle",
+      "file": "aa_tank.json"
+    }
+  ]
+}

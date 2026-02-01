@@ -1,0 +1,101 @@
+{
+  "id": "bomber",
+  "name": "폭격기",
+  "type": "air",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "고고도 융단 폭격. 대공 미사일에만 피격됩니다"
+  },
+  "parts": {
+    "fuselage": {
+      "type": "polygon",
+      "points": [
+        {"x": 45, "y": 0},
+        {"x": 40, "y": -6},
+        {"x": 30, "y": -8},
+        {"x": -30, "y": -8},
+        {"x": -40, "y": -4},
+        {"x": -45, "y": 0},
+        {"x": -40, "y": 4},
+        {"x": 40, "y": 6}
+      ],
+      "color": "#334155",
+      "zIndex": 2
+    },
+    "cockpit": {
+      "type": "polygon",
+      "points": [
+        {"x": 45, "y": 0},
+        {"x": 42, "y": -4},
+        {"x": 35, "y": -4},
+        {"x": 35, "y": 3}
+      ],
+      "color": "#0f172a",
+      "zIndex": 3
+    },
+    "wingLeft": {
+      "type": "polygon",
+      "points": [
+        {"x": 10, "y": -8},
+        {"x": -20, "y": -25},
+        {"x": -25, "y": -25},
+        {"x": -15, "y": -8}
+      ],
+      "color": "#475569",
+      "zIndex": 1
+    },
+    "wingRight": {
+      "type": "polygon",
+      "points": [
+        {"x": 10, "y": 6},
+        {"x": -20, "y": 23},
+        {"x": -25, "y": 23},
+        {"x": -15, "y": 6}
+      ],
+      "color": "#475569",
+      "zIndex": 1
+    },
+    "tailWingLeft": {
+      "type": "polygon",
+      "points": [
+        {"x": -35, "y": -4},
+        {"x": -42, "y": -12},
+        {"x": -45, "y": -12},
+        {"x": -40, "y": -4}
+      ],
+      "color": "#334155",
+      "zIndex": 1
+    },
+    "tailWingRight": {
+      "type": "polygon",
+      "points": [
+        {"x": -35, "y": 4},
+        {"x": -42, "y": 12},
+        {"x": -45, "y": 12},
+        {"x": -40, "y": 4}
+      ],
+      "color": "#334155",
+      "zIndex": 1
+    },
+    "engineLeft": {
+      "type": "rect",
+      "x": -5,
+      "y": -18,
+      "w": 12,
+      "h": 5,
+      "color": "#1e293b",
+      "zIndex": 3
+    },
+    "engineRight": {
+      "type": "rect",
+      "x": -5,
+      "y": 13,
+      "w": 12,
+      "h": 5,
+      "color": "#1e293b",
+      "zIndex": 3
+    }
+  }
+}

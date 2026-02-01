@@ -1,0 +1,56 @@
+{
+  "id": "rpg",
+  "name": "RPG",
+  "type": "infantry",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "지상과 공중의 장갑 목표물을 타격하는 대전차/대공 보병"
+  },
+  "parts": {
+    "body": {
+      "type": "rect",
+      "x": -5,
+      "y": -16,
+      "w": 10,
+      "h": 16,
+      "color": "team",
+      "zIndex": 1
+    },
+    "head": {
+      "type": "circle",
+      "x": 0,
+      "y": -20,
+      "r": 4,
+      "color": "team",
+      "zIndex": 2
+    },
+    "helmet": {
+      "type": "arc",
+      "x": 0,
+      "y": -21,
+      "r": 4.5,
+      "color": "#dc2626",
+      "zIndex": 3
+    },
+    "launcher": {
+      "type": "rect",
+      "x": 3,
+      "y": -18,
+      "w": 14,
+      "h": 4,
+      "color": "#065f46",
+      "zIndex": 4
+    },
+    "launcherTip": {
+      "type": "rect",
+      "x": 17,
+      "y": -19,
+      "w": 4,
+      "h": 6,
+      "color": "#064e3b",
+      "zIndex": 5
+    }
+  }
+}

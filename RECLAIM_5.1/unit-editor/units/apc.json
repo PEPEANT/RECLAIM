@@ -1,0 +1,80 @@
+{
+  "id": "apc",
+  "name": "APC",
+  "type": "vehicle",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "피격 시 즉시 보병 4명을 하차시키고 전투를 지속하는 장갑차"
+  },
+  "parts": {
+    "body": {
+      "type": "polygon",
+      "points": [
+        {"x": 35, "y": -5},
+        {"x": 29, "y": -11},
+        {"x": 25, "y": -15},
+        {"x": -25, "y": -15},
+        {"x": -35, "y": -10},
+        {"x": -35, "y": -5},
+        {"x": -35, "y": 0},
+        {"x": -31, "y": 7},
+        {"x": 27, "y": 7}
+      ],
+      "color": "team",
+      "zIndex": 1
+    },
+    "window": {
+      "type": "polygon",
+      "points": [
+        {"x": 24, "y": -13},
+        {"x": 32, "y": -6},
+        {"x": 26, "y": -6}
+      ],
+      "color": "#1e293b",
+      "zIndex": 2
+    },
+    "turret": {
+      "type": "group",
+      "x": -3,
+      "y": -20,
+      "zIndex": 3,
+      "children": {
+        "base": {
+          "type": "rect",
+          "x": -10,
+          "y": -5,
+          "w": 20,
+          "h": 10,
+          "color": "#020617"
+        },
+        "gun": {
+          "type": "rect",
+          "x": 10,
+          "y": -2,
+          "w": 16,
+          "h": 4,
+          "color": "#000"
+        },
+        "hatch": {
+          "type": "rect",
+          "x": -5,
+          "y": -4,
+          "w": 10,
+          "h": 2,
+          "color": "#334155"
+        }
+      }
+    },
+    "wheels": {
+      "type": "wheels",
+      "points": [
+        {"x": -21, "y": 7},
+        {"x": -1, "y": 7},
+        {"x": 17, "y": 7}
+      ],
+      "zIndex": 0
+    }
+  }
+}

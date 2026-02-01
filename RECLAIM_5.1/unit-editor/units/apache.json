@@ -1,0 +1,107 @@
+{
+  "id": "apache",
+  "name": "아파치",
+  "type": "air",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "로켓으로 지상군을 지속적으로 공격하는 공격 헬기"
+  },
+  "parts": {
+    "tail": {
+      "type": "rect",
+      "x": -40,
+      "y": -3,
+      "w": 25,
+      "h": 4,
+      "color": "#475569",
+      "zIndex": 0
+    },
+    "tailRotor": {
+      "type": "rotor",
+      "x": -42,
+      "y": -3,
+      "w": 3,
+      "h": 16,
+      "zIndex": 1
+    },
+    "body": {
+      "type": "polygon",
+      "points": [
+        {"x": 30, "y": 0},
+        {"x": 25, "y": -8},
+        {"x": 10, "y": -12},
+        {"x": -15, "y": -10},
+        {"x": -20, "y": 4},
+        {"x": 25, "y": 4}
+      ],
+      "color": "#334155",
+      "zIndex": 2
+    },
+    "cockpit": {
+      "type": "polygon",
+      "points": [
+        {"x": 30, "y": 0},
+        {"x": 28, "y": -6},
+        {"x": 18, "y": -6},
+        {"x": 15, "y": 2}
+      ],
+      "color": "#0f172a",
+      "zIndex": 3
+    },
+    "gunMount": {
+      "type": "rect",
+      "x": 25,
+      "y": 2,
+      "w": 10,
+      "h": 4,
+      "color": "#1e293b",
+      "zIndex": 4
+    },
+    "gun": {
+      "type": "rect",
+      "x": 35,
+      "y": 3,
+      "w": 8,
+      "h": 2,
+      "color": "#000",
+      "zIndex": 5
+    },
+    "wingLeft": {
+      "type": "rect",
+      "x": -5,
+      "y": 4,
+      "w": 12,
+      "h": 3,
+      "color": "#475569",
+      "zIndex": 3
+    },
+    "rocketPodLeft": {
+      "type": "rect",
+      "x": -8,
+      "y": 6,
+      "w": 8,
+      "h": 4,
+      "color": "#064e3b",
+      "zIndex": 4
+    },
+    "mainRotor": {
+      "type": "rect",
+      "x": -30,
+      "y": -14,
+      "w": 60,
+      "h": 2,
+      "color": "#000",
+      "zIndex": 6
+    },
+    "rotorHub": {
+      "type": "circle",
+      "x": 0,
+      "y": -13,
+      "r": 3,
+      "color": "#1e293b",
+      "zIndex": 7
+    }
+  }
+}

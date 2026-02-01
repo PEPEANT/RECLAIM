@@ -1,0 +1,78 @@
+{
+  "id": "uh60",
+  "name": "블랙호크",
+  "type": "air",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "지정 지점으로 이동해 특수부대 4명을 투입하는 수송 헬기"
+  },
+  "parts": {
+    "tailBg": {
+      "type": "rect",
+      "x": -45,
+      "y": -5,
+      "w": 30,
+      "h": 6,
+      "color": "#1e293b",
+      "zIndex": 0
+    },
+    "tailRotor": {
+      "type": "rotor",
+      "x": -45,
+      "y": -5,
+      "w": 4,
+      "h": 20,
+      "zIndex": 1
+    },
+    "body": {
+      "type": "polygon",
+      "points": [
+        {"x": 25, "y": 0},
+        {"x": 20, "y": -8},
+        {"x": -20, "y": -10},
+        {"x": -25, "y": 5},
+        {"x": 20, "y": 5}
+      ],
+      "color": "#334155",
+      "zIndex": 2
+    },
+    "cockpit": {
+      "type": "rect",
+      "x": -10,
+      "y": -5,
+      "w": 15,
+      "h": 8,
+      "color": "#0f172a",
+      "zIndex": 3
+    },
+    "engine": {
+      "type": "rect",
+      "x": 15,
+      "y": -6,
+      "w": 6,
+      "h": 4,
+      "color": "#000",
+      "zIndex": 3
+    },
+    "mainRotor": {
+      "type": "rect",
+      "x": -35,
+      "y": -12,
+      "w": 70,
+      "h": 2,
+      "color": "#000",
+      "zIndex": 4
+    },
+    "rotorHub": {
+      "type": "rect",
+      "x": -2,
+      "y": -14,
+      "w": 4,
+      "h": 4,
+      "color": "#000",
+      "zIndex": 5
+    }
+  }
+}
