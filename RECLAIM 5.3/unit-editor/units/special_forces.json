@@ -1,0 +1,83 @@
+{
+  "id": "special_forces",
+  "name": "특수부대",
+  "type": "infantry",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "높은 체력과 연사력, 은신 능력을 갖춘 정예 부대"
+  },
+  "parts": {
+    "backpack": {
+      "type": "rect",
+      "x": -10,
+      "y": -20,
+      "w": 6,
+      "h": 14,
+      "color": "#0f172a",
+      "zIndex": 0
+    },
+    "body": {
+      "type": "rect",
+      "x": -6,
+      "y": -20,
+      "w": 12,
+      "h": 20,
+      "color": "team",
+      "zIndex": 1
+    },
+    "armor": {
+      "type": "rect",
+      "x": -6,
+      "y": -20,
+      "w": 12,
+      "h": 10,
+      "color": "#111827",
+      "zIndex": 2
+    },
+    "head": {
+      "type": "circle",
+      "x": 0,
+      "y": -24,
+      "r": 5,
+      "color": "team",
+      "zIndex": 3
+    },
+    "helmet": {
+      "type": "arc",
+      "x": 0,
+      "y": -25,
+      "r": 5.5,
+      "color": "#000",
+      "zIndex": 4
+    },
+    "goggles": {
+      "type": "rect",
+      "x": 2,
+      "y": -26,
+      "w": 4,
+      "h": 2,
+      "color": "#334155",
+      "zIndex": 5
+    },
+    "gun": {
+      "type": "rect",
+      "x": 2,
+      "y": -18,
+      "w": 10,
+      "h": 3,
+      "color": "#000",
+      "zIndex": 6
+    },
+    "gunBarrel": {
+      "type": "rect",
+      "x": 12,
+      "y": -18,
+      "w": 4,
+      "h": 1.5,
+      "color": "#000",
+      "zIndex": 7
+    }
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "id": "engineer",
+  "name": "공병",
+  "type": "infantry",
+  "metadata": {
+    "source": "hardcoded",
+    "version": "5.1",
+    "lastModified": "2026-02-01",
+    "description": "보병에겐 기관총, 기갑/공중에겐 유도 미사일로 공격합니다."
+  },
+  "stats": {
+    "cost": 30,
+    "cooldown": 20,
+    "maxCount": 12,
+    "hp": 60,
+    "damage": 15,
+    "missileRange": 450,
+    "missileDamage": 80,
+    "range": 180,
+    "speed": 0.7,
+    "width": 14,
+    "height": 22,
+    "color": "#f87171",
+    "unitType": "bio",
+    "category": "infantry",
+    "role": "대전차/대공",
+    "antiAir": true,
+    "hasMissile": true,
+    "missileCount": 1
+  },
+  "parts": {
+    "rocketOnBack": {
+      "type": "polygon",
+      "points": [
+        {"x": -18, "y": -28}, {"x": -18, "y": -20}, {"x": 14, "y": -20}, {"x": 14, "y": -28}
+      ],
+      "color": "#4d7c0f",
+      "zIndex": 0
+    },
+    "rocketCaps": {
+      "type": "rect", "x": -20, "y": -29, "w": 3, "h": 10, "color": "#111827", "zIndex": 0
+    },
+    "body": { "type": "rect", "x": -6, "y": -20, "w": 12, "h": 20, "color": "team", "zIndex": 1 },
+    "vest": { "type": "rect", "x": -8, "y": -19, "w": 16, "h": 11, "color": "#1e293b", "zIndex": 2 },
+    "vestPocket1": { "type": "rect", "x": -6, "y": -15, "w": 4, "h": 5, "color": "#334155", "zIndex": 3 },
+    "vestPocket2": { "type": "rect", "x": 2, "y": -15, "w": 4, "h": 5, "color": "#334155", "zIndex": 3 },
+    "head": { "type": "circle", "x": 0, "y": -24, "r": 5, "color": "team", "zIndex": 4 },
+    "goggles": { "type": "rect", "x": -2, "y": -26, "w": 6, "h": 2.5, "color": "#111827", "zIndex": 5 },
+    "lmgBody": { "type": "rect", "x": 2, "y": -16, "w": 10, "h": 5, "color": "#0f172a", "zIndex": 6 },
+    "lmgBarrel": { "type": "rect", "x": 12, "y": -15, "w": 7, "h": 2, "color": "#0f172a", "zIndex": 6 },
+    "lmgDrum": { "type": "circle", "x": 6, "y": -12, "r": 3, "color": "#3f6212", "zIndex": 7 }
+  },
+  "modes": {
+    "carrying": "등에 로켓, LMG 사용 (보병 상대)",
+    "firing": "RPG 조준 자세 (기갑/공중 상대)"
+  }
+}

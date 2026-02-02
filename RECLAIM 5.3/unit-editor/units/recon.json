@@ -1,0 +1,38 @@
+{
+  "id": "recon",
+  "name": "정찰기",
+  "type": "air",
+  "metadata": {
+    "source": "hardcoded",
+    "version": "5.1",
+    "lastModified": "2026-02-01",
+    "description": "고고도 정찰 드론. 선택 후 명령탭에서 적 전력 분석 가능."
+  },
+  "stats": {
+    "cost": 100,
+    "cooldown": 300,
+    "maxCount": 2,
+    "hp": 80,
+    "damage": 0,
+    "range": 0,
+    "speed": 2.5,
+    "mobility": 5,
+    "width": 30,
+    "height": 12,
+    "color": "#cbd5e1",
+    "unitType": "air",
+    "category": "air",
+    "role": "정찰 지원",
+    "invulnerable": false,
+    "stealth": true
+  },
+  "parts": {
+    "fuselage": { "type": "polygon", "points": [{"x":15,"y":2},{"x":17,"y":-5},{"x":5,"y":-7},{"x":-5,"y":-6},{"x":-20,"y":-2},{"x":-17,"y":1},{"x":10,"y":5}], "color": "#cbd5e1", "zIndex": 1 },
+    "vTail": { "type": "polygon", "points": [{"x":-15,"y":-2},{"x":-22,"y":-10},{"x":-19,"y":-2}], "color": "#475569", "zIndex": 2 },
+    "engineIntake": { "type": "circle", "x": -2, "y": -7, "r": 4, "color": "#334155", "zIndex": 3 },
+    "mainWing": { "type": "polygon", "points": [{"x":2,"y":-2},{"x":-7,"y":-1},{"x":-10,"y":1},{"x":0,"y":1}], "color": "#64748b", "zIndex": 4 },
+    "sensorPod": { "type": "arc", "x": 7, "y": 5, "r": 2, "color": "#0f172a", "zIndex": 5 },
+    "sensorLight": { "type": "circle", "x": 8, "y": 5, "r": 0.75, "color": "#38bdf8", "zIndex": 6 },
+    "teamStrip": { "type": "rect", "x": -7, "y": -4, "w": 5, "h": 2, "color": "team", "zIndex": 7 }
+  }
+}
