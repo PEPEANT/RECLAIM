@@ -1,0 +1,32 @@
+{
+  "id": "emp",
+  "name": "EMP",
+  "type": "special",
+  "metadata": {
+    "source": "hardcoded",
+    "version": "5.1",
+    "lastModified": "2026-02-01",
+    "description": "지정 범위의 기계 유닛을 10초간 마비시킵니다."
+  },
+  "stats": {
+    "cost": 0,
+    "cooldown": 0,
+    "maxCount": 0,
+    "hp": 0,
+    "damage": 0,
+    "range": 300,
+    "speed": 0,
+    "width": 40,
+    "height": 40,
+    "color": "#3b82f6",
+    "unitType": "skill",
+    "category": "special",
+    "role": "광역 마비",
+    "isSkill": true,
+    "chargeKey": "emp"
+  },
+  "parts": {
+    "outerRing": { "type": "circle", "x": 0, "y": 0, "r": 15, "color": "#3b82f6", "stroke": true, "strokeWidth": 2, "zIndex": 1 },
+    "bolt1": { "type": "polygon", "points": [{"x":-5,"y":-8},{"x":8,"y":-2},{"x":-2,"y":2},{"x":6,"y":10}], "color": "#3b82f6", "zIndex": 2 }
+  }
+}
