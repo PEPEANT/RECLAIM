@@ -1,0 +1,30 @@
+{
+  "id": "spg",
+  "name": "자주포",
+  "type": "vehicle",
+  "metadata": {
+    "source": "hardcoded",
+    "version": "5.1",
+    "lastModified": "2026-02-01",
+    "description": "매우 긴 사거리에서 광역 포격을 가합니다."
+  },
+  "stats": {
+    "cost": 160,
+    "cooldown": 400,
+    "maxCount": 6,
+    "hp": 200,
+    "damage": 150,
+    "range": 900,
+    "speed": 0.3,
+    "width": 65,
+    "height": 40,
+    "color": "#fb923c",
+    "unitType": "mech",
+    "category": "armored",
+    "role": "장거리 포격"
+  },
+  "parts": {
+    "body": { "type": "rect", "x": -25, "y": -20, "w": 50, "h": 20, "color": "team", "zIndex": 1 },
+    "gun": { "type": "rect", "x": -10, "y": -40, "w": 10, "h": 45, "color": "#1e293b", "zIndex": 2, "rotate": -45 }
+  }
+}

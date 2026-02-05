@@ -1,0 +1,34 @@
+{
+  "id": "chinook",
+  "name": "치누크",
+  "type": "air",
+  "metadata": {
+    "source": "hardcoded",
+    "version": "5.1",
+    "lastModified": "2026-02-01",
+    "description": "지정 지점으로 1회 이동해 보병 10명을 투입하고 상공으로 이탈합니다. (피격 불가)"
+  },
+  "stats": {
+    "cost": 260,
+    "cooldown": 520,
+    "maxCount": 2,
+    "hp": 2000,
+    "damage": 0,
+    "range": 0,
+    "speed": 3.2,
+    "width": 145,
+    "height": 44,
+    "color": "#475569",
+    "unitType": "air",
+    "category": "air",
+    "role": "보병 대량 투입",
+    "invulnerable": true
+  },
+  "parts": {
+    "body": { "type": "polygon", "points": [{"x":-43,"y":-14},{"x":43,"y":-14},{"x":50,"y":7},{"x":-50,"y":7},{"x":-50,"y":-29}], "color": "#4b5563", "zIndex": 1 },
+    "wheelL": { "type": "rect", "x": -34, "y": 6, "w": 8, "h": 4, "color": "#1f2937", "zIndex": 2 },
+    "wheelR": { "type": "rect", "x": 22, "y": 6, "w": 8, "h": 4, "color": "#1f2937", "zIndex": 3 },
+    "rotorFront": { "type": "rect", "x": -75, "y": -22, "w": 80, "h": 4, "color": "#000000", "zIndex": 4 },
+    "rotorBack": { "type": "rect", "x": -5, "y": -22, "w": 80, "h": 4, "color": "#000000", "zIndex": 5 }
+  }
+}
