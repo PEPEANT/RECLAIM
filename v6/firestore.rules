@@ -1,0 +1,203 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(uid) {
+      return isAuthenticated() && request.auth.uid == uid;
+    }
+
+    function isTsLike(value) {
+      return value is timestamp || value is int;
+    }
+
+    // Public profile (read: all, write: owner only)
+    match /publicProfiles/{uid} {
+      allow read: if true;
+      allow create, update: if isOwner(uid);
+      allow delete: if isOwner(uid);
+    }
+
+    // Public base snapshot (read: all, write: owner only)
+    match /publicBases/{uid} {
+      allow read: if true;
+      allow create, update: if isOwner(uid);
+      allow delete: if isOwner(uid);
+    }
+
+    // Global chat (read/write: authenticated, immutable after create)
+    match /globalChat/{messageId} {
+      allow read: if isAuthenticated();
+
+      allow create: if isAuthenticated()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid', 'senderName', 'avatarUrl', 'text', 'createdAt', 'createdAtMs'])
+        && request.resource.data.senderName is string
+        && request.resource.data.senderName.size() > 0
+        && request.resource.data.senderName.size() <= 40
+        && request.resource.data.text is string
+        && request.resource.data.text.size() > 0
+        && request.resource.data.text.size() <= 200
+        && (
+          !('avatarUrl' in request.resource.data)
+          || (
+            request.resource.data.avatarUrl is string
+            && request.resource.data.avatarUrl.size() <= 40000
+          )
+        )
+        && request.resource.data.createdAtMs is int;
+
+      allow update, delete: if false;
+    }
+
+    // User private data (owner only)
+    match /users/{uid} {
+      allow read, write: if isOwner(uid);
+
+      match /friends/{friendUid} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /inventory/{itemId} {
+        allow read, write: if isOwner(uid);
+      }
+
+      match /{document=**} {
+        allow read, write: if isOwner(uid);
+      }
+    }
+
+    // Visit interactions (gift/sign)
+    match /cityInteractions/{interactionId} {
+      allow read: if isAuthenticated()
+        && (
+          resource.data.type == 'sign'
+          || resource.data.fromUid == request.auth.uid
+          || resource.data.toUid == request.auth.uid
+        );
+
+      allow create: if isAuthenticated()
+        && request.resource.data.fromUid == request.auth.uid
+        && request.resource.data.toUid is string
+        && request.resource.data.toUid.size() > 0
+        && request.resource.data.toUid != request.auth.uid
+        && request.resource.data.status == 'active'
+        && request.resource.data.createdAtMs is int
+        && (
+          (
+            request.resource.data.type == 'gift'
+            && request.resource.data.keys().hasOnly([
+              'type', 'status', 'toUid', 'toName', 'fromUid', 'fromName',
+              'giftKind', 'itemKey', 'itemName', 'count',
+              'createdAt', 'createdAtMs', 'updatedAt'
+            ])
+            && request.resource.data.toName is string
+            && request.resource.data.toName.size() > 0
+            && request.resource.data.toName.size() <= 40
+            && request.resource.data.fromName is string
+            && request.resource.data.fromName.size() > 0
+            && request.resource.data.fromName.size() <= 40
+            && request.resource.data.giftKind in ['unit', 'honor_medal']
+            && request.resource.data.itemKey is string
+            && request.resource.data.itemKey.size() > 0
+            && request.resource.data.itemKey.size() <= 60
+            && request.resource.data.itemName is string
+            && request.resource.data.itemName.size() > 0
+            && request.resource.data.itemName.size() <= 80
+            && request.resource.data.count is int
+            && request.resource.data.count == 1
+            && (
+              request.resource.data.giftKind == 'unit'
+              || request.resource.data.itemKey == 'honor_medal'
+            )
+          )
+          ||
+          (
+            request.resource.data.type == 'sign'
+            && request.resource.data.keys().hasOnly([
+              'type', 'status', 'toUid', 'toName', 'fromUid', 'fromName',
+              'text', 'targetCellIndex',
+              'createdAt', 'createdAtMs', 'updatedAt'
+            ])
+            && request.resource.data.toName is string
+            && request.resource.data.toName.size() > 0
+            && request.resource.data.toName.size() <= 40
+            && request.resource.data.fromName is string
+            && request.resource.data.fromName.size() > 0
+            && request.resource.data.fromName.size() <= 40
+            && request.resource.data.text is string
+            && request.resource.data.text.size() > 0
+            && request.resource.data.text.size() <= 60
+            && request.resource.data.targetCellIndex is int
+            && request.resource.data.targetCellIndex >= 0
+          )
+        );
+
+      allow update: if isAuthenticated() && (
+        (
+          resource.data.type == 'gift'
+          && resource.data.toUid == request.auth.uid
+          && resource.data.status == 'active'
+          && request.resource.data.status == 'claimed'
+          && request.resource.data.claimedBy == request.auth.uid
+
+          // immutable fields
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.fromUid == resource.data.fromUid
+          && request.resource.data.toUid == resource.data.toUid
+          && request.resource.data.fromName == resource.data.fromName
+          && request.resource.data.toName == resource.data.toName
+          && request.resource.data.giftKind == resource.data.giftKind
+          && request.resource.data.itemKey == resource.data.itemKey
+          && request.resource.data.itemName == resource.data.itemName
+          && request.resource.data.count == resource.data.count
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.createdAtMs == resource.data.createdAtMs
+          && isTsLike(request.resource.data.claimedAt)
+          && isTsLike(request.resource.data.updatedAt)
+        )
+        ||
+        (
+          resource.data.type == 'sign'
+          && (
+            resource.data.toUid == request.auth.uid
+            || resource.data.fromUid == request.auth.uid
+          )
+          && resource.data.status == 'active'
+          && request.resource.data.status == 'removed'
+          && request.resource.data.removedBy == request.auth.uid
+
+          // immutable owner/content fields
+          && request.resource.data.type == resource.data.type
+          && request.resource.data.fromUid == resource.data.fromUid
+          && request.resource.data.toUid == resource.data.toUid
+          && request.resource.data.fromName == resource.data.fromName
+          && request.resource.data.toName == resource.data.toName
+          && request.resource.data.text == resource.data.text
+          && request.resource.data.targetCellIndex == resource.data.targetCellIndex
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.createdAtMs == resource.data.createdAtMs
+          && isTsLike(request.resource.data.removedAt)
+          && isTsLike(request.resource.data.updatedAt)
+        )
+      );
+
+      allow delete: if false;
+    }
+
+    // Ranking (read only, server-managed)
+    match /rankings/{rankingId} {
+      allow read: if true;
+      allow write: if false;
+    }
+
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -1,0 +1,47 @@
+{
+  "id": "infantry",
+  "name": "보병",
+  "type": "infantry",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "저렴한 비용으로 전선을 유지하는 기본 보병"
+  },
+  "parts": {
+    "body": {
+      "type": "rect",
+      "x": -5,
+      "y": -18,
+      "w": 10,
+      "h": 18,
+      "color": "team",
+      "zIndex": 1
+    },
+    "head": {
+      "type": "circle",
+      "x": 0,
+      "y": -22,
+      "r": 4,
+      "color": "team",
+      "zIndex": 2
+    },
+    "helmet": {
+      "type": "arc",
+      "x": 0,
+      "y": -23,
+      "r": 4.5,
+      "color": "#334155",
+      "zIndex": 3
+    },
+    "gun": {
+      "type": "rect",
+      "x": 2,
+      "y": -14,
+      "w": 8,
+      "h": 2,
+      "color": "#1e293b",
+      "zIndex": 4
+    }
+  }
+}

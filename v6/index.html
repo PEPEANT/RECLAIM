@@ -1,0 +1,1679 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <!-- OpenGraph : DCInside thumbnail -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="RECLAIM (수복)">
+    <meta property="og:description" content="2D 실시간 전쟁 게임">
+    <meta property="og:image" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/png/RECLAIM.jpg">
+    <meta property="og:url" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/">
+    <title>RECLAIM (수복)</title>
+    <link rel="icon" href="data:,">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="style.css?v=20260216s14">
+    <link rel="stylesheet" href="src/styles/campaign.css">
+    <link rel="stylesheet" href="src/styles/city-shop.css">
+    <link rel="stylesheet" href="src/styles/skirmish.css?v=20260216sc2">
+    <link rel="stylesheet" href="src/styles/city-friends.css">
+    <link rel="stylesheet" href="src/styles/city-visit.css?v=20260216v5">
+    <!-- Google Fonts for Cyberpunk/Sci-fi look -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&family=Noto+Sans+KR:wght@300;500;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+
+    <div id="game-wrapper">
+        <div id="boot-gate" class="boot-gate" role="dialog" aria-modal="true" aria-label="게임 시작">
+            <button id="boot-play-btn" type="button" class="boot-play-btn" aria-label="플레이">
+                PLAY
+            </button>
+        </div>
+
+        <canvas id="game-canvas" class="absolute inset-0"></canvas>
+        <div id="emp-flash" class="emp-effect"></div>
+
+        <!-- 국지전 배치 페이즈 UI -->
+        <div id="skirmish-placement-ui" class="hidden skirmish-placement-ui">
+            <div class="skirmish-bottom-bar">
+                <div id="skirmish-narration" class="skirmish-narration"></div>
+                <div id="skirmish-unit-palette" class="skirmish-unit-palette"></div>
+                <button id="skirmish-ready-btn" type="button" class="skirmish-ready-btn"
+                    onclick="SkirmishMode.onReadyClick(game)">배치 완료</button>
+            </div>
+        </div>
+
+        <!-- 국지전 카운트다운 오버레이 -->
+        <div id="skirmish-countdown" class="hidden skirmish-countdown">
+            <span id="skirmish-countdown-num"></span>
+        </div>
+
+        <!-- [NEW] Fake Loading Screen -->
+        <div id="loading-screen"
+            class="hidden absolute inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4">
+            <h1 class="text-6xl md:text-8xl font-black text-white mb-2 tracking-tighter title-shadow"
+                style="font-family: 'Orbitron', sans-serif;">
+                RECLAIM
+            </h1>
+            <div class="text-2xl text-blue-500 font-bold mb-12 tracking-[0.5em]" data-lang="project_title">
+                PROJECT: RECLAIM
+            </div>
+
+            <div class="w-full max-w-md bg-gray-900 h-2 rounded-full overflow-hidden relative mb-4">
+                <div id="loading-bar" class="absolute top-0 left-0 h-full bg-blue-500 w-0 transition-all duration-300">
+                </div>
+            </div>
+            <!-- Loading Progress Text -->
+            <div id="loading-text" class="text-sm text-gray-400 font-mono animate-pulse" data-lang="loading_system">
+                System Initializing...
+            </div>
+
+            <!-- TIP Section -->
+            <div id="loading-tip" class="mt-12 max-w-2xl text-center px-6">
+                <div class="text-blue-400 text-xs font-bold mb-2 tracking-widest">💡 TIP</div>
+                <p id="loading-tip-text" class="text-gray-300 text-sm leading-relaxed">
+                    초반에는 생산 건물 위주로 지어 자원을 확보하는 것이 좋습니다.
+                </p>
+            </div>
+        </div>
+        <!-- HUD Minimap & Options Button -->
+        <div id="hud-minimap-container" class="hidden pointer-events-auto">
+            <canvas id="hud-minimap" class="w-full h-full block"></canvas>
+        </div>
+
+        <!-- Minimap Toggle (Open/Close) -->
+        <button id="hud-minimap-toggle" onclick="game.toggleMinimap()" class="hidden pointer-events-auto absolute z-50"
+            aria-label="Minimap">
+            <i class="fa-solid fa-map"></i>
+        </button>
+
+        <!-- Speed Controls (moved under minimap) -->
+        <div id="hud-ctrl-wrapper" class="hidden pointer-events-auto">
+            <button id="hud-ctrl-toggle" class="btn-speed" aria-label="Toggle controls">
+                <i class="fa-solid fa-sliders"></i>
+            </button>
+            <div id="hud-ctrl-body" class="hidden">
+                <div id="hud-speed-controls">
+                    <button id="btn-speed-0.5" onclick="game.setSpeed(0.5)" class="btn-speed">x0.5</button>
+                    <button id="btn-speed-1" onclick="game.setSpeed(1)" class="btn-speed">x1</button>
+                    <button id="btn-speed-2" onclick="game.setSpeed(2)" class="btn-speed">x2</button>
+                    <div id="hud-zoom-controls">
+                        <button id="btn-zoom-out" onclick="game.zoomOut()" class="btn-speed">-</button>
+                        <span id="hud-zoom-text">100%</span>
+                        <button id="btn-zoom-in" onclick="game.zoomIn()" class="btn-speed">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [R 2.4] Unit Command Panel (Multi-Select + Drag) -->
+        <div id="unit-cmd-wrapper" class="hidden pointer-events-auto">
+            <div id="unit-cmd-panel">
+                <div id="cmd-header">
+                    <button id="cmd-panel-toggle" class="cmd-toggle-btn" onclick="game.toggleCmdPanel(event)"
+                        aria-label="Command panel">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="cmd-header-right">
+                        <button id="cmd-layout-toggle" class="cmd-layout-toggle" aria-label="Toggle layout">
+                            <i class="fa-solid fa-border-all"></i>
+                        </button>
+                        <button id="clear-units-btn" class="cmd-btn-clear-mini"><span class="cmd-ico">X</span></button>
+                    </div>
+                </div>
+                <div id="cmd-actions" class="hidden">
+                    <!-- Row1: Retreat / Stop -->
+                    <button data-cmd="retreat" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-arrow-rotate-left"></i></span>
+                        <span data-lang="cmd_retreat">RETREAT</span>
+                    </button>
+                    <button data-cmd="stop" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-pause"></i></span>
+                        <span data-lang="cmd_stop">STOP</span>
+                    </button>
+
+                    <!-- Row2: Attack / Camera / Move -->
+                    <button data-cmd="attack" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-crosshairs"></i></span>
+                        <span data-lang="cmd_attack">ATTACK</span>
+                    </button>
+                    <button data-cmd="camera" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-video"></i></span>
+                        <span data-lang="cmd_camera">CAMERA</span>
+                    </button>
+                    <button data-cmd="move" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-up-down-left-right"></i></span>
+                        <span data-lang="cmd_move">MOVE</span>
+                    </button>
+
+                    <!-- Recon: show only if recon unit selected -->
+                    <button data-cmd="recon" id="cmd-recon-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-binoculars"></i></span>
+                        <span data-lang="cmd_recon">RECON</span>
+                    </button>
+                    <!-- Smoke: show only if smoke unit selected -->
+                    <button data-cmd="smoke" id="cmd-smoke-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-smog"></i></span>
+                        <span data-lang="cmd_smoke">SMOKE</span>
+                    </button>
+                    <!-- Drop: show only if transport unit selected -->
+                    <button data-cmd="drop" id="cmd-drop-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-arrow-down"></i></span>
+                        <span data-lang="cmd_drop">DROP</span>
+                    </button>
+                    <!-- Missile: show only if fighter jet selected -->
+                    <button data-cmd="missile" id="cmd-missile-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-rocket"></i></span>
+                        <span data-lang="cmd_missile">MISSILE</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+
+        <button id="hud-option-btn" class="hidden" onclick="ui.openOptions()" aria-label="Options">
+            <i class="fa-solid fa-gear"></i>
+        </button>
+
+        <div id="unit-info-panel">
+            <h3 id="info-name">Unit Name</h3>
+            <span id="info-role" class="role-badge">Role</span>
+            <p id="info-desc">Description</p>
+        </div>
+
+        <div id="targeting-overlay"
+            class="hidden pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-2xl z-30">
+            <span id="target-msg" class="font-bold text-sm" data-lang="target_select">SELECT A TARGET</span>
+        </div>
+
+        <!-- [NEW] Game Timer + Mission Objective (Top Center) -->
+        <div id="hud-timer-container"
+            class="hidden fixed top-2 left-1/2 -translate-x-1/2 z-[95] flex items-center gap-2 pointer-events-auto">
+            <div id="hud-timer"
+                class="text-white text-lg md:text-2xl font-bold bg-black/40 px-3 py-1 rounded pointer-events-none">
+                00:00
+            </div>
+            <button id="btn-mission-objective" onclick="game.showMissionObjective()"
+                class="bg-blue-600/80 hover:bg-blue-500 text-white text-xs md:text-sm font-bold px-2 py-1 rounded border border-blue-400 shadow-lg transition-colors">
+                <i class="fa-solid fa-crosshairs mr-1"></i><span data-lang="mission_objective_btn">MISSION</span>
+            </button>
+        </div>
+
+        <!-- [NEW] Mission Objective Modal -->
+        <div id="mission-objective-modal"
+            class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/70">
+            <div class="mission-objective-panel bg-slate-900 border-2 border-blue-500 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+                <div class="flex items-center gap-3 mb-4 border-b border-slate-700 pb-3">
+                    <i class="fa-solid fa-bullseye text-2xl text-blue-400"></i>
+                    <h2 class="text-xl font-bold text-white" data-lang="mission_objective_title">MISSION OBJECTIVE</h2>
+                </div>
+                <p id="mission-objective-text" class="text-gray-200 text-base leading-relaxed mb-4">
+                    <!-- Dynamic mission objective text per map -->
+                </p>
+                <button onclick="game.hideMissionObjective()"
+                    class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded transition-colors"
+                    data-lang="confirm">
+                    CONFIRM
+                </button>
+            </div>
+        </div>
+
+        <!-- [NEWS INTRO] City map broadcast intro -->
+        <div id="news-intro-widget" class="news-intro-widget hidden pointer-events-none">
+            <div class="news-frame">
+                <canvas id="news-intro-canvas" width="420" height="240"></canvas>
+            </div>
+        </div>
+
+        <!-- [NEWS] City map broadcast overlay -->
+        <div id="news-widget" class="news-widget hidden pointer-events-none">
+            <div class="news-frame">
+                <canvas id="news-canvas" width="420" height="240"></canvas>
+                <div class="news-ui">
+                    <div class="news-live">LIVE</div>
+                    <div id="news-location" class="news-location" data-lang="news_location">
+                        BATTLE ZONE CIVIL CONTROL | 14:02
+                    </div>
+                    <div class="news-bar">
+                        <div class="news-title">
+                            <span data-lang="news_breaking">BREAKING</span>
+                        </div>
+                        <div class="news-headline" data-lang="news_headline">
+                            SPECIAL MILITARY OPERATION DECLARED
+                        </div>
+                    </div>
+                    <div class="news-ticker">
+                        <div class="news-ticker-track">
+                            <span data-lang="news_ticker">Troop movements detected / Major routes blocked / Alert level
+                                raised / Market volatility</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="hud-overlay" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4">
+
+            <div class="flex justify-between items-start pointer-events-auto w-full mt-2 px-2">
+                <div class="flex gap-2">
+                    <!-- Map Button Removed (Replaced by HUD Minimap) -->
+                    <button onclick="game.toggleScope()"
+                        class="cmd-btn text-blue-400 border-blue-800 hover:bg-slate-700 whitespace-nowrap">
+                        <i class="fa-solid fa-binoculars"></i> <span data-lang="enemy_analysis">ENEMY ANALYSIS</span>
+                    </button>
+                </div>
+
+                <div id="spawn-indicator"
+                    class="hidden bg-slate-800/90 border border-yellow-500 text-yellow-400 px-4 py-2 rounded shadow-lg font-bold text-sm animate-pulse">
+                    <i class="fa-solid fa-tent-arrow-down-to-line mr-2"></i>
+                    <span data-lang="spawn_indicator">FORWARD BASE MODE</span>
+                    <button onclick="game.selectSpawn(null)"
+                        class="ml-3 text-white text-xs bg-slate-600 px-2 py-1 rounded"
+                        data-lang="return_hq">RETURN</button>
+                </div>
+            </div>
+
+            <div id="toast-msg"
+                class="hidden absolute top-32 left-1/2 transform -translate-x-1/2 bg-slate-800/90 border border-slate-500 text-white px-6 py-3 rounded-lg font-bold text-sm shadow-2xl z-20 transition-opacity duration-300">
+            </div>
+
+            <div class="flex w-full items-end gap-2 overflow-visible pointer-events-auto">
+
+                <!-- [R 4.2] Chat Panel (Log Window) -->
+                <div id="chat-panel" class="hidden pointer-events-auto">
+                    <div id="chat-header">
+                        <span class="chat-title">LOG</span>
+                        <div class="chat-btns">
+                            <button id="chat-clear-btn" title="닫기">&lt;</button>
+                            <button id="chat-toggle-btn" title="Toggle">
+                                <i class="fa-solid fa-comment-dots"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="chat-body">
+                        <div id="chat-list"></div>
+                    </div>
+                </div>
+
+                <div id="unit-panel-container"
+                    class="flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <div class="unit-category-row flex w-full bg-slate-800 border-b border-slate-700">
+                        <button onclick="game.setCategory('infantry')" id="tab-infantry"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm active"
+                            data-lang="cat_infantry">INFANTRY</button>
+                        <button onclick="game.setCategory('armored')" id="tab-armored"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_armored">ARMORED</button>
+                        <button onclick="game.setCategory('air')" id="tab-air"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_air">AIR</button>
+                        <button onclick="game.setCategory('veteran')" id="tab-veteran"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm hidden" data-lang="cat_special">특수</button>
+                        <button id="tab-drone-only" class="btn-category flex-1 py-2 text-xs md:text-sm hidden" disabled
+                            data-lang="cat_drone">DRONE</button>
+                    </div>
+
+                    <div id="unit-list-wrapper" class="relative">
+                        <div id="unit-list-container"
+                            class="flex gap-2 p-2 overflow-x-auto hide-scrollbar h-24 md:h-20 items-center touch-pan-x">
+                        </div>
+                        <button id="unit-scroll-right" class="unit-scroll-btn right hidden" aria-label="Scroll right">›</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="map-modal"
+            class="hidden absolute inset-0 z-40 bg-black/80 flex items-center justify-center pointer-events-auto p-4">
+            <div class="bg-slate-800 border-2 border-slate-600 p-3 rounded-lg max-w-2xl w-full relative shadow-2xl">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-green-500 font-bold text-sm tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish"></i> SATELLITE VIEW
+                    </h2>
+                    <button onclick="game.toggleMap()" class="text-gray-400 hover:text-white text-xl font-bold px-2">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="w-full h-64 bg-black rounded border border-slate-700 relative overflow-hidden">
+                    <canvas id="map-canvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="scope-modal"
+            class="hidden absolute inset-0 z-40 bg-black/90 flex items-center justify-center pointer-events-auto p-4">
+            <div
+                class="bg-slate-900 border border-blue-800 rounded-lg w-[95vw] max-w-6xl relative shadow-2xl flex flex-col overflow-hidden">
+                <div class="bg-slate-950 p-4 border-b border-blue-900 flex justify-between items-center">
+                    <h2 class="text-blue-400 font-bold text-lg tracking-widest" data-lang="enemy_analysis_title"><i
+                            class="fa-solid fa-crosshairs mr-2"></i>ENEMY ANALYSIS</h2>
+                    <button onclick="game.toggleScope()" class="text-gray-500 hover:text-white text-lg"><i
+                            class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-3 bg-slate-900/80">
+                    <!-- Horizontal table layout: one unit per column -->
+                    <table class="recon-table recon-h">
+                        <thead>
+                            <tr id="enemy-status-head-row"></tr>
+                        </thead>
+                        <tbody>
+                            <tr id="enemy-status-count-row"></tr>
+                            <tr id="enemy-status-state-row"></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3 bg-slate-950 border-t border-blue-900 text-center">
+                    <button onclick="game.toggleScope()"
+                        class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-6 py-2 rounded border border-slate-600"
+                        data-lang="close">CLOSE</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Lobby screen (main menu) -->
+        <div id="lobby-screen"
+            class="absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
+            <!-- Lobby background canvas (placed behind buttons) -->
+            <canvas id="lobby-canvas" class="absolute inset-0 z-0 pointer-events-none"></canvas>
+
+            <!-- Vignette overlay (dark edge effect) -->
+            <div class="absolute inset-0 z-10 pointer-events-none"
+                style="background: radial-gradient(ellipse at center, transparent 30%, rgba(0,0,0,0.7) 100%);"></div>
+
+            <div class="max-w-4xl w-full flex flex-col items-center relative z-20">
+                <div class="text-yellow-500 text-xs md:text-sm font-mono tracking-widest md:tracking-[0.5em] mb-4 text-center"
+                    data-lang="subtitle">TACTICAL COMMAND
+                    SYSTEM</div>
+                <h1 class="text-5xl md:text-7xl font-black text-white mb-2 tracking-tighter title-shadow font-orbitron"
+                    data-lang="title">
+                    RECLAIM
+                </h1>
+                <div id="lobby-brand" class="hidden">RECLAIM</div>
+
+                <!-- LOBBY MENU -->
+                <div class="lobby-main-actions mt-8 md:mt-10 flex flex-row gap-2 w-full max-w-4xl px-4">
+                    <!-- 1. GOOGLE LOGIN -->
+                    <button onclick="game.startGoogleLogin()"
+                        class="lobby-main-btn group relative h-12 flex-1 min-w-0 bg-slate-900 border border-slate-700 hover:border-red-400 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-red-900/10 group-hover:bg-red-600/20 transition-colors"></div>
+                        <div class="relative z-10 flex h-full items-center justify-center gap-3 px-4">
+                            <i class="fa-brands fa-google text-xl text-red-400 group-hover:text-white"></i>
+                            <span class="text-base font-bold text-gray-200 group-hover:text-white">구글로그인</span>
+                        </div>
+                    </button>
+
+                    <!-- 2. LOGIN -->
+                    <button onclick="game.loginAndEnterCity()"
+                        class="lobby-main-btn group relative h-12 flex-1 min-w-0 bg-slate-900 border border-slate-700 hover:border-amber-500 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-amber-900/10 group-hover:bg-amber-600/20 transition-colors"></div>
+                        <div class="relative z-10 flex h-full items-center justify-center gap-3 px-4">
+                            <i class="fa-solid fa-user-shield text-xl text-amber-400 group-hover:text-white"></i>
+                            <span class="text-base font-bold text-gray-200 group-hover:text-white">로그인</span>
+                        </div>
+                    </button>
+
+                    <!-- 3. GUEST LOGIN -->
+                    <button onclick="game.startGuestPlay()"
+                        class="lobby-main-btn group relative h-12 flex-1 min-w-0 bg-slate-900 border border-slate-700 hover:border-blue-500 rounded-xl overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                        <div class="absolute inset-0 bg-blue-900/10 group-hover:bg-blue-600/20 transition-colors"></div>
+                        <div class="relative z-10 flex h-full items-center justify-center gap-3 px-4">
+                            <i class="fa-solid fa-earth-americas text-xl text-blue-400 group-hover:text-white"></i>
+                            <span class="text-base font-bold text-gray-200 group-hover:text-white">게스트로그인</span>
+                        </div>
+                    </button>
+                </div>
+
+                <div id="auth-session-row" class="mt-3 flex items-center justify-center gap-2 text-xs">
+                    <span id="auth-session-status" class="text-gray-400">로그아웃 상태</span>
+                    <button id="auth-signout-btn"
+                        class="hidden px-2 py-1 rounded border border-slate-600 text-gray-200 hover:border-red-500 hover:text-white">
+                        로그아웃
+                    </button>
+                </div>
+
+                <div id="lobby-runtime-status" class="mt-8 text-gray-600 text-xs font-mono">
+                    버전 로딩 중...
+                </div>
+            </div>
+
+            <!-- GAME EXIT (Bottom Right Corner) -->
+            <button onclick="ui.showExitConfirmation('quit')"
+                class="absolute bottom-3 right-3 z-30 group h-12 px-4 bg-slate-900 border border-slate-700 hover:border-red-500 rounded-lg overflow-hidden transition-all hover:scale-[1.02] active:scale-[0.98] shadow-xl">
+                <div class="absolute inset-0 bg-red-900/10 group-hover:bg-red-600/20 transition-colors"></div>
+                <div class="relative z-10 flex items-center gap-2">
+                    <i class="fa-solid fa-power-off text-sm text-red-400 group-hover:text-white"></i>
+                    <span class="text-sm font-bold text-gray-200 group-hover:text-white" data-lang="menu_exit">GAME EXIT</span>
+                </div>
+            </button>
+
+            <div id="lobby-version-label" class="lobby-version-label" aria-label="version"></div>
+        </div>
+
+        <!-- AUTH: LOGIN MODAL -->
+        <div id="auth-login-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-login-title">
+            <div class="auth-modal-panel">
+                <button type="button" class="auth-modal-close" id="auth-login-close" aria-label="닫기">×</button>
+                <h2 id="auth-login-title" class="auth-modal-title">로그인</h2>
+                <p class="auth-modal-subtitle">가입한 이메일(또는 등록 아이디)과 비밀번호를 입력하세요.</p>
+                <form id="auth-login-form" class="auth-form" autocomplete="off">
+                    <label class="auth-field">
+                        <span>이메일 / 아이디</span>
+                        <input id="auth-login-id" type="text" placeholder="example@gmail.com 또는 아이디" maxlength="80">
+                    </label>
+                    <label class="auth-field">
+                        <span>비밀번호</span>
+                        <input id="auth-login-password" type="password" placeholder="비밀번호 입력" maxlength="64">
+                    </label>
+                    <div id="auth-login-error" class="auth-error hidden"></div>
+                    <div class="auth-links">
+                        <span>계정이 없나요?</span>
+                        <button type="button" id="auth-open-signup" class="auth-link-btn">회원가입</button>
+                    </div>
+                    <div class="auth-actions">
+                        <button type="button" id="auth-login-cancel" class="auth-btn auth-btn-ghost">취소</button>
+                        <button type="submit" class="auth-btn auth-btn-primary">로그인</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- AUTH: SIGNUP MODAL -->
+        <div id="auth-signup-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-signup-title">
+            <div class="auth-modal-panel">
+                <button type="button" class="auth-modal-close" id="auth-signup-close" aria-label="닫기">×</button>
+                <h2 id="auth-signup-title" class="auth-modal-title">회원가입</h2>
+                <p class="auth-modal-subtitle">가입 후 인증 메일을 받고, 메일 인증 완료 후 로그인할 수 있습니다.</p>
+                <form id="auth-signup-form" class="auth-form" autocomplete="off">
+                    <label class="auth-field">
+                        <span>아이디</span>
+                        <input id="auth-signup-id" type="text" placeholder="아이디 입력" maxlength="40">
+                    </label>
+                    <label class="auth-field">
+                        <span>비밀번호</span>
+                        <input id="auth-signup-password" type="password" placeholder="비밀번호 입력" maxlength="64">
+                    </label>
+                    <label class="auth-field">
+                        <span>비밀번호 확인</span>
+                        <input id="auth-signup-password-confirm" type="password" placeholder="비밀번호 다시 입력" maxlength="64">
+                    </label>
+                    <label class="auth-field">
+                        <span>이메일</span>
+                        <div class="auth-inline-row">
+                            <input id="auth-signup-email" type="email" placeholder="example@gmail.com" maxlength="80">
+                            <button type="button" id="auth-signup-send-code" class="auth-inline-btn">이메일 인증</button>
+                        </div>
+                    </label>
+                    <label class="auth-field">
+                        <span>인증 코드</span>
+                        <div class="auth-inline-row">
+                            <input id="auth-signup-code" type="text" inputmode="numeric" maxlength="6" placeholder="6자리 코드">
+                            <button type="button" id="auth-signup-verify-code" class="auth-inline-btn">코드 확인</button>
+                        </div>
+                    </label>
+                    <p id="auth-signup-verify-status" class="auth-verify-inline hidden"></p>
+                    <p id="auth-signup-demo" class="auth-demo-code"></p>
+                    <div id="auth-signup-error" class="auth-error hidden"></div>
+                    <div class="auth-actions">
+                        <button type="button" id="auth-signup-back" class="auth-btn auth-btn-ghost">뒤로</button>
+                        <button type="submit" class="auth-btn auth-btn-primary">회원가입 완료</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- AUTH: GOOGLE PRE-INPUT MODAL -->
+        <div id="auth-google-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-google-title">
+            <div class="auth-modal-panel auth-google-panel">
+                <button type="button" class="auth-modal-close auth-google-close" id="auth-google-close" aria-label="닫기">×</button>
+                <div class="auth-google-head">
+                    <i class="fa-brands fa-google"></i>
+                    <strong>Google</strong>
+                </div>
+                <h2 id="auth-google-title" class="auth-modal-title">Google 로그인</h2>
+                <p class="auth-modal-subtitle">Google 계정 선택 창으로 이동합니다.</p>
+                <form id="auth-google-form" class="auth-form" autocomplete="off">
+                    <label class="auth-field">
+                        <span>Google 이메일</span>
+                        <input id="auth-google-email" type="email" placeholder="yourname@gmail.com" maxlength="80">
+                    </label>
+                    <div id="auth-google-error" class="auth-error hidden"></div>
+                    <div class="auth-actions">
+                        <button type="button" id="auth-google-cancel" class="auth-btn auth-btn-ghost">취소</button>
+                        <button type="submit" class="auth-btn auth-btn-primary">다음</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- AUTH: EMAIL VERIFICATION MODAL -->
+        <div id="auth-verify-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-verify-title">
+            <div class="auth-modal-panel">
+                <button type="button" class="auth-modal-close" id="auth-verify-close" aria-label="닫기">×</button>
+                <h2 id="auth-verify-title" class="auth-modal-title">이메일 인증</h2>
+                <p class="auth-modal-subtitle"><strong id="auth-verify-target">-</strong>로 인증 코드를 전송했습니다.</p>
+                <div class="auth-verify-meta">
+                    <span id="auth-verify-timer" class="auth-verify-timer">03:00</span>
+                    <button type="button" id="auth-verify-resend" class="auth-link-btn">코드 재전송</button>
+                </div>
+                <form id="auth-verify-form" class="auth-form" autocomplete="off">
+                    <label class="auth-field">
+                        <span>인증 코드</span>
+                        <input id="auth-verify-code" type="text" inputmode="numeric" maxlength="6" placeholder="6자리 코드 입력">
+                    </label>
+                    <p id="auth-verify-demo" class="auth-demo-code"></p>
+                    <div id="auth-verify-error" class="auth-error hidden"></div>
+                    <div class="auth-actions">
+                        <button type="button" id="auth-verify-cancel" class="auth-btn auth-btn-ghost">취소</button>
+                        <button type="submit" class="auth-btn auth-btn-primary">인증 완료</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+
+        <!-- Login City Screen -->
+        <div id="city-screen" class="hidden absolute inset-0 z-50 city-screen pointer-events-auto">
+            <header class="city-topbar">
+                <div class="city-top-left">
+                    <div class="city-stat-line city-level-exp-line">
+                        <div class="city-level-head">
+                            <img id="city-hud-level-badge" class="city-level-badge" src="png/level.png/leftbar_level.1.png" alt="레벨 1">
+                            <strong id="city-hud-level" class="city-level-number">1</strong>
+                        </div>
+                        <div class="city-level-exp-block">
+                            <strong id="city-hud-exp" class="city-level-exp-value">0/100</strong>
+                            <div class="city-exp-track city-level-exp-track" aria-hidden="true">
+                                <span id="city-hud-exp-fill" class="city-exp-fill"></span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="city-stat-line">
+                        <span class="city-stat-label">인구</span>
+                        <strong id="city-res-pop">6/20</strong>
+                    </div>
+                </div>
+
+                <div class="city-top-right">
+                    <div class="city-res-chip">
+                        <div class="city-res-row">
+                            <img src="png/money.png" alt="자금">
+                            <strong id="city-res-money">2,600</strong>
+                        </div>
+                        <div class="city-res-row">
+                            <img src="png/gold.png" alt="금">
+                            <strong id="city-res-gold">0</strong>
+                        </div>
+                    </div>
+                    <button type="button" id="city-tax-collect-btn" class="city-tax-collect-btn hidden"
+                        onclick="game.claimCityIncomeBatch()">일괄 수금</button>
+                    <button type="button" id="city-tax-auto-btn" class="city-tax-auto-btn hidden"
+                        onclick="game.activateCityTaxAutoCollect()">자동수금</button>
+                </div>
+            </header>
+
+            <section class="city-battlefield">
+                <button type="button" class="city-mission-toggle" onclick="game.toggleCityMissionPanel()" aria-label="미션">
+                    <img src="png/mission.png" alt="미션">
+                </button>
+
+                <article id="city-mission-card" class="city-mission-card hidden">
+                    <button type="button" class="city-mission-close" onclick="game.toggleCityMissionPanel(false)">✕</button>
+                    <div class="city-mission-new">QUEST</div>
+                    <div class="city-mission-title">작전 브리핑</div>
+                    <p class="city-mission-subtitle">기지 전투 준비를 완료하고 다음 국지전에 투입하세요.</p>
+                    <ul class="city-mission-list">
+                        <li>건설/생산 건물 상태를 점검합니다.</li>
+                        <li>보관함 유닛/보급품 상태를 확인합니다.</li>
+                        <li>작전 시작 전 자금과 보급을 정리합니다.</li>
+                    </ul>
+                    <div class="city-mission-reward">완료 보상: 작전 자금 +400</div>
+                </article>
+
+                <div class="city-grid-wrap">
+                    <div id="city-map-viewport" class="city-map-viewport">
+                        <div id="city-grid" class="city-grid"></div>
+                    </div>
+                </div>
+
+                <aside class="city-side-buttons">
+                    <button type="button" class="city-side-btn" onclick="ui.openOptions()" aria-label="설정">
+                        <i class="fa-solid fa-gear"></i>
+                    </button>
+                </aside>
+
+                <button type="button" id="city-fab-inventory" class="city-image-fab"
+                    onclick="game.openCityInventory()" aria-label="보관함">
+                    <img src="png/box.png" alt="보관함">
+                </button>
+                <button type="button" id="city-fab-build" class="city-image-fab"
+                    onclick="game.openCityBuildPanel()" aria-label="건설">
+                    <img src="png/Construction.png" alt="건설">
+                </button>
+                <button type="button" id="city-fab-battle" class="city-image-fab"
+                    onclick="game.launchBattleFromCity()" aria-label="전투">
+                    <img src="png/Battle.png" alt="전투">
+                </button>
+                <button type="button" id="city-fab-friend" class="city-image-fab"
+                    onclick="game.openCityFriends()" aria-label="친구">
+                    <img src="png/Friends.png" alt="친구">
+                </button>
+                <button type="button" id="city-fab-store" class="city-image-fab"
+                    onclick="game.openCityGacha()" aria-label="상점">
+                    <img src="png/store.png" alt="상점">
+                </button>
+
+            </section>
+
+            <section id="city-build-panel" class="city-build-panel">
+                <div id="city-build-panel-shell"
+                    class="relative flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <button type="button" class="city-build-close-mini" onclick="game.openCityBuildPanel(false)"
+                        aria-label="건설 패널 닫기">✕</button>
+                    <div id="city-build-tabs" class="city-build-tabs flex w-full bg-slate-800 border-b border-slate-700"></div>
+                    <div id="city-build-list-wrapper" class="city-build-list-wrapper relative">
+                        <div id="city-build-cards"
+                            class="city-build-cards flex gap-2 p-2 overflow-x-auto hide-scrollbar touch-pan-x">
+                        </div>
+                    </div>
+                </div>
+                <div id="city-build-hint" class="city-build-hint">카드를 선택하면 배치 모드로 전환됩니다.</div>
+            </section>
+
+            <section id="city-inventory-panel" class="city-build-panel city-inventory-drawer">
+                <div id="city-inventory-panel-shell"
+                    class="relative flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <button type="button" class="city-build-close-mini" onclick="game.openCityInventory(false)"
+                        aria-label="보관함 패널 닫기">✕</button>
+                    <div id="city-inventory-title" class="city-inventory-title">보관함</div>
+                    <div id="city-inventory-tabs" class="city-inventory-tabs"></div>
+                    <div class="city-build-list-wrapper relative">
+                        <div id="city-inventory-cards"
+                            class="city-build-cards city-inventory-cards flex gap-2 p-2 overflow-x-auto hide-scrollbar touch-pan-x">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section id="city-shop-panel" class="city-shop-panel">
+                <div id="city-shop-panel-shell"
+                    class="relative flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <button type="button" class="city-build-close-mini"
+                        onclick="CitySimGacha.close()" aria-label="상점 패널 닫기">✕</button>
+                    <div id="city-shop-tabs"
+                        class="city-build-tabs flex w-full bg-slate-800 border-b border-slate-700"></div>
+                    <div class="city-build-list-wrapper relative">
+                        <div id="city-shop-cards"
+                            class="city-build-cards flex gap-2 p-2 overflow-x-auto hide-scrollbar touch-pan-x">
+                        </div>
+                    </div>
+                </div>
+                <div id="city-shop-hint" class="city-build-hint">아이템을 선택하면 구매할 수 있습니다.</div>
+            </section>
+
+            <section id="city-context-bar" class="city-context-bar">
+                <div id="city-context-title" class="city-context-title">선택된 건물이 없습니다</div>
+                <div class="city-context-actions">
+                    <button type="button" onclick="game.cityActionPrimary()">기능</button>
+                    <button type="button" onclick="game.cityActionSell()">판매</button>
+                    <button type="button" onclick="game.cityActionMove()">이동</button>
+                    <button type="button" onclick="game.cityActionConfirm()">완료</button>
+                </div>
+            </section>
+
+        </div>
+
+        <!-- ===== 보급 상점 하단 슬라이드업 패널 ===== -->
+
+        <!-- ===== 커뮤니티 전체화면 패널 ===== -->
+        <div id="city-friends-screen" class="hidden absolute inset-0 z-50 city-friends-screen pointer-events-auto">
+            <header class="city-friends-topbar">
+                <button type="button" class="city-panel-back-btn" onclick="CitySimChat.close()">&larr;</button>
+                <h2 class="city-panel-title">커뮤니티</h2>
+                <div></div>
+            </header>
+            <nav class="city-panel-tabs" id="city-friends-tabs">
+                <button type="button" class="city-panel-tab active" data-tab="chat" onclick="CitySimChat.switchTab('chat')">채팅</button>
+                <button type="button" class="city-panel-tab" data-tab="ranking" onclick="CitySimChat.switchTab('ranking')">랭킹</button>
+            </nav>
+            <div id="city-friends-content" class="city-panel-content"></div>
+        </div>
+
+        <!-- ===== 기지 방문 인게임 뷰 ===== -->
+        <div id="city-visit-viewer-modal"
+            class="hidden absolute inset-0 z-[60] city-screen city-visit-screen pointer-events-auto">
+            <header class="city-topbar city-visit-topbar">
+                <div class="city-top-left city-visit-top-left">
+                    <div class="city-stat-line city-visit-owner-line city-visit-owner-head">
+                        <div class="city-level-badge-wrap">
+                            <img id="city-visit-level-badge" class="city-level-badge" src="png/level.png/leftbar_level.1.png"
+                                alt="레벨 1">
+                            <strong id="city-visit-level" class="city-level-number">1</strong>
+                        </div>
+                        <strong id="city-visit-owner-name" class="city-visit-owner-name">플레이어 기지</strong>
+                    </div>
+                    <div class="city-stat-line city-visit-owner-line city-visit-meta-line">
+                        <span class="city-stat-label">명예훈장</span>
+                        <strong id="city-visit-honor">0</strong>
+                        <span class="city-stat-label">인구</span>
+                        <strong id="city-visit-pop">0/1</strong>
+                    </div>
+                    <div class="city-stat-line city-visit-owner-line">
+                        <span class="city-stat-label">정보</span>
+                        <strong id="city-visit-owner-stats" class="city-visit-owner-stats">Lv.1 · 명예훈장 0</strong>
+                    </div>
+                </div>
+                <div class="city-top-right city-visit-top-right">
+                    <div class="city-res-chip">
+                        <div class="city-res-row">
+                            <img src="png/money.png" alt="자금">
+                            <strong id="city-visit-money">0</strong>
+                        </div>
+                        <div class="city-res-row">
+                            <img src="png/gold.png" alt="금">
+                            <strong id="city-visit-gold">0</strong>
+                        </div>
+                        <div class="city-res-row city-visit-power-row">
+                            <i class="fa-solid fa-shield-halved city-visit-power-icon" aria-hidden="true"></i>
+                            <strong id="city-visit-combat-power">0</strong>
+                        </div>
+                        <div class="city-res-row city-visit-readonly-row">
+                            <i class="fa-solid fa-map-location-dot city-visit-owner-icon" aria-hidden="true"></i>
+                            <strong class="city-visit-readonly-chip">방문 모드</strong>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <section class="city-battlefield city-visit-battlefield">
+                <div id="city-visit-loading" class="city-visit-loading">
+                    <div class="city-visit-loading-box">
+                        <div class="city-visit-spinner" aria-hidden="true"></div>
+                        <p>기지 정보를 불러오는 중...</p>
+                    </div>
+                </div>
+
+                <div id="city-visit-content" class="hidden city-grid-wrap city-visit-content">
+                    <div id="city-visit-viewport" class="city-map-viewport city-visit-map-viewport">
+                        <div id="city-visit-grid" class="city-grid city-visit-grid"></div>
+                    </div>
+                </div>
+            </section>
+
+            <footer id="city-visit-footer" class="city-context-bar city-visit-actionbar active">
+                <div class="city-context-actions city-visit-actions">
+                    <button type="button" class="city-visit-action-btn hidden" data-visit-action="war">선전포고</button>
+                    <button type="button" class="city-visit-action-btn" data-visit-action="alliance">동맹제안</button>
+                    <button type="button" class="city-visit-action-btn" data-visit-action="message">표지판설치</button>
+                    <button type="button" class="city-visit-action-btn is-return" data-visit-action="close">복귀하기</button>
+                </div>
+            </footer>
+        </div>
+
+        <div id="city-action-modal" class="modal-overlay">
+            <div class="option-panel city-action-panel">
+                <h2 id="city-action-title" class="text-2xl font-bold text-white mb-4 border-b border-slate-700 pb-2">안내</h2>
+                <div id="city-action-msg" class="text-sm text-gray-300 leading-relaxed mb-6">내용</div>
+                <p id="city-action-detail"
+                    class="hidden text-xs text-amber-300 bg-amber-950/35 border border-amber-700/40 rounded px-3 py-2 mb-6 whitespace-pre-line">
+                </p>
+                <div class="grid grid-cols-2 gap-2">
+                    <button id="city-action-cancel-btn" type="button"
+                        class="hidden py-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold">취소</button>
+                    <button id="city-action-confirm-btn" type="button"
+                        class="hidden py-3 bg-emerald-700 hover:bg-emerald-600 text-white rounded font-bold">구매</button>
+                    <button id="city-action-close-btn" type="button" onclick="game.closeCityActionModal()"
+                        class="col-span-2 py-3 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold">닫기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Unit encyclopedia screen -->
+        <div id="unitdex-screen"
+            class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col pointer-events-auto overflow-hidden">
+            <!-- Header -->
+            <div class="flex items-center justify-between px-6 py-4 bg-slate-900 border-b border-slate-700">
+                <h1 class="text-xl md:text-2xl font-bold text-blue-400 tracking-wider"
+                    style="font-family: 'Orbitron', sans-serif;">
+                    <i class="fa-solid fa-book-open mr-2"></i>
+                    <span id="unitdex-title">UNIT ENCYCLOPEDIA</span>
+                </h1>
+                <button onclick="game.closeUnitDex()" class="text-gray-400 hover:text-white text-2xl transition-colors">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <!-- Category Tabs -->
+            <div class="flex gap-2 px-6 py-3 bg-slate-900/50 overflow-x-auto">
+                <button onclick="UnitDex.filter('all')" class="unitdex-tab active" data-cat="all"
+                    data-lang="cat_all">ALL</button>
+                <button onclick="UnitDex.filter('infantry')" class="unitdex-tab" data-cat="infantry"
+                    data-lang="cat_infantry">INFANTRY</button>
+                <button onclick="UnitDex.filter('armored')" class="unitdex-tab" data-cat="armored"
+                    data-lang="cat_armored">ARMORED</button>
+                <button onclick="UnitDex.filter('air')" class="unitdex-tab" data-cat="air"
+                    data-lang="cat_air">AIR</button>
+                <button onclick="UnitDex.filter('drone')" class="unitdex-tab" data-cat="drone"
+                    data-lang="cat_drone">DRONE</button>
+                <button onclick="UnitDex.filter('special')" class="unitdex-tab" data-cat="special"
+                    data-lang="cat_special">SPECIAL</button>
+            </div>
+            <!-- Cards Grid -->
+            <div id="unitdex-grid" class="flex-1 overflow-y-auto p-4">
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 max-w-7xl mx-auto"
+                    id="unitdex-cards">
+                    <!-- Cards generated by UnitDex.render() -->
+                </div>
+            </div>
+        </div>
+
+        <div id="campaign-screen" class="hidden absolute inset-0 z-50 campaign-screen pointer-events-auto">
+            <div class="campaign-sky-layer"></div>
+
+            <nav class="campaign-tab-bar">
+                <button type="button" class="campaign-tab-btn campaign-tab-home"
+                    onclick="game.enterCityScreen()">기지</button>
+                <button type="button" class="campaign-tab-btn active" data-tab="skirmish"
+                    onclick="game.switchCampaignTab('skirmish')">국지전</button>
+                <button type="button" class="campaign-tab-btn" data-tab="occupation"
+                    onclick="game.switchCampaignTab('occupation')">점령전</button>
+                <button type="button" class="campaign-tab-btn" data-tab="custom"
+                    onclick="game.switchCampaignTab('custom')">커스텀</button>
+            </nav>
+
+            <section id="campaign-map-root" class="campaign-map-root">
+                <div id="campaign-map-world" class="campaign-map-world">
+                    <svg id="campaign-map-svg" class="campaign-map-svg" viewBox="-400 -400 800 800" aria-label="campaign-map"></svg>
+                </div>
+
+                <div class="campaign-zoom-controls">
+                    <button type="button" aria-label="zoom-in" onclick="game.campaignZoom(0.2)">+</button>
+                    <button type="button" aria-label="zoom-out" onclick="game.campaignZoom(-0.2)">-</button>
+                </div>
+            </section>
+
+            <!-- 커스텀 전투 설정 화면 -->
+            <section id="custom-battle-screen" class="custom-battle-screen hidden">
+                <div class="custom-battle-inner">
+                    <!-- 맵 선택 -->
+                    <div id="custom-map-select" class="custom-section">
+                        <h3 class="custom-section-title" data-lang="custom_select_map">맵 선택</h3>
+                        <div id="custom-map-grid" class="custom-map-grid"></div>
+                    </div>
+
+                    <!-- 맵 프리뷰 -->
+                    <div id="custom-map-preview" class="custom-map-preview hidden">
+                        <div class="custom-map-preview-canvas-wrap">
+                            <canvas id="custom-preview-canvas" width="400" height="200"></canvas>
+                            <p id="custom-map-name" class="custom-map-name"></p>
+                        </div>
+                        <div id="custom-map-profile" class="custom-map-profile">
+                            <h4 class="custom-map-profile-title" data-lang="custom_map_profile_title">맵 프로필</h4>
+                            <div id="custom-map-profile-list" class="custom-map-profile-list"></div>
+                            <p id="custom-map-profile-note" class="custom-map-profile-note"></p>
+                        </div>
+                    </div>
+
+                    <!-- 팀 설정 -->
+                    <div id="custom-team-setup" class="custom-team-setup">
+                        <div id="custom-ally-panel" class="custom-team-panel">
+                            <h4 class="custom-team-title" data-lang="custom_ally">아군</h4>
+                            <div id="custom-ally-slots" class="custom-slots"></div>
+                            <button type="button" class="custom-add-slot-btn" onclick="game.addCustomSlot('ally')">
+                                <i class="fa-solid fa-plus"></i> <span data-lang="custom_add_slot">슬롯 추가</span>
+                            </button>
+                        </div>
+                        <div id="custom-enemy-panel" class="custom-team-panel">
+                            <h4 class="custom-team-title" data-lang="custom_enemy">적군</h4>
+                            <div id="custom-enemy-slots" class="custom-slots"></div>
+                            <button type="button" class="custom-add-slot-btn" onclick="game.addCustomSlot('enemy')">
+                                <i class="fa-solid fa-plus"></i> <span data-lang="custom_add_slot">슬롯 추가</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- 경고 + 시작 -->
+                    <p class="custom-warning" data-lang="custom_no_reward">커스텀 전투는 보상이 지급되지 않습니다.</p>
+                    <button type="button" class="custom-start-btn" onclick="game.startCustomBattle()" data-lang="custom_start">
+                        <i class="fa-solid fa-play"></i> 전투 시작
+                    </button>
+                </div>
+            </section>
+
+            <aside id="campaign-briefing" class="campaign-briefing hidden">
+                <div class="campaign-brief-head">
+                    <div class="campaign-brief-sub">작전 브리핑</div>
+                    <h3 id="campaign-brief-title">해안 상륙</h3>
+                </div>
+                <div id="campaign-brief-type" class="campaign-brief-chip">일반작전 -> LV.1</div>
+                <p id="campaign-brief-map">작전 맵: -</p>
+                <p id="campaign-brief-progress">작전 진행: 1/1</p>
+                <p id="campaign-brief-reward">첫 클리어 보상금: 0원</p>
+                <p id="campaign-brief-reward-now">현재 획득 가능 보상금: 0원</p>
+                <div class="campaign-brief-nav">
+                    <button id="campaign-prev-btn" type="button" class="campaign-brief-nav-btn"
+                        onclick="game.cycleCampaignStage(-1)">이전 작전</button>
+                    <button id="campaign-next-btn" type="button" class="campaign-brief-nav-btn"
+                        onclick="game.cycleCampaignStage(1)">다음 작전</button>
+                </div>
+                <button id="campaign-start-btn" type="button" class="campaign-start-btn"
+                    onclick="game.startSelectedCampaignBattle()">
+                    작전 시작
+                </button>
+            </aside>
+        </div>
+
+        <!-- [NEW] Difficulty Select Screen -->
+        <div id="difficulty-select-screen"
+            class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
+
+            <h2 class="text-3xl font-bold text-white mb-8 tracking-widest border-b-2 border-blue-500 pb-2"
+                data-lang="difficulty_select">
+                SELECT DIFFICULTY
+            </h2>
+
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-10 w-full max-w-3xl">
+                <button onclick="AI.setDifficulty('recruit'); ui.updateDiffBtn(this)"
+                    class="btn-diff group relative flex flex-col items-center justify-center p-6 bg-slate-900 border-2 border-slate-700 rounded-xl hover:border-green-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-green-500/20"
+                    data-diff="recruit">
+                    <i
+                        class="fa-solid fa-face-smile text-4xl mb-3 text-gray-500 group-hover:text-green-500 transition-colors"></i>
+                    <span class="text-lg font-bold text-gray-400 group-hover:text-white"
+                        data-lang="diff_recruit">RECRUIT</span>
+                    <span class="text-xs text-gray-600 mt-1">RECRUIT</span>
+                </button>
+
+                <button onclick="AI.setDifficulty('veteran'); ui.updateDiffBtn(this)"
+                    class="btn-diff active group relative flex flex-col items-center justify-center p-6 bg-slate-900 border-2 border-blue-600 rounded-xl shadow-[0_0_15px_rgba(37,99,235,0.3)] transition-all hover:-translate-y-1"
+                    data-diff="veteran">
+                    <i class="fa-solid fa-shield-halved text-4xl mb-3 text-blue-500"></i>
+                    <span class="text-lg font-bold text-white" data-lang="diff_veteran">VETERAN</span>
+                    <span class="text-xs text-blue-400 mt-1">VETERAN</span>
+                </button>
+
+                <button onclick="AI.setDifficulty('elite'); ui.updateDiffBtn(this)"
+                    class="btn-diff group relative flex flex-col items-center justify-center p-6 bg-slate-900 border-2 border-slate-700 rounded-xl hover:border-red-500 transition-all hover:-translate-y-1 hover:shadow-lg hover:shadow-red-500/20"
+                    data-diff="elite">
+                    <i
+                        class="fa-solid fa-skull text-4xl mb-3 text-gray-500 group-hover:text-red-500 transition-colors"></i>
+                    <span class="text-lg font-bold text-gray-400 group-hover:text-white"
+                        data-lang="diff_elite">ELITE</span>
+                    <span class="text-xs text-gray-600 mt-1">ELITE</span>
+                </button>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="game.backToLobby()"
+                    class="group flex items-center gap-2 px-6 py-3 rounded-xl border border-slate-700 hover:border-white hover:bg-slate-800 transition-all text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+                    <span data-lang="back">BACK</span>
+                </button>
+                <button onclick="game.openMapSelect('campaign')"
+                    class="group flex items-center gap-2 px-8 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 transition-all text-white font-bold shadow-lg">
+                    <span data-lang="next">NEXT</span>
+                    <i class="fa-solid fa-arrow-right group-hover:translate-x-1 transition-transform"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- Map select screen -->
+        <div id="map-select-screen"
+            class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
+
+            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest border-b-2 border-blue-500 pb-2"
+                data-lang="map_select">SELECT OPERATION ZONE</h2>
+
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-6 w-full max-w-6xl px-2 md:px-4">
+                <button onclick="game.startGame('city')" class="map-card group" data-map="city">
+                    <div class="h-32 bg-slate-300 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/3 bg-slate-600"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/50 group-hover:text-white"
+                            data-lang="map_city">
+                            CITY</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_city">CITY</h3>
+                        <p class="text-xs text-gray-400 leading-snug" data-lang="map_city_desc">
+                            Hold the line against enemy assaults
+                        </p>
+                    </div>
+                    <div class="map-lock hidden">LOCKED</div>
+                </button>
+
+                <button onclick="game.startGame('plain')" class="map-card group" data-map="plain">
+                    <div class="h-32 bg-sky-300 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/3 bg-green-500"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/50 group-hover:text-white"
+                            data-lang="map_plain">
+                            PLAINS</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_plain">PLAINS</h3>
+                        <p class="text-xs text-gray-400 leading-snug" data-lang="map_plain_desc">
+                            Push across wide plains in a war of attrition
+                        </p>
+                    </div>
+                    <div class="map-lock hidden">LOCKED</div>
+                </button>
+
+                <button onclick="game.startGame('mountain')" class="map-card group" data-map="mountain">
+                    <div class="h-32 bg-blue-100 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-1/2 h-full bg-gray-500 rotate-45 transform origin-bottom-left">
+                        </div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-black/30 group-hover:text-black/60"
+                            data-lang="map_mountain">
+                            MOUNTAIN</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_mountain">MOUNTAIN</h3>
+                        <p class="text-xs text-gray-400 leading-snug" data-lang="map_mountain_desc">
+                            The base that falls first decides the outcome
+                        </p>
+                    </div>
+                    <div class="map-lock hidden">LOCKED</div>
+                </button>
+
+                <button onclick="game.startGame('village')" class="map-card group" data-map="village">
+                    <div class="h-32 bg-orange-100 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/3 bg-amber-700"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-black/30 group-hover:text-black/60"
+                            data-lang="map_village">
+                            VILLAGE</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_village">VILLAGE</h3>
+                        <p class="text-xs text-gray-400 leading-snug" data-lang="map_village_desc">
+                            Strike the enemy leader first to claim victory
+                        </p>
+                    </div>
+                    <div class="map-lock hidden">LOCKED</div>
+                </button>
+
+                <button onclick="game.startGame('landing')" class="map-card group" data-map="landing">
+                    <div class="h-32 bg-slate-600 relative overflow-hidden rounded-t-lg">
+                        <div class="absolute bottom-0 w-full h-1/2 bg-slate-800"></div>
+                        <div class="absolute bottom-0 left-0 right-0 h-1/3 bg-gradient-to-t from-blue-900/80 to-transparent"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/70 group-hover:text-white"
+                            data-lang="map_landing">
+                            LANDING</div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <h3 class="font-bold text-white mb-1" data-lang="map_landing">LANDING</h3>
+                        <p class="text-xs text-gray-400 leading-snug" data-lang="map_landing_desc">
+                            Storm the war-torn coastline and destroy enemy HQ
+                        </p>
+                    </div>
+                    <div class="map-lock hidden">LOCKED</div>
+                </button>
+            </div>
+
+            <div class="mt-8 text-gray-500 text-xs text-center flex flex-col items-center gap-4">
+                <div>SYSTEM STATUS: ONLINE</div>
+
+                <button onclick="game.backToLobby()"
+                    class="group flex items-center gap-2 px-6 py-2 rounded-full border border-slate-700 hover:border-white hover:bg-slate-800 transition-all text-gray-400 hover:text-white">
+                    <i class="fa-solid fa-arrow-left group-hover:-translate-x-1 transition-transform"></i>
+                    <span data-lang="back_to_lobby">Back to Lobby</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <!-- Cinematic Modal -->
+    <div id="cinematic-modal" class="hidden fixed inset-0 z-[100] bg-black">
+        <!-- Video Logo (plays first) -->
+        <video id="cinematic-video" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[60%] max-h-[60%]" muted playsinline>
+            <source src="png/grok_video.mp4" type="video/mp4">
+        </video>
+
+        <!-- Canvas Animation (plays after video) -->
+        <canvas id="cinematic-canvas" class="hidden"></canvas>
+
+        <!-- Skip Button -->
+        <button id="cinematic-skip-btn"
+            class="fixed bottom-8 right-8 px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-lg border border-slate-600 hover:border-white transition-all duration-200 flex items-center gap-2 group">
+            <span>스킵하기</span>
+            <i class="fa-solid fa-forward group-hover:translate-x-1 transition-transform"></i>
+        </button>
+    </div>
+
+    <!-- Option Modal -->
+    <div id="option-modal" class="modal-overlay">
+        <div class="option-panel">
+            <h2 id="opt-modal-title" class="text-2xl font-bold text-white mb-6 border-b border-slate-700 pb-2" data-lang="options">
+                SETTINGS
+            </h2>
+
+            <div class="opt-tab-bar mb-4">
+                <button type="button" class="opt-tab-btn active" data-opt-tab-btn="profile">프로필</button>
+                <button type="button" class="opt-tab-btn" data-opt-tab-btn="system">언어/오디오</button>
+                <button type="button" class="opt-tab-btn" data-opt-tab-btn="game">후퇴/종료</button>
+            </div>
+
+            <div id="opt-tab-profile" class="opt-tab-panel active mb-5">
+                <div id="opt-profile-section" class="opt-profile-section">
+                    <div class="opt-profile-row">
+                        <div id="opt-profile-avatar" class="opt-profile-avatar">?</div>
+                        <div class="opt-profile-info">
+                            <div id="opt-profile-name" class="opt-profile-name">로그인 필요</div>
+                            <div id="opt-profile-status" class="opt-profile-status">로그아웃 상태</div>
+                        </div>
+                    </div>
+                    <div id="opt-rename-row" class="opt-rename-row hidden">
+                        <input id="opt-rename-input" type="text" maxlength="20" placeholder="새 이름 입력"
+                            class="opt-rename-input">
+                        <button id="opt-rename-confirm" type="button" class="opt-rename-confirm">확인</button>
+                        <button id="opt-rename-cancel" type="button" class="opt-rename-cancel">취소</button>
+                    </div>
+                    <div class="opt-profile-actions">
+                        <button id="opt-avatar-btn" type="button" class="opt-profile-btn">사진 변경</button>
+                        <button id="opt-avatar-reset-btn" type="button" class="opt-profile-btn">사진 삭제</button>
+                        <button id="opt-rename-btn" type="button" class="opt-profile-btn">이름 변경</button>
+                        <button id="opt-login-btn" type="button" class="opt-profile-btn">로그인</button>
+                        <button id="opt-delete-btn" type="button" class="opt-profile-btn opt-delete-btn">초기화</button>
+                    </div>
+                    <input id="opt-avatar-input" type="file" accept="image/*" class="hidden">
+                </div>
+            </div>
+
+            <div id="opt-tab-system" class="opt-tab-panel mb-5">
+                <div class="mb-4">
+                    <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio_settings">AUDIO</h3>
+                    <div class="space-y-3">
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>Master Volume</span><span
+                                    id="vol-master-val">50%</span></div>
+                            <input type="range" min="0" max="100" value="50" oninput="ui.setVolume('master', this.value)">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM</span><span
+                                    id="vol-bgm-val">40%</span></div>
+                            <input type="range" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
+                        </div>
+                        <div>
+                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>SFX</span><span
+                                    id="vol-sfx-val">60%</span></div>
+                            <input type="range" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
+                        </div>
+                        <div id="opt-bgm-select-row">
+                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM Select</span></div>
+                            <select id="opt-bgm-select" onchange="ui.changeBGM(this.value)"
+                                class="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-xs">
+                                <option value="0">BGM 0 (Default)</option>
+                                <option value="1">BGM 1</option>
+                                <option value="2">BGM 2</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center justify-between bg-slate-900/70 border border-slate-700 rounded px-3 py-2">
+                            <label for="opt-iog-always-open" class="text-xs text-gray-300">IOG 항상 열기</label>
+                            <input id="opt-iog-always-open" type="checkbox" onchange="ui.setIogAlwaysOpen(this.checked)">
+                        </div>
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="lang_settings">LANGUAGE</h3>
+                    <div class="flex gap-2">
+                        <button onclick="Lang.setLang('ko')"
+                            class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
+                            data-lang="lang_ko">KOREAN</button>
+                        <button onclick="Lang.setLang('en')"
+                            class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
+                            data-lang="lang_en">ENGLISH</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="opt-tab-game" class="opt-tab-panel mb-5">
+                <div class="opt-game-card">
+                    <div id="opt-game-title" class="opt-game-title">전투/종료</div>
+                    <div id="opt-game-desc" class="opt-game-desc">전투 중에는 후퇴로 시티 복귀, 평시에는 종료 확인을 사용할 수 있습니다.</div>
+                    <div class="opt-game-actions">
+                        <button id="opt-exit-btn" onclick="ui.openRetreatConfirmationFromOptions(event);"
+                            class="opt-game-btn opt-game-btn-retreat"
+                            data-lang="retreat">후퇴</button>
+                        <button id="opt-quit-btn" onclick="ui.closeOptions(); ui.showExitConfirmation('quit');"
+                            class="opt-game-btn opt-game-btn-exit"
+                            data-lang="menu_exit">게임 종료</button>
+                        <button id="opt-lobby-btn" type="button" onclick="ui.closeOptions(); game.backToLobby();"
+                            class="opt-game-btn opt-game-btn-lobby">로비로 가기</button>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-1">
+                <button onclick="ui.closeOptions()"
+                    class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm"
+                    data-lang="close">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="end-screen"
+        class="hidden absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center pointer-events-auto p-6">
+        <h1 id="end-title" class="text-5xl font-bold mb-4"></h1>
+        <p id="end-desc"
+            class="text-gray-300 mb-8 text-xl text-center font-serif border-t border-b border-gray-700 py-4"></p>
+        <button onclick="game.retreatToCity()"
+            class="px-8 py-3 bg-white text-black font-bold rounded hover:bg-gray-200 flex items-center gap-2">
+            <i class="fa-solid fa-house"></i>
+            <span data-lang="back_to_city_short">CITY</span>
+        </button>
+    </div>
+
+    <!-- [NEW] Exit Confirmation Modal -->
+    <div id="exit-modal"
+        class="hidden absolute inset-0 z-[100] bg-black/80 flex items-center justify-center pointer-events-auto p-4 backdrop-blur-sm">
+        <div
+            class="bg-slate-900 border border-slate-600 rounded-lg p-6 max-w-sm w-full shadow-2xl transform scale-100 transition-transform">
+            <h3 class="text-xl font-bold text-white mb-2" data-lang="exit_confirm_title">게임 종료</h3>
+            <p class="text-gray-400 mb-6 text-sm" data-lang="exit_confirm_desc">정말 게임을 종료하시겠습니까?</p>
+            <div class="flex gap-3">
+                <button onclick="ui.confirmExit(true)"
+                    class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded font-bold transition-colors"
+                    data-lang="yes">예</button>
+                <button onclick="ui.confirmExit(false)"
+                    class="flex-1 bg-slate-700 hover:bg-slate-600 text-gray-200 py-2 rounded font-bold transition-colors"
+                    data-lang="no">아니오</button>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- /game-wrapper -->
+
+    <!-- ============================================
+         [NEW] Fixed Bottom HUD (StarCraft-style)
+         - Left: Minimap + Controls
+         - Center: Info/Production Panel
+         - Right: Command Panel
+         ============================================ -->
+    <footer id="hud-footer" class="hud-footer hidden">
+        <!-- Left Panel: Minimap -->
+        <section id="hud-left" class="hud-panel hud-left">
+            <div id="hud-minimap-wrapper">
+                <canvas id="hud-minimap-new" class="hud-minimap-canvas"></canvas>
+            </div>
+            <div id="hud-controls-bar">
+                <button id="hud-btn-pause" class="hud-ctrl-btn" aria-label="Pause">||</button>
+                <button id="hud-btn-speed-05" class="hud-ctrl-btn" data-speed="0.5">x0.5</button>
+                <button id="hud-btn-speed-1" class="hud-ctrl-btn active" data-speed="1">x1</button>
+                <button id="hud-btn-speed-2" class="hud-ctrl-btn" data-speed="2">x2</button>
+                <span class="hud-divider"></span>
+                <button id="hud-btn-zoom-out" class="hud-ctrl-btn">-</button>
+                <span id="hud-zoom-display">100%</span>
+                <button id="hud-btn-zoom-in" class="hud-ctrl-btn">+</button>
+            </div>
+        </section>
+
+        <!-- Center Panel: Info/Production -->
+        <section id="hud-center" class="hud-panel hud-center">
+            <div id="hud-info-area">
+                <div id="hud-selection-info">
+                    <span class="hud-placeholder-text" data-lang="hud_placeholder">SELECT A UNIT/BUILDING</span>
+                </div>
+            </div>
+            <div id="hud-production-area">
+                <!-- Production grid will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Right Panel: Commands -->
+        <section id="hud-right" class="hud-panel hud-right">
+            <div id="hud-command-grid">
+                <!-- 1: Camera / Move / Stop -->
+                <button class="hud-cmd-btn" data-hud-cmd="camera">
+                    <span class="cmd-icon"><i class="fa-solid fa-video"></i></span>
+                    <span data-lang="cmd_camera">CAMERA</span>
+                </button>
+                <button class="hud-cmd-btn" data-hud-cmd="move">
+                    <span class="cmd-icon"><i class="fa-solid fa-up-down-left-right"></i></span>
+                    <span data-lang="cmd_move">MOVE</span>
+                </button>
+                <button class="hud-cmd-btn" data-hud-cmd="stop">
+                    <span class="cmd-icon"><i class="fa-solid fa-pause"></i></span>
+                    <span data-lang="cmd_stop">STOP</span>
+                </button>
+
+                <!-- 2: Attack / Retreat -->
+                <button class="hud-cmd-btn" data-hud-cmd="attack">
+                    <span class="cmd-icon"><i class="fa-solid fa-crosshairs"></i></span>
+                    <span data-lang="cmd_attack">ATTACK</span>
+                </button>
+                <button class="hud-cmd-btn" data-hud-cmd="retreat">
+                    <span class="cmd-icon"><i class="fa-solid fa-arrow-rotate-left"></i></span>
+                    <span data-lang="cmd_retreat">RETREAT</span>
+                </button>
+                <!-- Recon: show only if recon unit selected -->
+                <button id="hud-cmd-recon" class="hud-cmd-btn is-hidden" data-hud-cmd="recon">
+                    <span class="cmd-icon"><i class="fa-solid fa-binoculars"></i></span>
+                    <span data-lang="cmd_recon">RECON</span>
+                </button>
+                <!-- Smoke: show only if smoke unit selected -->
+                <button id="hud-cmd-smoke" class="hud-cmd-btn is-hidden" data-hud-cmd="smoke">
+                    <span class="cmd-icon"><i class="fa-solid fa-smog"></i></span>
+                    <span data-lang="cmd_smoke">SMOKE</span>
+                </button>
+                <!-- Drop: show only if transport unit selected -->
+                <button id="hud-cmd-drop" class="hud-cmd-btn is-hidden" data-hud-cmd="drop">
+                    <span class="cmd-icon"><i class="fa-solid fa-arrow-down"></i></span>
+                    <span data-lang="cmd_drop">DROP</span>
+                </button>
+                <!-- Eject: show only if building selected -->
+                <button id="hud-cmd-eject" class="hud-cmd-btn is-hidden" data-hud-cmd="eject">
+                    <span class="cmd-icon"><i class="fa-solid fa-door-open"></i></span>
+                    <span data-lang="cmd_eject">EJECT</span>
+                </button>
+                <!-- News: show only if cameraman selected -->
+                <button id="hud-cmd-news" class="hud-cmd-btn is-hidden" data-hud-cmd="news">
+                    <span class="cmd-icon"><i class="fa-solid fa-tower-broadcast"></i></span>
+                    <span data-lang="cmd_news">NEWS</span>
+                </button>
+                <!-- Missile: show only if fighter jet selected -->
+                <button id="hud-cmd-missile" class="hud-cmd-btn is-hidden" data-hud-cmd="missile">
+                    <span class="cmd-icon"><i class="fa-solid fa-rocket"></i></span>
+                    <span data-lang="cmd_missile">MISSILE</span>
+                </button>
+            </div>
+        </section>
+    </footer>
+
+    <!-- Portrait Mode Overlay (blocks game in portrait) -->
+    <div id="portrait-overlay" class="portrait-overlay">
+        <div class="portrait-content">
+            <i class="fa-solid fa-mobile-screen-button portrait-icon"></i>
+            <h2 data-lang="rotate_title">PLEASE ROTATE</h2>
+            <p data-lang="rotate_desc">This game is playable only in landscape mode.</p>
+            <div class="rotate-hint">
+                <i class="fa-solid fa-rotate"></i>
+            </div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="unit-params.js"></script>
+    <!-- [ADD] IngameRenderer for unit wreckage rendering -->
+    <script src="unit-editor/js/ingame-renderer.js"></script>
+    <script src="src/entities/unit-render-utils.js"></script>
+    <script src="classes.js"></script>
+    <script src="projectile-designs.js"></script>
+    <!-- VFX (explosions / particles) -->
+    <script src="src/vfx/explosion.js"></script>
+    <script src="buildings.js"></script>
+    <script src="projectiles.js"></script>
+    <script src="chat_panel.js?v=20260216cp2"></script>
+    <script src="ui.js?v=20260216u3"></script>
+    <script src="src/maps/core/registry.js"></script>
+    <script src="src/maps/core/adapter.js"></script>
+    <script src="src/maps/maps/plain/definition.js"></script>
+    <script src="src/maps/maps/city/definition.js"></script>
+    <script src="src/maps/maps/city/render_buildings.js"></script>
+    <script src="src/maps/maps/mountain/definition.js"></script>
+    <script src="src/maps/maps/village/definition.js"></script>
+    <script src="src/maps/maps/forest/definition.js"></script>
+    <script src="src/maps/maps/fortress/definition.js"></script>
+    <script src="src/maps/maps/desert/definition.js"></script>
+    <script src="src/maps/maps/skirmish/definition.js"></script>
+    <script src="src/maps/maps/skirmish_kabul/definition.js"></script>
+    <script src="src/maps/maps/skirmish_kabul/render_base.js"></script>
+    <script src="src/maps/maps/skirmish_kabul/render_decor.js"></script>
+    <script src="src/maps/maps/skirmish_desert/definition.js"></script>
+    <script src="src/maps/maps/skirmish_desert/render_base.js"></script>
+    <script src="src/maps/maps/skirmish_desert/render_decor.js"></script>
+    <script src="src/maps/maps/landing/definition.js"></script>
+    <script src="src/maps/maps/landing/render_base.js"></script>
+    <script src="src/maps/maps/landing/render_decor.js"></script>
+    <script src="maps.js"></script>
+    <!-- 로비 배경 캔버스 -->
+    <script src="lobby-background.js?v=20260214lb2"></script>
+    <script src="src/ai/ai_core.js"></script>
+    <script src="src/ai/ai_config.js"></script>
+    <script src="src/ai/spawn/spawn_caps.js"></script>
+    <script src="src/ai/spawn/spawn_selector.js"></script>
+    <script src="src/ai/special/special_state.js"></script>
+    <script src="src/ai/special/cluster.js"></script>
+    <script src="src/ai/special/special_logic.js"></script>
+    <script src="src/ai/tactics/orders.js"></script>
+    <script src="src/ai/tactics/wave_controller.js"></script>
+    <script src="src/ai/debug/ai_debug.js"></script>
+    <script src="audio.js"></script>
+    <script src="lang.js"></script>
+    <script src="version.js?v=20260214v1"></script>
+    <script src="drones.js"></script>
+    <script src="spatial.js"></script>
+    <script src="unitdex/lang_kr.js"></script>
+    <script src="unitdex/lang_en.js"></script>
+    <script src="unitdex.js"></script>
+    <script src="src/core/camera.js"></script>
+    <script src="news_texts.js"></script>
+    <script src="src/game/corpse.js"></script>
+    <script src="src/modes/city-sim/state.js?v=20260216st1"></script>
+    <script src="src/modes/city-sim/quest-mission/constants.js?v=20260214q5"></script>
+    <script src="src/modes/city-sim/quest-mission/schema.js?v=20260216q7"></script>
+    <script src="src/modes/city-sim/quest-mission/engine.js?v=20260216q8"></script>
+    <script src="src/modes/city-sim/quest-mission/ui.js?v=20260214q8"></script>
+    <script src="src/modes/city-sim/quest-mission/index.js?v=20260214q5"></script>
+    <script src="src/modes/city-sim/network.js"></script>
+    <script src="src/modes/city-sim/chat.js"></script>
+    <script src="src/modes/city-sim/visit-actions/index.js?v=fix7"></script>
+    <script src="src/modes/city-sim/visit-renderer.js?v=fix8"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"
+        onerror="console.error('[Boot] Firebase SDK load failed: firebase-app-compat.js', this && this.src)"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"
+        onerror="console.error('[Boot] Firebase SDK load failed: firebase-auth-compat.js', this && this.src)"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore-compat.js"
+        onerror="console.error('[Boot] Firebase SDK load failed: firebase-firestore-compat.js', this && this.src)"></script>
+    <script src="src/firebase/firebase-bridge.js"
+        onerror="console.error('[Boot] Firebase bridge load failed: src/firebase/firebase-bridge.js')"></script>
+    <script src="src/modes/city-sim/auth.js?v=20260216a5"></script>
+    <script src="src/modes/city-sim/economy.js?v=20260216e5"></script>
+    <script src="src/modes/city-sim/building.js"></script>
+    <script src="src/modes/city-sim/construction.js?v=20260216cs3"></script>
+    <script src="src/modes/city-sim/construction/validation.js?v=20260214cs1"></script>
+    <script src="src/modes/city-sim/construction/progress.js"></script>
+    <script src="src/modes/city-sim/construction/render.js?v=20260216cs4"></script>
+    <script src="src/modes/city-sim/construction/placement.js?v=20260216cs5"></script>
+    <script src="src/modes/city-sim/barracks.js"></script>
+    <script src="src/modes/city-sim/unit-upgrade.js"></script>
+    <script src="src/modes/city-sim/gacha.js"></script>
+    <script src="src/modes/city-sim/stocks.js"></script>
+    <script src="src/modes/city-sim/save.js?v=20260216sv2"></script>
+    <script src="src/modes/city-sim/index.js?v=20260216i1"></script>
+    <script src="game.js?v=20260216g10"></script>
+    <script src="src/game/runtime_loop.js"></script>
+    <script src="src/game/app_persistence.js?v=20260216ap4"></script>
+    <script src="src/game/app_runtime.js"></script>
+    <script src="src/game/custom_battle.js"></script>
+    <script src="src/game/campaign_map.js"></script>
+    <script src="src/game/input.js"></script>
+    <script src="src/game/camera_controls.js"></script>
+    <script src="src/game/victory.js?v=20260216v2"></script>
+    <script src="src/modes/campaign/skirmish.js?v=20260216sk7"></script>
+    <script src="src/game/map_setup.js"></script>
+    <script src="src/game/news.js"></script>
+    <script src="hud.js?v=20260216h1"></script>
+    <script src="unit_commands.js"></script>
+    <script src="news_intro.js"></script>
+    <script src="news_overlay.js"></script>
+
+    <!-- Cinematic System -->
+    <script src="src/ui/cinematic.js?v=20260214c3"></script>
+    <script>
+        // 시작 시 사용자 제스처로 오디오를 먼저 unlock한 뒤 시네마틱 부팅
+        (() => {
+            let bootStarted = false;
+            let cinematicLoaderStarted = false;
+            let gatePrepared = false;
+            let gateConsumed = false;
+
+            const showLobby = () => {
+                const lobbyScreen = document.getElementById('lobby-screen');
+                if (lobbyScreen) lobbyScreen.classList.remove('hidden');
+
+                if (typeof LobbyBackground !== 'undefined') {
+                    LobbyBackground.init();
+                    LobbyBackground.start();
+                }
+
+                if (typeof AudioSystem !== 'undefined') {
+                    AudioSystem.init();
+                    AudioSystem.playMP3(0);
+                }
+            };
+
+            const ensureCinematicApi = (done) => {
+                if (typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function') {
+                    done(true);
+                    return;
+                }
+                if (cinematicLoaderStarted) {
+                    setTimeout(() => {
+                        done(typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function');
+                    }, 300);
+                    return;
+                }
+                cinematicLoaderStarted = true;
+
+                const candidates = [
+                    'src/ui/cinematic.js?v=20260214c3',
+                    'src/ui/cinematic.js'
+                ];
+
+                const loadNext = (idx) => {
+                    if (idx >= candidates.length) {
+                        done(typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function');
+                        return;
+                    }
+
+                    const s = document.createElement('script');
+                    s.src = candidates[idx];
+                    s.async = false;
+                    s.onload = () => {
+                        if (typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function') {
+                            done(true);
+                        } else {
+                            loadNext(idx + 1);
+                        }
+                    };
+                    s.onerror = () => loadNext(idx + 1);
+                    document.head.appendChild(s);
+                };
+
+                loadNext(0);
+            };
+
+            const runBoot = () => {
+                if (bootStarted) return;
+                bootStarted = true;
+                console.log('[Boot] cinematic bootstrap start');
+
+                const loadingScreen = document.getElementById('loading-screen');
+                if (loadingScreen) loadingScreen.classList.add('hidden');
+
+                const lobbyScreen = document.getElementById('lobby-screen');
+                if (lobbyScreen) lobbyScreen.classList.add('hidden');
+
+                setTimeout(() => {
+                    ensureCinematicApi((ok) => {
+                        if (!ok) {
+                            console.error('[Boot] Cinematic API missing after script load attempts');
+                            console.warn('[Boot] Cinematic API missing, fallback lobby');
+                            showLobby();
+                            return;
+                        }
+
+                        try {
+                            sessionStorage.removeItem('reclaim_cinematic_watched');
+                        } catch (err) {
+                            console.warn('[Boot] sessionStorage remove failed:', err);
+                        }
+
+                        if (typeof Cinematic.reset === 'function') {
+                            try {
+                                Cinematic.reset();
+                            } catch (err) {
+                                console.warn('[Boot] Cinematic.reset failed:', err);
+                            }
+                        }
+
+                        try {
+                            console.log('[Boot] Cinematic.play(force=true) invoke');
+                            Cinematic.play(() => {
+                                console.log('[Cinematic] Playback complete');
+                                showLobby();
+                            }, { force: true });
+                        } catch (err) {
+                            console.error('[Cinematic] Play failed:', err);
+                            showLobby();
+                        }
+                    });
+                }, 120);
+            };
+
+            const warmupAudioByGesture = async () => {
+                if (typeof AudioSystem === 'undefined') return;
+                if (typeof AudioSystem.init === 'function') AudioSystem.init();
+                if (AudioSystem.ctx && AudioSystem.ctx.state === 'suspended' && typeof AudioSystem.ctx.resume === 'function') {
+                    try {
+                        await AudioSystem.ctx.resume();
+                    } catch (err) {
+                        console.warn('[Boot] Audio context resume failed:', err);
+                    }
+                }
+            };
+
+            const prepareBootGate = () => {
+                if (gatePrepared) return;
+                gatePrepared = true;
+
+                const gate = document.getElementById('boot-gate');
+                const playBtn = document.getElementById('boot-play-btn');
+                if (!gate || !playBtn) {
+                    runBoot();
+                    return;
+                }
+
+                const startBoot = async () => {
+                    if (gateConsumed) return;
+                    gateConsumed = true;
+                    playBtn.disabled = true;
+
+                    await warmupAudioByGesture();
+
+                    gate.classList.add('hidden');
+                    runBoot();
+                };
+
+                playBtn.addEventListener('click', () => {
+                    startBoot();
+                }, { once: true });
+
+                gate.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        startBoot();
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                window.addEventListener('DOMContentLoaded', prepareBootGate, { once: true });
+            } else {
+                prepareBootGate();
+            }
+
+            // 비정상 상황에서 게이트 DOM이 없으면 자동 부팅 fallback
+            window.addEventListener('load', () => {
+                if (!gatePrepared) prepareBootGate();
+            }, { once: true });
+        })();
+    </script>
+</body>
+
+</html>
