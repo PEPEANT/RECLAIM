@@ -520,10 +520,6 @@
     }
 
     function applyMoneyMoneyCommand(user) {
-        if (!hasAdminPermission(user)) {
-            return { ok: false, message: '관리자 권한이 필요합니다.' };
-        }
-
         const g = _game || global.game || null;
         if (!g) {
             return { ok: false, message: '게임 상태를 찾지 못했습니다.' };
@@ -609,10 +605,6 @@
     }
 
     function applyTemporaryUnlockCommand(user) {
-        if (!hasAdminPermission(user)) {
-            return { ok: false, message: '관리자 권한이 필요합니다.' };
-        }
-
         const g = _game || global.game || null;
         if (!g) {
             return { ok: false, message: '게임 상태를 찾지 못했습니다.' };

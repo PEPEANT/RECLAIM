@@ -3643,6 +3643,7 @@ const game = {
         if (typeof ChatPanel !== 'undefined') {
             const keepIogOpen = !!(this.settings && this.settings.iogAlwaysOpen === true);
             ChatPanel.init({ open: keepIogOpen });
+            ChatPanel.clear();
             ChatPanel.show();
             ChatPanel.push('작전 개시. 행운을 빌니다.', 'INFO');
         }

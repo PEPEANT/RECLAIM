@@ -109,11 +109,11 @@
     ].forEach(pushQuestOrder);
 
     const LEVEL_BONUS_SPECS = [
-        { id: QUEST_IDS.LEVEL_BONUS_PRIVATE, targetLevel: 2, rank: '이등병', rewardGold: 2 },
-        { id: QUEST_IDS.LEVEL_BONUS_SERGEANT, targetLevel: 4, rank: '병장', rewardGold: 4 },
-        { id: QUEST_IDS.LEVEL_BONUS_STAFF_SERGEANT, targetLevel: 5, rank: '하사', rewardGold: 6 },
-        { id: QUEST_IDS.LEVEL_BONUS_SECOND_LIEUTENANT, targetLevel: 10, rank: '소위', rewardGold: 8 },
-        { id: QUEST_IDS.LEVEL_BONUS_LIEUTENANT_COLONEL, targetLevel: 15, rank: '중령', rewardGold: 10 }
+        { id: QUEST_IDS.LEVEL_BONUS_PRIVATE, targetLevel: 2, rank: '이등병', rewardGold: 4 },
+        { id: QUEST_IDS.LEVEL_BONUS_SERGEANT, targetLevel: 4, rank: '병장', rewardGold: 8 },
+        { id: QUEST_IDS.LEVEL_BONUS_STAFF_SERGEANT, targetLevel: 5, rank: '하사', rewardGold: 12 },
+        { id: QUEST_IDS.LEVEL_BONUS_SECOND_LIEUTENANT, targetLevel: 10, rank: '소위', rewardGold: 16 },
+        { id: QUEST_IDS.LEVEL_BONUS_LIEUTENANT_COLONEL, targetLevel: 15, rank: '중령', rewardGold: 20 }
     ].filter((spec) => String(spec.id || '').trim().length > 0);
 
     const BUILD_QUEST_SPECS = [
@@ -385,7 +385,7 @@
             QUEST_TYPES.LEGACY_LOGIN,
             '출석 보급',
             '로그인 완료',
-            { box: '특수 보급박스 x1', boxType: 'box_level2', gold: 5 }
+            { box: '특수 보급박스 x1', boxType: 'box_level2', gold: 15 }
         );
 
         quests[QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX] = createLegacyQuest(
@@ -640,7 +640,7 @@
             quest.reward = normalizeReward(quest.reward, defaultQuests[id] && defaultQuests[id].reward);
             if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
                 quest.reward = normalizeReward(
-                    { box: '특수 보급박스 x1', boxType: 'box_level2', gold: 5 },
+                    { box: '특수 보급박스 x1', boxType: 'box_level2', gold: 15 },
                     defaultQuests[id] && defaultQuests[id].reward
                 );
             }
