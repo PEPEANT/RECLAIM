@@ -265,6 +265,14 @@
         }
     }
 
+    async function anonymousSignIn() {
+        ensureReady();
+        if (!auth || typeof auth.signInAnonymously !== 'function') {
+            throw new Error('Anonymous auth is not available.');
+        }
+        return auth.signInAnonymously();
+    }
+
     async function handleRedirectResult() {
         if (!ready || !auth) return null;
         try {
@@ -443,6 +451,7 @@
         emailSignUp,
         emailSignIn,
         googleSignIn,
+        anonymousSignIn,
         handleRedirectResult,
         signOut
     };

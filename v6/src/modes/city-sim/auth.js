@@ -239,10 +239,22 @@
         btn.dataset.authRequired = canUse ? '0' : '1';
     }
 
+    function isAnonymousUser(user) {
+        const u = user || null;
+        return !!(u && u.uid && u.isAnonymous === true);
+    }
+
     function updateSessionUi(user) {
         const statusEl = byId('auth-session-status');
         const signOutBtn = byId('auth-signout-btn');
         if (!statusEl || !signOutBtn) return;
+
+        if (user && user.uid && isAnonymousUser(user)) {
+            statusEl.textContent = `게스트 플레이 중 (uid:${String(user.uid).slice(0, 8)}, 랭킹 미반영)`;
+            signOutBtn.classList.remove('hidden');
+            setFriendFabState(true);
+            return;
+        }
 
         if (user && user.uid) {
             const label = user.email ? String(user.email) : `uid:${String(user.uid).slice(0, 8)}`;
@@ -255,7 +267,7 @@
         if (guestSessionActive) {
             statusEl.textContent = '게스트 플레이 중 (저장 안 됨)';
             signOutBtn.classList.add('hidden');
-            setFriendFabState(false);
+            setFriendFabState(true);
             return;
         }
 
@@ -311,6 +323,7 @@
         }
 
         if (mode === 'guest') {
+            if (isAnonymousUser(user)) return '이미 게스트 로그인 상태입니다.';
             return '게스트로그인을 하려면 먼저 로그아웃해주세요.';
         }
 
@@ -320,6 +333,9 @@
     function ensureLoggedOutForNewLogin(errorId, targetMode) {
         const currentUser = getCurrentUser();
         if (!currentUser || !currentUser.uid) return true;
+        if (String(targetMode || '').trim().toLowerCase() === 'guest' && isAnonymousUser(currentUser)) {
+            return true;
+        }
         const msg = getSwitchBlockedMessage(currentUser, targetMode);
         if (errorId) setError(errorId, msg);
         showToast(msg);
@@ -338,6 +354,8 @@
 
     async function syncCloudState(uid, gameRef, force) {
         if (!uid) return;
+        const liveUser = getCurrentUser();
+        if (guestSessionActive === true || isAnonymousUser(liveUser)) return;
         if (!force && lastSyncedUid === uid) return;
         if (syncInFlight && syncInFlightUid === uid) {
             await syncInFlight;
@@ -406,6 +424,8 @@
     async function ensureCloudReadyForSave(uid, gameRef) {
         const targetUid = resolveSyncUid(uid);
         if (!targetUid) return false;
+        const liveUser = getCurrentUser();
+        if (guestSessionActive === true || isAnonymousUser(liveUser)) return false;
         if (isCloudSyncReady(targetUid)) return true;
         try {
             await syncCloudState(targetUid, gameRef || activeGame || global.game || null, false);
@@ -799,8 +819,26 @@
             cancelAuth();
             reloadSessionState(activeGame);
 
+            let communityReady = false;
+            const fb = getFirebaseBridge();
+            if (fb && typeof fb.anonymousSignIn === 'function') {
+                try {
+                    await fb.anonymousSignIn();
+                    const anon = getCurrentUser();
+                    communityReady = !!(anon && anon.uid && isAnonymousUser(anon));
+                } catch (err) {
+                    console.warn('[CitySimAuth] anonymous sign-in failed:', err);
+                    communityReady = false;
+                }
+            }
+            updateSessionUi(getCurrentUser());
+
             if (enterCity(activeGame)) {
-                showToast('게스트 로그인으로 시티 화면에 입장했습니다.');
+                if (communityReady) {
+                    showToast('게스트 로그인으로 시티 화면에 입장했습니다. (채팅/방문 가능, 랭킹 미반영)');
+                } else {
+                    showToast('게스트 로그인으로 시티 화면에 입장했습니다.');
+                }
                 return;
             }
             showToast('게스트 로그인에 실패했습니다.');
@@ -1315,13 +1353,28 @@
                     if (liveUser && liveUser.uid) return;
                 }
 
+                const isGuestAuthUser = !!(user && user.uid && isAnonymousUser(user));
                 if (user && user.uid) {
-                    guestSessionActive = false;
+                    guestSessionActive = isGuestAuthUser;
                 }
                 updateSessionUi(user);
                 if (user && user.uid) {
                     const authUid = String(user.uid);
                     const gameRef = activeGame || global.game || null;
+
+                    if (isGuestAuthUser) {
+                        lastSyncedUid = '';
+                        lastLoginQuestGrantUid = '';
+                        if (typeof CitySimChat !== 'undefined' && CitySimChat && typeof CitySimChat.syncMyProfile === 'function') {
+                            try {
+                                await CitySimChat.syncMyProfile(gameRef);
+                            } catch (err) {
+                                console.warn('[CitySimAuth] Guest profile sync failed:', err);
+                            }
+                        }
+                        return;
+                    }
+
                     await syncCloudState(authUid, gameRef, false);
 
                     // [FIX] 로그인 시 프로필 자동 동기화 (랭킹/방문 시스템용)

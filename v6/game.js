@@ -1925,7 +1925,13 @@ const game = {
             && typeof CitySimAuth.isAuthenticated === 'function'
             && CitySimAuth.isAuthenticated()
         );
-        if (!authed) {
+        const guest = !!(
+            typeof CitySimAuth !== 'undefined'
+            && CitySimAuth
+            && typeof CitySimAuth.isGuestSession === 'function'
+            && CitySimAuth.isGuestSession()
+        );
+        if (!authed && !guest) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
                 ui.showToast('친구 기능은 로그인 후 이용할 수 있습니다.');
             }

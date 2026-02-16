@@ -195,9 +195,38 @@
         return getAuthUid() || _currentUid || '';
     }
 
+    function isGuestSession() {
+        if (typeof CitySimAuth !== 'undefined'
+            && CitySimAuth
+            && typeof CitySimAuth.isGuestSession === 'function') {
+            try {
+                return CitySimAuth.isGuestSession() === true;
+            } catch (_) { }
+        }
+        return false;
+    }
+
+    function getGuestDisplayName(user, fallback) {
+        const uid = String((user && user.uid) || '').trim();
+        const tag = uid ? uid.slice(0, 6).toUpperCase() : 'USER';
+        const base = String(fallback || '').trim();
+        if (base && !base.includes('익명')) return base;
+        return `게스트-${tag}`;
+    }
+
     function ensureAuthenticated(game, openLogin) {
         const user = getAuthUser();
         if (user && user.uid) return user;
+
+        if (isGuestSession()
+            && openLogin === true
+            && typeof CitySimAuth !== 'undefined'
+            && CitySimAuth
+            && typeof CitySimAuth.startGuest === 'function') {
+            showToast('게스트 커뮤니티 연결 중입니다. 잠시 후 다시 시도해주세요.');
+            CitySimAuth.startGuest(game || _game || global.game || null);
+            return null;
+        }
 
         showToast('\ucee4\ubba4\ub2c8\ud2f0 \uae30\ub2a5\uc740 \ub85c\uadf8\uc778 \ud6c4 \uc774\uc6a9\ud560 \uc218 \uc788\uc2b5\ub2c8\ub2e4.');
         if (openLogin === true && typeof CitySimAuth !== 'undefined' && CitySimAuth && typeof CitySimAuth.loginAndEnter === 'function') {
@@ -301,6 +330,7 @@
     }
 
     async function touchPresence(uid) {
+        if (isGuestSession()) return;
         const db = getDb();
         if (!db || !uid) return;
         try {
@@ -314,6 +344,7 @@
     function startPresenceLoop(uid) {
         stopPresenceLoop();
         if (!uid) return;
+        if (isGuestSession()) return;
 
         touchPresence(uid);
         _presenceTimer = setInterval(() => {
@@ -327,23 +358,29 @@
     }
 
     async function upsertMyPublicData(user) {
+        if (!user || !user.uid) return null;
+
+        const guestSession = isGuestSession();
         const db = getDb();
-        if (!db || !user || !user.uid) return null;
+        if (!db && !guestSession) return null;
 
         const uid = String(user.uid);
-        const profileRef = db.collection(PROFILE_COLLECTION).doc(uid);
+        const profileRef = (!guestSession && db) ? db.collection(PROFILE_COLLECTION).doc(uid) : null;
 
         let currentProfile = null;
-        try {
-            const snap = await profileRef.get();
-            currentProfile = snap.exists ? (snap.data() || {}) : null;
-        } catch (_) {
-            currentProfile = null;
+        if (profileRef) {
+            try {
+                const snap = await profileRef.get();
+                currentProfile = snap.exists ? (snap.data() || {}) : null;
+            } catch (_) {
+                currentProfile = null;
+            }
         }
 
         const stats = collectStatsFromGame();
         const displayName = String(
-            (user.displayName && user.displayName.trim())
+            (guestSession ? getGuestDisplayName(user, '') : '')
+            || (user.displayName && user.displayName.trim())
             || (currentProfile && currentProfile.displayName)
             || (user.email ? String(user.email).split('@')[0] : '')
             || '\uc775\uba85\uad00'
@@ -354,6 +391,29 @@
             || makeFriendCode(uid)
         );
         const avatarUrl = resolvePreferredAvatarUrl(user, currentProfile);
+
+        _myProfile = {
+            uid,
+            displayName,
+            friendCode,
+            avatarUrl,
+            role: String((currentProfile && currentProfile.role) || ''),
+            authRole: String((currentProfile && currentProfile.authRole) || ''),
+            permission: String((currentProfile && currentProfile.permission) || ''),
+            isAdmin: !!(currentProfile && (currentProfile.isAdmin === true || currentProfile.admin === true || currentProfile.superAdmin === true)),
+            level: stats.level,
+            honor: stats.honor,
+            money: stats.money,
+            gold: stats.gold,
+            pop: stats.pop,
+            maxPop: stats.maxPop,
+            kills: stats.kills
+        };
+
+        // Guest users can use chat/visit, but must not be reflected in public ranking/profile.
+        if (guestSession || !profileRef) {
+            return _myProfile;
+        }
 
         const payload = {
             uid,
@@ -373,23 +433,6 @@
 
         try {
             await profileRef.set(payload, { merge: true });
-            _myProfile = {
-                uid,
-                displayName,
-                friendCode,
-                avatarUrl,
-                role: String((currentProfile && currentProfile.role) || ''),
-                authRole: String((currentProfile && currentProfile.authRole) || ''),
-                permission: String((currentProfile && currentProfile.permission) || ''),
-                isAdmin: !!(currentProfile && (currentProfile.isAdmin === true || currentProfile.admin === true || currentProfile.superAdmin === true)),
-                level: stats.level,
-                honor: stats.honor,
-                money: stats.money,
-                gold: stats.gold,
-                pop: stats.pop,
-                maxPop: stats.maxPop,
-                kills: stats.kills
-            };
         } catch (err) {
             console.warn('[CitySimChat] profile upsert failed:', getErrorCode(err), err);
             logPermissionDenied('publicProfiles.upsert', err);
@@ -806,7 +849,7 @@
                 }
 
                 const myUid = getCurrentUid();
-                if (myUid) {
+                if (myUid && !isGuestSession()) {
                     const user = getAuthUser();
                     _ranking = [{
                         uid: myUid,
@@ -1097,7 +1140,7 @@
         const myUid = getCurrentUid();
         const rankingRows = _ranking.slice();
 
-        if (myUid && !rankingRows.some((row) => row.uid === myUid)) {
+        if (!isGuestSession() && myUid && !rankingRows.some((row) => row.uid === myUid)) {
             const user = getAuthUser();
             rankingRows.push({
                 uid: myUid,
@@ -1250,6 +1293,8 @@
             };
         }
         _myProfile.avatarUrl = safeAvatar;
+
+        if (isGuestSession()) return true;
 
         if (!db) return true;
 

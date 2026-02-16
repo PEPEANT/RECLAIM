@@ -263,10 +263,11 @@
         const saveBridge = (typeof RECLAIM_SAVE !== 'undefined' && RECLAIM_SAVE) ? RECLAIM_SAVE : null;
         const user = (fb && typeof fb.getUser === 'function') ? fb.getUser() : null;
         const uid = user && user.uid ? String(user.uid) : '';
+        const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
+        const guestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
         let cloudSavePromise = Promise.resolve(true);
 
-        if (uid && saveBridge && typeof saveBridge.saveMain === 'function') {
-            const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
+        if (!guestSession && uid && saveBridge && typeof saveBridge.saveMain === 'function') {
             const isReady = (!authApi || typeof authApi.isCloudSyncReady !== 'function')
                 ? true
                 : !!authApi.isCloudSyncReady(uid);
@@ -343,7 +344,7 @@
             // 새 상태 저장
             localStorage.setItem(this.STORAGE_KEY, JSON.stringify(state));
             if (saveBridge && typeof saveBridge.setLocalOwner === 'function') {
-                saveBridge.setLocalOwner('main', uid || '');
+                saveBridge.setLocalOwner('main', guestSession ? '' : (uid || ''));
             }
             this._lastSaveAt = performance.now ? performance.now() : Date.now();
         } catch (e) {
