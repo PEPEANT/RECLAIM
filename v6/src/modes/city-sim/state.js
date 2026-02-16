@@ -37,7 +37,7 @@
 
     function createDefaultResources() {
         return {
-            money: 2600,
+            money: 10000,
             gold: 0,
             pop: 6,
             maxPop: 20

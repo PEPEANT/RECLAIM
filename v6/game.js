@@ -158,7 +158,7 @@ const game = {
             loopMs: 2500,
             loopTimer: null,
             res: {
-                money: 2600,
+                money: 10000,
                 gold: 0,
                 pop: 6,
                 maxPop: 20
