@@ -4674,20 +4674,25 @@ const game = {
     queueUnit(key) {
         const u = CONFIG.units[key];
         const isOperatorDroneLaunch = (key === 'drone_suicide' || key === 'drone_at');
+        const isIcbmSkillLaunch = (typeof this.isIcbmSkillKey === 'function') && this.isIcbmSkillKey(key);
 
         // 국지전 배치 페이즈에서는 기존 유닛생성바 클릭을 "선택"으로 처리
         if (this._skirmishMode && typeof SkirmishMode !== 'undefined' && SkirmishMode.isActive) {
+            const allowDuringSkirmishBattle = (
+                SkirmishMode.phase === 'battle'
+                && (isOperatorDroneLaunch || isIcbmSkillLaunch)
+            );
             if (SkirmishMode.phase === 'placement') {
                 if (typeof SkirmishMode.selectUnitFromBar === 'function') {
                     SkirmishMode.selectUnitFromBar(this, key);
                 }
-            } else if (!(SkirmishMode.phase === 'battle' && isOperatorDroneLaunch)) {
+            } else if (!allowDuringSkirmishBattle) {
                 if (typeof ChatPanel !== 'undefined') {
                     ChatPanel.push('국지전에서는 배치 단계에서만 유닛을 선택할 수 있습니다.', 'WARN');
                 }
             }
 
-            if (!(SkirmishMode.phase === 'battle' && isOperatorDroneLaunch)) {
+            if (!allowDuringSkirmishBattle) {
                 if (this.holdTimer) {
                     clearInterval(this.holdTimer);
                     this.holdTimer = null;
