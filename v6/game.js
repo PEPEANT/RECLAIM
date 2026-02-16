@@ -31,7 +31,7 @@ const CAMPAIGN_OCCUPATION_STAGES = [
 
 const CAMPAIGN_SKIRMISH_STAGES = [
     // 1스테이지: 보관 슬롯 제한 해제(배치 수량은 보유 수량 범위)
-    { id: 101, title: '도시 소탕전',   type: 'normal', difficulty: 1, x: -200, y: 0,    reward: 400,  mapId: 'skirmish_kabul',
+    { id: 101, title: '도시 소탕전',   type: 'normal', difficulty: 1, x: -200, y: 0,    reward: 800,  mapId: 'skirmish_kabul',
       enemyPreset: [
           { unitId: 'infantry', count: 40 },
           { unitId: 'humvee', count: 5 },
@@ -46,7 +46,7 @@ const CAMPAIGN_SKIRMISH_STAGES = [
       narration: '현재 무장반란세력들이 도시를 점령하고 시민들에게 큰 피해를 주고 있습니다.\n무장세력들을 제거하세요.'
     },
     // 2스테이지~: 아군 지급 없이 보관함만 사용
-    { id: 102, title: '교외 매복',     type: 'normal', difficulty: 1, x: -80,  y: 60,   reward: 600,  mapId: 'skirmish_desert',
+    { id: 102, title: '교외 매복',     type: 'normal', difficulty: 1, x: -80,  y: 60,   reward: 1200,  mapId: 'skirmish_desert',
       enemyPreset: [
           { unitId: 'infantry', count: 5 },
           { unitId: 'engineer', count: 2 },
@@ -56,7 +56,7 @@ const CAMPAIGN_SKIRMISH_STAGES = [
       civilians: 2,
       narration: '교외 지역에 매복한 무장 세력이 보고되었습니다.\n신속히 소탕하십시오.'
     },
-    { id: 103, title: '적 전초기지',   type: 'elite',  difficulty: 2, x: 40,   y: -40,  reward: 1000, mapId: 'forest',
+    { id: 103, title: '적 전초기지',   type: 'elite',  difficulty: 2, x: 40,   y: -40,  reward: 2000, mapId: 'forest',
       enemyPreset: [
           { unitId: 'infantry', count: 10 },
           { unitId: 'humvee', count: 2 },
@@ -66,7 +66,7 @@ const CAMPAIGN_SKIRMISH_STAGES = [
       civilians: 0,
       narration: '적 전초기지가 숲 지대를 점거했습니다.\n전초기지를 제거하고 교전 구역을 확보하십시오.'
     },
-    { id: 104, title: '진격전',        type: 'normal', difficulty: 2, x: 140,  y: 30,   reward: 800,  mapId: 'desert',
+    { id: 104, title: '진격전',        type: 'normal', difficulty: 2, x: 140,  y: 30,   reward: 1600,  mapId: 'desert',
       playerPreset: [
           { unitId: 'mbt', count: 8 },
           { unitId: 'apache', count: 2 },
@@ -84,7 +84,7 @@ const CAMPAIGN_SKIRMISH_STAGES = [
       civilians: 0,
       narration: '사막 전선에서 돌파 명령이 내려졌습니다.\n적 저항선을 제압하고 전진하십시오.'
     },
-    { id: 105, title: '요새 공략',     type: 'boss',   difficulty: 3, x: 260,  y: -20,  reward: 5000, mapId: 'fortress',
+    { id: 105, title: '요새 공략',     type: 'boss',   difficulty: 3, x: 260,  y: -20,  reward: 10000, mapId: 'fortress',
       enemyPreset: [
           { unitId: 'infantry', count: 20 },
           { unitId: 'humvee', count: 4 },
@@ -2560,6 +2560,21 @@ const game = {
         const stage = this.getCampaignStageById(stageId);
         if (!stage) return;
 
+        // 해당 스테이지가 어느 캠페인에 속하는지 먼저 판별
+        const id = stage.id;
+        let targetData = null;
+        let targetTab = '';
+        if (this.campaignOccupation.stages.some((s) => s.id === id)) {
+            targetData = this.campaignOccupation;
+            targetTab = 'occupation';
+        } else if (this.campaignSkirmish.stages.some((s) => s.id === id)) {
+            targetData = this.campaignSkirmish;
+            targetTab = 'skirmish';
+        } else {
+            targetTab = String(this.activeCampaignTab || '').trim().toLowerCase();
+        }
+        const isSkirmishStage = targetTab === 'skirmish';
+
         const firstClear = stage.status !== 'cleared';
         if (firstClear) {
             stage.status = 'cleared';
@@ -2586,7 +2601,9 @@ const game = {
             && CitySimEconomy
             && typeof CitySimEconomy.getStageClearExpReward === 'function'
             && typeof CitySimEconomy.addExp === 'function') {
-            const expReward = CitySimEconomy.getStageClearExpReward(stage, currentLevel, currentExp);
+            const expMultiplier = isSkirmishStage ? 2 : 1;
+            const expRewardBase = CitySimEconomy.getStageClearExpReward(stage, currentLevel, currentExp);
+            const expReward = Math.max(0, Math.floor((Number(expRewardBase) || 0) * expMultiplier));
             if (expReward > 0) {
                 expResult = CitySimEconomy.addExp(this, expReward, { render: false, save: false });
             }
@@ -2610,20 +2627,6 @@ const game = {
             if (messages.length > 0) {
                 ui.showToast(messages.join(' / '));
             }
-        }
-
-        // 해당 스테이지가 어느 캠페인에 속하는지 찾기
-        const id = stage.id;
-        let targetData = null;
-        let targetTab = '';
-        if (this.campaignOccupation.stages.some((s) => s.id === id)) {
-            targetData = this.campaignOccupation;
-            targetTab = 'occupation';
-        } else if (this.campaignSkirmish.stages.some((s) => s.id === id)) {
-            targetData = this.campaignSkirmish;
-            targetTab = 'skirmish';
-        } else {
-            targetTab = String(this.activeCampaignTab || '').trim().toLowerCase();
         }
 
         if (typeof this.onQuestMissionEvent === 'function') {
