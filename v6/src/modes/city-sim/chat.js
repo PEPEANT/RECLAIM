@@ -4,6 +4,7 @@
     const CHAT_COLLECTION = 'globalChat';
     const CHAT_LIMIT = 80;
     const RANK_LIMIT = 50;
+    const GUEST_RANKING_TTL_MS = 3 * 60 * 1000;
     const LEVEL_BADGE_BY_LEVEL = [
         null,
         'png/level.png/leftbar_level.1.png',
@@ -214,6 +215,10 @@
         return `게스트-${tag}`;
     }
 
+    function isAnonymousAuthUser(user) {
+        return !!(user && user.uid && user.isAnonymous === true);
+    }
+
     function ensureAuthenticated(game, openLogin) {
         const user = getAuthUser();
         if (user && user.uid) return user;
@@ -330,21 +335,40 @@
     }
 
     async function touchPresence(uid) {
-        if (isGuestSession()) return;
         const db = getDb();
-        if (!db || !uid) return;
+        const safeUid = String(uid || '').trim();
+        if (!db || !safeUid) return;
+        const guestSession = isGuestSession();
+        const payload = {
+            lastActiveAt: getServerTs(),
+            updatedAt: getServerTs()
+        };
+        if (guestSession) {
+            const user = getAuthUser();
+            const stats = collectStatsFromGame();
+            payload.isGuest = true;
+            payload.displayName = String(
+                (_myProfile && _myProfile.displayName)
+                || getGuestDisplayName(user, '')
+                || '익명관'
+            ).trim();
+            payload.avatarUrl = normalizeAvatarUrl((_myProfile && _myProfile.avatarUrl) || '');
+            payload.level = Math.max(1, Math.floor(toNumber(stats.level, _myProfile && _myProfile.level)));
+            payload.honor = Math.max(0, Math.floor(toNumber(stats.honor, _myProfile && _myProfile.honor)));
+            payload.money = Math.max(0, Math.floor(toNumber(stats.money, _myProfile && _myProfile.money)));
+            payload.gold = Math.max(0, Math.floor(toNumber(stats.gold, _myProfile && _myProfile.gold)));
+            payload.pop = Math.max(0, Math.floor(toNumber(stats.pop, _myProfile && _myProfile.pop)));
+            payload.maxPop = Math.max(1, Math.floor(toNumber(stats.maxPop, _myProfile && _myProfile.maxPop)));
+            payload.kills = Math.max(0, Math.floor(toNumber(stats.kills, _myProfile && _myProfile.kills)));
+        }
         try {
-            await db.collection(PROFILE_COLLECTION).doc(uid).set({
-                lastActiveAt: getServerTs(),
-                updatedAt: getServerTs()
-            }, { merge: true });
+            await db.collection(PROFILE_COLLECTION).doc(safeUid).set(payload, { merge: true });
         } catch (_) { }
     }
 
     function startPresenceLoop(uid) {
         stopPresenceLoop();
         if (!uid) return;
-        if (isGuestSession()) return;
 
         touchPresence(uid);
         _presenceTimer = setInterval(() => {
@@ -362,10 +386,8 @@
 
         const guestSession = isGuestSession();
         const db = getDb();
-        if (!db && !guestSession) return null;
-
         const uid = String(user.uid);
-        const profileRef = (!guestSession && db) ? db.collection(PROFILE_COLLECTION).doc(uid) : null;
+        const profileRef = db ? db.collection(PROFILE_COLLECTION).doc(uid) : null;
 
         let currentProfile = null;
         if (profileRef) {
@@ -407,11 +429,11 @@
             gold: stats.gold,
             pop: stats.pop,
             maxPop: stats.maxPop,
-            kills: stats.kills
+            kills: stats.kills,
+            isGuest: guestSession
         };
 
-        // Guest users can use chat/visit, but must not be reflected in public ranking/profile.
-        if (guestSession || !profileRef) {
+        if (!profileRef) {
             return _myProfile;
         }
 
@@ -427,6 +449,7 @@
             pop: stats.pop,
             maxPop: stats.maxPop,
             kills: stats.kills,
+            isGuest: guestSession,
             updatedAt: getServerTs(),
             lastActiveAt: getServerTs()
         };
@@ -440,7 +463,7 @@
         }
 
         const g = _game || global.game || null;
-        if (g && typeof g.saveCitySimState === 'function') {
+        if (!guestSession && g && typeof g.saveCitySimState === 'function') {
             try { g.saveCitySimState(); } catch (_) { }
         }
 
@@ -457,6 +480,7 @@
                 honor: stats.honor,
                 summary: baseSummary,
                 city: cityPayload,
+                isGuest: guestSession,
                 updatedAt: getServerTs(),
                 lastActiveAt: getServerTs()
             }, { merge: true });
@@ -760,8 +784,11 @@
         if (_unsubRanking) return;
 
         const buildRankingRows = (docs) => {
+            const nowMs = Date.now();
+            const guestCutoffMs = nowMs - GUEST_RANKING_TTL_MS;
             const next = docs.map((doc) => {
                 const d = doc.data() || {};
+                const lastActiveAtMs = tsToMs(d.lastActiveAt || d.updatedAt);
                 return {
                     uid: doc.id,
                     displayName: String(d.displayName || '\uc775\uba85\uad00'),
@@ -773,17 +800,21 @@
                     maxPop: Math.max(1, Math.floor(toNumber(d.maxPop, 1))),
                     honor: Math.max(0, Math.floor(toNumber(d.honor, 0))),
                     kills: Math.max(0, Math.floor(toNumber(d.kills, 0))),
-                    lastActiveAt: d.lastActiveAt || null
+                    isGuest: d.isGuest === true,
+                    lastActiveAt: d.lastActiveAt || null,
+                    lastActiveAtMs
                 };
-            });
+            }).filter((row) => !row.isGuest || row.lastActiveAtMs >= guestCutoffMs);
 
             const myUid = getCurrentUid();
             if (myUid && !next.some((row) => row.uid === myUid)) {
                 const user = getAuthUser();
+                const guestUser = isGuestSession() || isAnonymousAuthUser(user);
                 next.push({
                     uid: myUid,
                     displayName: String(
                         (_myProfile && _myProfile.displayName)
+                        || (guestUser ? getGuestDisplayName(user, '') : '')
                         || (user && user.displayName)
                         || (user && user.email ? String(user.email).split('@')[0] : '')
                         || '\uc775\uba85\uad00'
@@ -796,7 +827,9 @@
                     maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
                     honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
                     kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
-                    lastActiveAt: null
+                    isGuest: guestUser,
+                    lastActiveAt: null,
+                    lastActiveAtMs: nowMs
                 });
             }
 
@@ -849,12 +882,14 @@
                 }
 
                 const myUid = getCurrentUid();
-                if (myUid && !isGuestSession()) {
+                if (myUid) {
                     const user = getAuthUser();
+                    const guestUser = isGuestSession() || isAnonymousAuthUser(user);
                     _ranking = [{
                         uid: myUid,
                         displayName: String(
                             (_myProfile && _myProfile.displayName)
+                            || (guestUser ? getGuestDisplayName(user, '') : '')
                             || (user && user.displayName)
                             || (user && user.email ? String(user.email).split('@')[0] : '')
                             || '\uc775\uba85\uad00'
@@ -867,7 +902,9 @@
                         maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
                         honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
                         kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
-                        lastActiveAt: null
+                        isGuest: guestUser,
+                        lastActiveAt: null,
+                        lastActiveAtMs: Date.now()
                     }];
                     if (_activeTab === 'ranking') {
                         _renderRanking();
@@ -956,6 +993,33 @@
         _chatFallbackTried = false;
         _chatReadErrorCode = '';
         _permissionToastShown = false;
+    }
+
+    async function removeGuestRankingEntry(uid) {
+        const targetUid = String(uid || getCurrentUid() || '').trim();
+        if (!targetUid) return false;
+
+        const db = getDb();
+        if (!db) return false;
+
+        const user = getAuthUser();
+        const guestAuth = isGuestSession() || isAnonymousAuthUser(user) || !!(_myProfile && _myProfile.uid === targetUid && _myProfile.isGuest === true);
+        if (!guestAuth) return false;
+
+        const results = await Promise.allSettled([
+            db.collection(PROFILE_COLLECTION).doc(targetUid).delete(),
+            db.collection(BASE_COLLECTION).doc(targetUid).delete()
+        ]);
+
+        const removed = results.some((entry) => entry.status === 'fulfilled');
+        if (removed) {
+            _ranking = _ranking.filter((row) => row.uid !== targetUid);
+            if (_myProfile && _myProfile.uid === targetUid) {
+                _myProfile = null;
+            }
+            if (_activeTab === 'ranking') _renderRanking();
+        }
+        return removed;
     }
 
     function switchTab(tabId) {
@@ -1140,12 +1204,14 @@
         const myUid = getCurrentUid();
         const rankingRows = _ranking.slice();
 
-        if (!isGuestSession() && myUid && !rankingRows.some((row) => row.uid === myUid)) {
+        if (myUid && !rankingRows.some((row) => row.uid === myUid)) {
             const user = getAuthUser();
+            const guestUser = isGuestSession() || isAnonymousAuthUser(user);
             rankingRows.push({
                 uid: myUid,
                 displayName: String(
                     (_myProfile && _myProfile.displayName)
+                    || (guestUser ? getGuestDisplayName(user, '') : '')
                     || (user && user.displayName)
                     || (user && user.email ? String(user.email).split('@')[0] : '')
                     || '\uc775\uba85\uad00'
@@ -1157,7 +1223,9 @@
                 maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
                 honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
                 kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
-                lastActiveAt: null
+                isGuest: guestUser,
+                lastActiveAt: null,
+                lastActiveAtMs: Date.now()
             });
         }
 
@@ -1328,6 +1396,7 @@
         sendMessage,
         syncMyProfile,
         updateMyAvatar,
-        visitBase
+        visitBase,
+        removeGuestRankingEntry
     };
 })(window);

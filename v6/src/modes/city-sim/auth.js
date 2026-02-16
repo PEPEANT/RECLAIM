@@ -250,7 +250,7 @@
         if (!statusEl || !signOutBtn) return;
 
         if (user && user.uid && isAnonymousUser(user)) {
-            statusEl.textContent = `게스트 플레이 중 (uid:${String(user.uid).slice(0, 8)}, 랭킹 미반영)`;
+            statusEl.textContent = `게스트 플레이 중 (uid:${String(user.uid).slice(0, 8)}, 랭킹 임시 반영)`;
             signOutBtn.classList.remove('hidden');
             setFriendFabState(true);
             return;
@@ -265,7 +265,7 @@
         }
 
         if (guestSessionActive) {
-            statusEl.textContent = '게스트 플레이 중 (저장 안 됨)';
+            statusEl.textContent = '게스트 플레이 중 (저장 안 됨, 랭킹 임시 반영)';
             signOutBtn.classList.add('hidden');
             setFriendFabState(true);
             return;
@@ -349,6 +349,19 @@
             await CitySimChat.syncMyProfile(gameRef || activeGame || global.game || null);
         } catch (err) {
             console.warn('[CitySimAuth] 커뮤니티 프로필 동기화 실패:', err);
+        }
+    }
+
+    async function removeGuestRankingEntry(uid) {
+        const targetUid = String(uid || '').trim();
+        if (!targetUid) return false;
+        if (typeof CitySimChat === 'undefined' || !CitySimChat) return false;
+        if (typeof CitySimChat.removeGuestRankingEntry !== 'function') return false;
+        try {
+            return (await CitySimChat.removeGuestRankingEntry(targetUid)) === true;
+        } catch (err) {
+            console.warn('[CitySimAuth] 게스트 랭킹 정리 실패:', err);
+            return false;
         }
     }
 
@@ -494,6 +507,12 @@
     }
 
     function clearGuestProgress() {
+        const liveUser = getCurrentUser();
+        const guestUid = (liveUser && liveUser.uid && isAnonymousUser(liveUser)) ? String(liveUser.uid) : '';
+        if (guestUid) {
+            removeGuestRankingEntry(guestUid);
+        }
+
         const keys = new Set();
         keys.add('CT_STATE_V1');
         keys.add('CT_STATE_V1_BAK1');
@@ -835,7 +854,7 @@
 
             if (enterCity(activeGame)) {
                 if (communityReady) {
-                    showToast('게스트 로그인으로 시티 화면에 입장했습니다. (채팅/방문 가능, 랭킹 미반영)');
+                    showToast('게스트 로그인으로 시티 화면에 입장했습니다. (채팅/방문 가능, 랭킹 임시 반영/로그아웃 시 제거)');
                 } else {
                     showToast('게스트 로그인으로 시티 화면에 입장했습니다.');
                 }
@@ -1216,6 +1235,10 @@
                     if (!silent) showToast('저장에 실패해 로그아웃을 중단했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.');
                     return false;
                 }
+            }
+
+            if (isAnonymousUser(user) || guestSessionActive === true) {
+                await removeGuestRankingEntry(String(user.uid));
             }
 
             await fb.signOut();
