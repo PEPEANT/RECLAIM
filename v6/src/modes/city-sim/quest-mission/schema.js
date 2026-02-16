@@ -11,6 +11,7 @@
         LEGACY_BUILD: 'legacy_build',
         LEGACY_LOGIN: 'legacy_login',
         LEGACY_SKIRMISH_WIN: 'legacy_skirmish_win',
+        LEGACY_EVENT: 'legacy_event',
         KILL: 'kill',
         OCCUPATION_WIN: 'occupation_win',
         LEVEL_BONUS: 'level_bonus'
@@ -26,6 +27,7 @@
         PLANT_TREE_5: 'plant_tree_5',
         LOGIN_SUPPLY_BOX: 'login_supply_box',
         SKIRMISH_FIRST_WIN_SUPPLY_BOX: 'skirmish_first_win_supply_box',
+        LUNAR_NEW_YEAR_GIFT: 'lunar_new_year_gift',
         KILL_CONTRACT: 'kill_contract',
         VICTORY_CONTRACT: 'victory_contract',
         LEVEL_BONUS_PRIVATE: 'level_bonus_private',
@@ -47,6 +49,7 @@
         PLANT_TREE_5: String(RAW_QUEST_IDS.PLANT_TREE_5 || DEFAULT_QUEST_IDS.PLANT_TREE_5),
         LOGIN_SUPPLY_BOX: String(RAW_QUEST_IDS.LOGIN_SUPPLY_BOX || DEFAULT_QUEST_IDS.LOGIN_SUPPLY_BOX),
         SKIRMISH_FIRST_WIN_SUPPLY_BOX: String(RAW_QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX || DEFAULT_QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX),
+        LUNAR_NEW_YEAR_GIFT: String(RAW_QUEST_IDS.LUNAR_NEW_YEAR_GIFT || DEFAULT_QUEST_IDS.LUNAR_NEW_YEAR_GIFT),
         KILL_CONTRACT: String(RAW_QUEST_IDS.KILL_CONTRACT || DEFAULT_QUEST_IDS.KILL_CONTRACT),
         VICTORY_CONTRACT: String(RAW_QUEST_IDS.VICTORY_CONTRACT || DEFAULT_QUEST_IDS.VICTORY_CONTRACT),
         LEVEL_BONUS_PRIVATE: String(RAW_QUEST_IDS.LEVEL_BONUS_PRIVATE || DEFAULT_QUEST_IDS.LEVEL_BONUS_PRIVATE),
@@ -79,6 +82,7 @@
         QUEST_IDS.PLANT_TREE_5,
         QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
+        QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
         QUEST_IDS.KILL_CONTRACT,
         QUEST_IDS.VICTORY_CONTRACT,
         ...LEVEL_BONUS_IDS
@@ -103,6 +107,7 @@
         QUEST_IDS.PLANT_TREE_5,
         QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
+        QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
         QUEST_IDS.KILL_CONTRACT,
         QUEST_IDS.VICTORY_CONTRACT,
         ...LEVEL_BONUS_IDS
@@ -396,6 +401,16 @@
             { box: '일반 보급상자 x1', boxType: 'box_level1' }
         );
 
+        quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT] = createLegacyQuest(
+            QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
+            QUEST_TYPES.LEGACY_EVENT,
+            '설날 이벤트 지급',
+            '즉시 수령',
+            { gold: 10 }
+        );
+        quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT].progress = 1;
+        quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT].status = QUEST_STATUS.CLAIMABLE;
+
         quests[QUEST_IDS.KILL_CONTRACT] = {
             id: QUEST_IDS.KILL_CONTRACT,
             type: QUEST_TYPES.KILL,
@@ -629,7 +644,8 @@
 
         const legacyIds = [
             QUEST_IDS.LOGIN_SUPPLY_BOX,
-            QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX
+            QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
+            QUEST_IDS.LUNAR_NEW_YEAR_GIFT
         ];
 
         legacyIds.forEach((id) => {
@@ -649,6 +665,13 @@
                     { box: '일반 보급상자 x1', boxType: 'box_level1' },
                     defaultQuests[id] && defaultQuests[id].reward
                 );
+            }
+            if (id === QUEST_IDS.LUNAR_NEW_YEAR_GIFT) {
+                quest.reward = normalizeReward(
+                    { gold: 10 },
+                    defaultQuests[id] && defaultQuests[id].reward
+                );
+                quest.actionName = '즉시 수령';
             }
 
             const permanentlyClaimed = permanentClaimedSet.has(id);

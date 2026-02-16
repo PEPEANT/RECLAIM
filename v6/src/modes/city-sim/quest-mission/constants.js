@@ -17,6 +17,7 @@
         LEGACY_BUILD: 'legacy_build',
         LEGACY_LOGIN: 'legacy_login',
         LEGACY_SKIRMISH_WIN: 'legacy_skirmish_win',
+        LEGACY_EVENT: 'legacy_event',
         KILL: 'kill',
         OCCUPATION_WIN: 'occupation_win',
         LEVEL_BONUS: 'level_bonus'
@@ -32,6 +33,7 @@
         PLANT_TREE_5: 'plant_tree_5',
         LOGIN_SUPPLY_BOX: 'login_supply_box',
         SKIRMISH_FIRST_WIN_SUPPLY_BOX: 'skirmish_first_win_supply_box',
+        LUNAR_NEW_YEAR_GIFT: 'lunar_new_year_gift',
         KILL_CONTRACT: 'kill_contract',
         VICTORY_CONTRACT: 'victory_contract',
         LEVEL_BONUS_PRIVATE: 'level_bonus_private',
@@ -64,6 +66,7 @@
         QUEST_IDS.PLANT_TREE_5,
         QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
+        QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
         QUEST_IDS.KILL_CONTRACT,
         QUEST_IDS.VICTORY_CONTRACT,
         ...LEVEL_BONUS_IDS

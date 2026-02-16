@@ -6,6 +6,8 @@
     const CITY_BGM_INTRO_FILE = 'bgm/ost/tunetank2.mp3';
     const CITY_BGM_LOOP_FILE = 'bgm/ost/tunetank.mp3';
     const CITY_BGM_INTRO_PLAYED_KEY = 'reclaim_city_bgm_intro_played_v1';
+    const CITY_EVENT_0216_OVERLAY_ID = 'city-event-0216-overlay';
+    const CITY_EVENT_0216_IMAGE = 'png/event/event_0216.png';
 
     function clampNumber(value, min, max) {
         if (!Number.isFinite(value)) return min;
@@ -82,6 +84,89 @@
         } catch (_) {
             playLoopTrack();
         }
+    }
+
+    function setCityEvent0216Visible(overlay, visible) {
+        if (!overlay) return;
+        overlay.classList.toggle('hidden', visible !== true);
+        overlay.style.display = (visible === true) ? 'flex' : 'none';
+        overlay.setAttribute('aria-hidden', (visible === true) ? 'false' : 'true');
+    }
+
+    function closeCityEvent0216Popup() {
+        const overlay = document.getElementById(CITY_EVENT_0216_OVERLAY_ID);
+        if (!overlay) return;
+        setCityEvent0216Visible(overlay, false);
+    }
+
+    function ensureCityEvent0216Popup() {
+        const cityScreen = document.getElementById('city-screen');
+        if (!cityScreen) return null;
+
+        const existing = document.getElementById(CITY_EVENT_0216_OVERLAY_ID);
+        if (existing) return existing;
+
+        const overlay = document.createElement('div');
+        overlay.id = CITY_EVENT_0216_OVERLAY_ID;
+        overlay.className = 'city-event-overlay hidden';
+
+        const panel = document.createElement('div');
+        panel.className = 'city-event-panel';
+        panel.setAttribute('role', 'dialog');
+        panel.setAttribute('aria-modal', 'true');
+        panel.setAttribute('aria-label', '이벤트 안내');
+
+        const closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'city-event-close-btn';
+        closeBtn.setAttribute('aria-label', '닫기');
+        closeBtn.textContent = 'x';
+        closeBtn.addEventListener('click', (event) => {
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+            closeCityEvent0216Popup();
+        });
+
+        const img = document.createElement('img');
+        img.className = 'city-event-image';
+        img.src = CITY_EVENT_0216_IMAGE;
+        img.alt = '설날 이벤트 광고';
+
+        const imageCandidates = [
+            CITY_EVENT_0216_IMAGE,
+            `./${CITY_EVENT_0216_IMAGE}`
+        ];
+        try {
+            const baseHref = new URL('.', window.location.href).href;
+            imageCandidates.push(new URL(CITY_EVENT_0216_IMAGE, baseHref).href);
+        } catch (_) { }
+
+        img.dataset.cityEventCandidateIndex = '0';
+        img.addEventListener('error', () => {
+            const idx = Math.max(0, Math.floor(Number(img.dataset.cityEventCandidateIndex) || 0)) + 1;
+            if (idx >= imageCandidates.length) return;
+            img.dataset.cityEventCandidateIndex = String(idx);
+            img.src = imageCandidates[idx];
+        });
+
+        panel.appendChild(closeBtn);
+        panel.appendChild(img);
+        overlay.appendChild(panel);
+
+        overlay.addEventListener('pointerdown', (event) => {
+            if (event.target !== overlay) return;
+            closeCityEvent0216Popup();
+        });
+
+        cityScreen.appendChild(overlay);
+        setCityEvent0216Visible(overlay, false);
+        return overlay;
+    }
+
+    function openCityEvent0216Popup(game) {
+        const overlay = ensureCityEvent0216Popup();
+        if (!overlay) return;
+        setCityEvent0216Visible(overlay, true);
     }
 
     function clampViewToVisibleBounds(game) {
@@ -648,6 +733,10 @@
         document.getElementById('campaign-screen')?.classList.add('hidden');
         document.getElementById('unitdex-screen')?.classList.add('hidden');
         document.getElementById('city-screen')?.classList.remove('hidden');
+        openCityEvent0216Popup(game);
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => openCityEvent0216Popup(game));
+        }
 
         playCityBgm();
 
@@ -687,6 +776,7 @@
             game.cityActionConfirm();
         }
         CitySimState.setMissionOpen(game, false);
+        closeCityEvent0216Popup();
 
         document.getElementById('city-screen')?.classList.add('hidden');
 
