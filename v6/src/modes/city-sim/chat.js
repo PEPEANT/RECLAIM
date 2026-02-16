@@ -4,7 +4,7 @@
     const CHAT_COLLECTION = 'globalChat';
     const CHAT_LIMIT = 80;
     const RANK_LIMIT = 50;
-    const GUEST_RANKING_TTL_MS = 3 * 60 * 1000;
+    const RANK_FETCH_LIMIT = 500;
     const LEVEL_BADGE_BY_LEVEL = [
         null,
         'png/level.png/leftbar_level.1.png',
@@ -785,7 +785,6 @@
 
         const buildRankingRows = (docs) => {
             const nowMs = Date.now();
-            const guestCutoffMs = nowMs - GUEST_RANKING_TTL_MS;
             const next = docs.map((doc) => {
                 const d = doc.data() || {};
                 const lastActiveAtMs = tsToMs(d.lastActiveAt || d.updatedAt);
@@ -804,7 +803,7 @@
                     lastActiveAt: d.lastActiveAt || null,
                     lastActiveAtMs
                 };
-            }).filter((row) => !row.isGuest || row.lastActiveAtMs >= guestCutoffMs);
+            });
 
             const myUid = getCurrentUid();
             if (myUid && !next.some((row) => row.uid === myUid)) {
@@ -840,7 +839,7 @@
                 if (b.pop !== a.pop) return b.pop - a.pop;
                 return a.displayName.localeCompare(b.displayName);
             });
-            return next;
+            return next.slice(0, RANK_LIMIT);
         };
 
         const bindRanking = (query, fallbackMode) => {
@@ -864,7 +863,7 @@
                     }
                     try {
                         bindRanking(
-                            db.collection(PROFILE_COLLECTION).limit(RANK_LIMIT),
+                            db.collection(PROFILE_COLLECTION).limit(RANK_FETCH_LIMIT),
                             true
                         );
                         return;
@@ -921,7 +920,7 @@
             bindRanking(
                 db.collection(PROFILE_COLLECTION)
                     .orderBy('level', 'desc')
-                    .limit(RANK_LIMIT),
+                    .limit(RANK_FETCH_LIMIT),
                 false
             );
         } catch (err) {
