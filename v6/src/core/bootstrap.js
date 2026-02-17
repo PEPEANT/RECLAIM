@@ -1,0 +1,1 @@
+console.log("[BOOT] module ok");
