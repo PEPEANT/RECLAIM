@@ -2060,7 +2060,7 @@ class Unit extends Entity {
             }
             if (!showHp) return;
             const hpPct = Math.max(0, this.hp / this.maxHp);
-            const w = 24; const h = 4; const yOffset = -35;
+            const w = 24; const h = 4; const yOffset = -50;
             const barX = this.x;
             const barY = (this.y + snapDy) + yOffset;
             ctx.fillStyle = '#ef4444'; ctx.fillRect(barX - w / 2, barY, w, h);
@@ -2069,6 +2069,7 @@ class Unit extends Entity {
         };
         ctx.save();
         ctx.translate(this.x, this.y + snapDy);
+        ctx.scale(1.4, 1.4);  // [VISUAL] unit size boost for visibility
 
         // ... (?꾩닠 ?쒕줎 ?쎌삩 諛뺤뒪 肄붾뱶??洹몃?濡??좎?) ...
         if (id === 'tactical_drone' && this.lockedTarget && !this.lockedTarget.dead) {

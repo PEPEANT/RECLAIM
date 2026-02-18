@@ -653,13 +653,13 @@
 
         ctx.save();
         const gradient = ctx.createLinearGradient(0, 0, 0, height);
-        gradient.addColorStop(0, `rgba(${topColor}, ${(0.06 + intensity * 0.22).toFixed(3)})`);
-        gradient.addColorStop(0.62, `rgba(${midColor}, ${(0.08 + intensity * 0.22).toFixed(3)})`);
-        gradient.addColorStop(1, `rgba(${bottomColor}, ${(0.1 + intensity * 0.3).toFixed(3)})`);
+        gradient.addColorStop(0, `rgba(${topColor}, ${(0.03 + intensity * 0.13).toFixed(3)})`);
+        gradient.addColorStop(0.62, `rgba(${midColor}, ${(0.05 + intensity * 0.13).toFixed(3)})`);
+        gradient.addColorStop(1, `rgba(${bottomColor}, ${(0.06 + intensity * 0.18).toFixed(3)})`);
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, width, height);
 
-        const hazeAlpha = (0.035 + intensity * 0.09).toFixed(3);
+        const hazeAlpha = (0.02 + intensity * 0.05).toFixed(3);
         ctx.fillStyle = `rgba(241, 245, 249, ${hazeAlpha})`;
         ctx.fillRect(0, groundY * 0.32, width, Math.max(20, groundY * 0.12));
         ctx.restore();

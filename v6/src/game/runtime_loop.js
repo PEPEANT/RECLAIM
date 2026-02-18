@@ -326,6 +326,7 @@
             ctx.scale(Camera.zoom, Camera.zoom);
             ctx.translate(0, -game.groundY);
 
+            ctx.globalAlpha = 0.65;
             safeDrawCall('draw:map-decorations', () => {
                 Maps.drawDecorations(
                     ctx,
@@ -335,6 +336,7 @@
                     game.cameraX
                 );
             });
+            ctx.globalAlpha = 1.0;
 
             ctx.restore();
 

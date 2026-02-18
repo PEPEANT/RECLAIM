@@ -219,7 +219,7 @@
         const hpPct = Math.max(0, unit.hp / unit.maxHp);
         const w = 24;
         const h = 4;
-        const yOffset = -35;
+        const yOffset = -50;
         const barX = unit.x;
         const barY = (unit.y + snapDy) + yOffset;
         ctx.fillStyle = '#ef4444';

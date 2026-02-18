@@ -404,9 +404,9 @@
         quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT] = createLegacyQuest(
             QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
             QUEST_TYPES.LEGACY_EVENT,
-            '설날 이벤트 지급',
+            '특수 보급박스 지급',
             '즉시 수령',
-            { gold: 10 }
+            { box: '특수 보급박스 x1', boxType: 'box_level2' }
         );
         quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT].progress = 1;
         quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT].status = QUEST_STATUS.CLAIMABLE;
@@ -668,7 +668,7 @@
             }
             if (id === QUEST_IDS.LUNAR_NEW_YEAR_GIFT) {
                 quest.reward = normalizeReward(
-                    { gold: 10 },
+                    { box: '특수 보급박스 x1', boxType: 'box_level2' },
                     defaultQuests[id] && defaultQuests[id].reward
                 );
                 quest.actionName = '즉시 수령';
