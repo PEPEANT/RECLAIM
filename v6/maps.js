@@ -227,6 +227,7 @@
 
         if (this.currentMap === 'city') {
             this.drawCityDayDecorations(ctx, width, height, groundY, cameraX);
+            this.drawMapReadabilityTone(ctx, width, height, groundY, 'city');
             ctx.restore();
             return;
         }
@@ -295,6 +296,7 @@
             ctx.restore();
 
             this.drawKabulDust(ctx, width, height, cameraX);
+            this.drawMapReadabilityTone(ctx, width, height, groundY, 'skirmish_kabul');
         } else if (this.currentMap === 'skirmish_desert') {
             const cityX = cameraX * 0.22;
             ctx.save();
@@ -340,16 +342,16 @@
     // ==========================
     drawCityDaySky(ctx, width, height, cameraX) {
         const grad = ctx.createLinearGradient(0, 0, 0, height);
-        grad.addColorStop(0, '#2563eb');
-        grad.addColorStop(1, '#bfdbfe');
+        grad.addColorStop(0, '#4f6f95');
+        grad.addColorStop(1, '#c6d2de');
 
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, width, height);
 
         ctx.save();
-        ctx.fillStyle = '#facc15';
-        ctx.shadowColor = '#fef08a';
-        ctx.shadowBlur = 20;
+        ctx.fillStyle = '#d9bf6b';
+        ctx.shadowColor = 'rgba(249, 232, 167, 0.45)';
+        ctx.shadowBlur = 14;
         ctx.beginPath();
         ctx.arc(width - 150, 100, 50, 0, Math.PI * 2);
         ctx.fill();
@@ -374,9 +376,9 @@
             const s = cloud.s;
 
             ctx.save();
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.fillStyle = 'rgba(236, 242, 248, 0.26)';
             this.drawCityDayCloudShape(ctx, x, y + 5, s);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.fillStyle = 'rgba(236, 242, 248, 0.62)';
             this.drawCityDayCloudShape(ctx, x, y, s);
             ctx.restore();
         }
@@ -393,22 +395,22 @@
     },
 
     drawCityDayBase(ctx, width, height, groundY, cameraX) {
-        ctx.fillStyle = '#4a5568';
+        ctx.fillStyle = '#5a6672';
         ctx.fillRect(0, groundY, width, height - groundY);
 
         const roadOffset = -((cameraX || 0) % 100);
         const startX = roadOffset - 100;
         const endX = width + 100;
 
-        ctx.fillStyle = '#d69e2e';
+        ctx.fillStyle = '#baa46b';
         for (let x = startX; x < endX; x += 100) {
             ctx.fillRect(x, groundY + 40, 50, 4);
         }
 
-        ctx.fillStyle = '#718096';
+        ctx.fillStyle = '#7a8794';
         ctx.fillRect(0, groundY, width, 10);
 
-        ctx.strokeStyle = '#4a5568';
+        ctx.strokeStyle = '#697583';
         ctx.lineWidth = 1;
         ctx.beginPath();
         for (let x = startX; x < endX; x += 40) {
@@ -449,7 +451,7 @@
             const r = this._rand(x);
             const w = 40 + r * 60;
             const h = 70 + this._rand(x + 1) * 90;
-            const g = 85 + Math.floor(r * 25);
+            const g = 96 + Math.floor(r * 18);
             ctx.fillStyle = `rgb(${g}, ${g}, ${g})`;
             ctx.fillRect(x, groundY - h, w, h);
         }
@@ -499,7 +501,7 @@
             ctx.fillStyle = buildingColor;
             ctx.fillRect(x, y, w, h);
 
-            ctx.fillStyle = 'rgba(0,0,0,0.2)';
+            ctx.fillStyle = 'rgba(0,0,0,0.24)';
             ctx.fillRect(x + w - 5, y, 5, h);
 
             this.drawCityDayRooftop(ctx, x, y, w, r, roofColor);
@@ -537,14 +539,14 @@
         if (cols <= 0 || rows <= 0) return;
 
         const drawPadX = (bw - (cols * gapX - (gapX - winW))) / 2;
-        const winBase = 165 + Math.floor(this._rand(seed) * 25);
-        const winColor = `rgba(${winBase}, ${winBase + 6}, ${winBase + 10}, 0.55)`;
+        const winBase = 145 + Math.floor(this._rand(seed) * 18);
+        const winColor = `rgba(${winBase}, ${winBase}, ${Math.max(0, winBase - 6)}, 0.42)`;
 
         for (let r = 0; r < rows; r++) {
             if (r > rows - 2) continue;
             for (let c = 0; c < cols; c++) {
                 if (this._rand(seed + r * 1000 + c) > 0.75) {
-                    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+                    ctx.fillStyle = 'rgba(0,0,0,0.35)';
                 } else {
                     ctx.fillStyle = winColor;
                 }
@@ -698,17 +700,17 @@
     // ==========================
     drawKabulSky(ctx, width, height) {
         const grad = ctx.createLinearGradient(0, 0, 0, height);
-        grad.addColorStop(0, '#6E8594');
-        grad.addColorStop(1, '#C2B8A3');
+        grad.addColorStop(0, '#74818a');
+        grad.addColorStop(1, '#b6ad9d');
         ctx.fillStyle = grad;
         ctx.fillRect(0, 0, width, height);
     },
 
     drawKabulGround(ctx, width, height, groundY) {
         const sidewalkH = 20;
-        ctx.fillStyle = '#7A756E';
+        ctx.fillStyle = '#74706a';
         ctx.fillRect(0, groundY, width, sidewalkH);
-        ctx.fillStyle = '#3A3C3E';
+        ctx.fillStyle = '#383a3c';
         ctx.fillRect(0, groundY + sidewalkH, width, height - groundY - sidewalkH);
     },
 
@@ -736,7 +738,7 @@
     drawKabulCity(ctx, startX, endX, groundY) {
         const interval = 110;
         const start = Math.floor(startX / interval) * interval;
-        const palette = ['#A19C93', '#C4BDB1', '#8A8275', '#9b9487'];
+        const palette = ['#9b978f', '#b5aea3', '#867f74', '#948d82'];
 
         for (let i = start; i < endX; i += interval) {
             const r = this._rand(i * 0.171 + 91.3);
@@ -759,15 +761,15 @@
                 for (let wy = 18; wy < h - 12; wy += 22) {
                     for (let wx = 10; wx < w - 12; wx += 18) {
                         const on = this._rand((i + wx) * (wy + 13) * 0.0019) > 0.92;
-                        ctx.fillStyle = on ? '#d8cf9b' : '#2C2A28';
+                        ctx.fillStyle = on ? '#c3bb96' : '#2c2a28';
                         ctx.fillRect(x + wx, y - h + wy, 9, 13);
                     }
                 }
             } else if (type === 1) {
                 for (let wy = 24; wy < h - 12; wy += 36) {
-                    ctx.fillStyle = '#5C7A8C';
+                    ctx.fillStyle = '#66737b';
                     ctx.fillRect(x + 8, y - h + wy, w - 16, 18);
-                    ctx.fillStyle = '#3f4d56';
+                    ctx.fillStyle = '#4a545b';
                     for (let wx = 20; wx < w - 12; wx += 30) {
                         ctx.fillRect(x + wx, y - h + wy, 2, 18);
                     }
@@ -782,7 +784,7 @@
                     }
                 }
             } else {
-                ctx.fillStyle = '#4A6B5D';
+                ctx.fillStyle = '#5f6761';
                 ctx.fillRect(x - 4, y - h + 18, w + 8, 46);
                 for (let wy = 85; wy < h - 10; wy += 34) {
                     ctx.fillStyle = '#2C2A28';
@@ -810,10 +812,10 @@
         const roadTop = groundY + sidewalkH;
         const roadBottom = groundY + 170;
 
-        ctx.fillStyle = '#7A756E';
+        ctx.fillStyle = '#74706a';
         ctx.fillRect(startX, groundY, endX - startX, sidewalkH);
 
-        ctx.strokeStyle = '#64605a';
+        ctx.strokeStyle = '#615d57';
         ctx.lineWidth = 2;
         const blockW = 50;
         const start = Math.floor(startX / blockW) * blockW;
@@ -824,14 +826,14 @@
             ctx.stroke();
         }
 
-        ctx.fillStyle = '#3A3C3E';
+        ctx.fillStyle = '#383a3c';
         ctx.fillRect(startX, roadTop, endX - startX, roadBottom - roadTop);
 
         const dashW = 58;
         const gapW = 36;
         const y = roadTop + (roadBottom - roadTop) * 0.52;
         const lineStart = Math.floor((startX - 200) / (dashW + gapW)) * (dashW + gapW);
-        ctx.fillStyle = '#E0C56E';
+        ctx.fillStyle = '#bea963';
         for (let x = lineStart; x < endX + 120; x += (dashW + gapW)) {
             ctx.fillRect(x, y - 3, dashW, 6);
         }
@@ -879,7 +881,7 @@
 
     drawKabulDust(ctx, width, height, cameraX = 0) {
         ctx.save();
-        ctx.fillStyle = 'rgba(180, 170, 150, 0.25)';
+        ctx.fillStyle = 'rgba(160, 154, 140, 0.17)';
         const count = 34;
         for (let i = 0; i < count; i++) {
             const baseX = ((i * 181) + (cameraX * 0.42)) % (width + 280);
@@ -889,6 +891,37 @@
             ctx.beginPath();
             ctx.arc(x, y, r, 0, Math.PI * 2);
             ctx.fill();
+        }
+        ctx.restore();
+    },
+
+    drawMapReadabilityTone(ctx, width, height, groundY, mapId = this.currentMap) {
+        const id = String(mapId || this.currentMap || '').trim();
+        if (id !== 'city' && id !== 'skirmish_kabul') return;
+
+        ctx.save();
+        if (id === 'city') {
+            const tone = ctx.createLinearGradient(0, 0, 0, height);
+            tone.addColorStop(0, 'rgba(120, 134, 149, 0.08)');
+            tone.addColorStop(0.58, 'rgba(102, 114, 128, 0.14)');
+            tone.addColorStop(1, 'rgba(71, 85, 105, 0.16)');
+            ctx.fillStyle = tone;
+            ctx.fillRect(0, 0, width, height);
+
+            const focusTop = Math.max(0, groundY - 90);
+            ctx.fillStyle = 'rgba(30, 41, 59, 0.08)';
+            ctx.fillRect(0, focusTop, width, Math.min(height - focusTop, 220));
+        } else {
+            const tone = ctx.createLinearGradient(0, 0, 0, height);
+            tone.addColorStop(0, 'rgba(115, 118, 115, 0.10)');
+            tone.addColorStop(0.55, 'rgba(92, 90, 84, 0.16)');
+            tone.addColorStop(1, 'rgba(64, 62, 58, 0.20)');
+            ctx.fillStyle = tone;
+            ctx.fillRect(0, 0, width, height);
+
+            const focusTop = Math.max(0, groundY - 80);
+            ctx.fillStyle = 'rgba(15, 23, 42, 0.06)';
+            ctx.fillRect(0, focusTop, width, Math.min(height - focusTop, 210));
         }
         ctx.restore();
     },
