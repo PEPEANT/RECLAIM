@@ -232,6 +232,22 @@
         return Math.max(1, Math.min(19, lv));
     }
 
+    function getLoggedInUid() {
+        try {
+            if (typeof CitySimAuth !== 'undefined' && CitySimAuth && typeof CitySimAuth.getCurrentUser === 'function') {
+                const user = CitySimAuth.getCurrentUser();
+                if (user && user.uid && user.isAnonymous !== true) return String(user.uid);
+            }
+        } catch (_) { }
+        try {
+            if (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB && typeof RECLAIM_FB.getUser === 'function') {
+                const user = RECLAIM_FB.getUser();
+                if (user && user.uid && user.isAnonymous !== true) return String(user.uid);
+            }
+        } catch (_) { }
+        return '';
+    }
+
     function buildKillQuestSpec(level, tier) {
         const lv = Math.max(1, Math.min(19, Math.floor(Number(level) || 1)));
         const t = Math.max(1, Math.floor(Number(tier) || 1));
@@ -404,12 +420,10 @@
         quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT] = createLegacyQuest(
             QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
             QUEST_TYPES.LEGACY_EVENT,
-            '특수 보급박스 지급',
-            '즉시 수령',
+            '첫 로그인 지급',
+            '로그인 완료',
             { box: '특수 보급박스 x1', boxType: 'box_level2' }
         );
-        quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT].progress = 1;
-        quests[QUEST_IDS.LUNAR_NEW_YEAR_GIFT].status = QUEST_STATUS.CLAIMABLE;
 
         quests[QUEST_IDS.KILL_CONTRACT] = {
             id: QUEST_IDS.KILL_CONTRACT,
@@ -647,6 +661,7 @@
             QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
             QUEST_IDS.LUNAR_NEW_YEAR_GIFT
         ];
+        const hasLoggedInUid = !!getLoggedInUid();
 
         legacyIds.forEach((id) => {
             const quest = state.quests[id];
@@ -671,7 +686,8 @@
                     { box: '특수 보급박스 x1', boxType: 'box_level2' },
                     defaultQuests[id] && defaultQuests[id].reward
                 );
-                quest.actionName = '즉시 수령';
+                quest.missionName = '첫 로그인 지급';
+                quest.actionName = '로그인 완료';
             }
 
             const permanentlyClaimed = permanentClaimedSet.has(id);
@@ -684,6 +700,11 @@
             } else if (quest.status === QUEST_STATUS.CLAIMED) {
                 quest.progress = 1;
                 permanentClaimedSet.add(id);
+            } else if (id === QUEST_IDS.LUNAR_NEW_YEAR_GIFT) {
+                quest.progress = hasLoggedInUid ? 1 : 0;
+                quest.status = hasLoggedInUid
+                    ? QUEST_STATUS.CLAIMABLE
+                    : QUEST_STATUS.IN_PROGRESS;
             } else if (quest.progress >= 1) {
                 quest.status = QUEST_STATUS.CLAIMABLE;
             } else {
