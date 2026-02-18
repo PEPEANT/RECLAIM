@@ -733,10 +733,11 @@
         document.getElementById('campaign-screen')?.classList.add('hidden');
         document.getElementById('unitdex-screen')?.classList.add('hidden');
         document.getElementById('city-screen')?.classList.remove('hidden');
-        openCityEvent0216Popup(game);
-        if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => openCityEvent0216Popup(game));
-        }
+        // [END] 설날 이벤트 팝업 종료 — 호출 제거
+        // openCityEvent0216Popup(game);
+        // if (typeof requestAnimationFrame === 'function') {
+        //     requestAnimationFrame(() => openCityEvent0216Popup(game));
+        // }
 
         playCityBgm();
 
