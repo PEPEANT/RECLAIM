@@ -373,6 +373,26 @@
     min-width: 1.5rem;
 }
 
+.ranking-name-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.32rem;
+    flex-wrap: wrap;
+}
+
+.ranking-user-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.1rem 0.36rem;
+    border-radius: 999px;
+    border: 1px solid rgba(249, 115, 22, 0.4);
+    background: rgba(249, 115, 22, 0.16);
+    color: #fdba74;
+    font-size: 0.6rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
 .ranking-level-wrap {
     display: inline-flex;
     align-items: center;
@@ -574,6 +594,15 @@
 
     .ranking-level-wrap {
         gap: 0.22rem;
+    }
+
+    .ranking-name-wrap {
+        gap: 0.2rem;
+    }
+
+    .ranking-user-badge {
+        padding: 0.08rem 0.28rem;
+        font-size: 0.55rem;
     }
 
     .ranking-level-badge {

@@ -317,6 +317,107 @@
         };
     }
 
+    function getVisitUnitTypeLabel(unitDef) {
+        const raw = String(unitDef?.type || unitDef?.category || '').trim().toLowerCase();
+        if (raw === 'air') return '공군';
+        if (raw === 'mech' || raw === 'armored') return '기갑';
+        if (raw === 'infantry') return '보병';
+        if (raw === 'special') return '특수';
+        return '유닛';
+    }
+
+    function getVisitUnitEntries(baseData) {
+        const base = (baseData && typeof baseData === 'object') ? baseData : {};
+        const city = (base.city && typeof base.city === 'object') ? base.city : {};
+        const units = (city.units && typeof city.units === 'object') ? city.units : {};
+        const entries = [];
+
+        Object.keys(units).forEach((unitKey) => {
+            const key = normalizeUnitKey(unitKey);
+            if (!key || key === 'icbm_enemy') return;
+
+            const count = Math.max(0, Math.floor(toNumber(units[key], 0)));
+            if (count <= 0) return;
+
+            const unitDef = getUnitDefByKey(key);
+            const name = getInventoryDisplayName(key, unitDef || undefined);
+            const iconUrl = drawInventoryUnitIcon(key);
+            entries.push({
+                key,
+                count,
+                unitDef: unitDef || null,
+                name,
+                iconUrl,
+                typeLabel: getVisitUnitTypeLabel(unitDef)
+            });
+        });
+
+        entries.sort((a, b) => {
+            if (b.count !== a.count) return b.count - a.count;
+            return String(a.name || '').localeCompare(String(b.name || ''), 'ko-KR');
+        });
+        return entries;
+    }
+
+    function openVisitUnitInventory() {
+        const gameRef = getActionGameRef();
+        if (!gameRef || typeof gameRef.openCityActionModal !== 'function') {
+            showToast('유닛보기 창을 열 수 없습니다.');
+            return;
+        }
+
+        const baseData = (_currentVisitData && typeof _currentVisitData.base === 'object')
+            ? _currentVisitData.base
+            : {};
+        const ownerName = getVisitOwnerName();
+        const entries = getVisitUnitEntries(baseData);
+        const totalCount = entries.reduce((sum, entry) => sum + Math.max(0, Math.floor(toNumber(entry?.count, 0))), 0);
+        const kindCount = entries.length;
+
+        let html = '';
+        if (entries.length <= 0) {
+            const summary = (baseData.summary && typeof baseData.summary === 'object') ? baseData.summary : {};
+            const summaryKinds = Math.max(0, Math.floor(toNumber(summary.unitKinds, 0)));
+            const summaryTotal = Math.max(0, Math.floor(toNumber(summary.unitTotal, 0)));
+            const summaryText = (summaryKinds > 0 || summaryTotal > 0)
+                ? `요약 정보: 유닛 ${formatNumber(summaryKinds)}종 · 총 ${formatNumber(summaryTotal)}기`
+                : '표시 가능한 유닛 정보가 없습니다.';
+            html = [
+                '<div class="city-visit-modal-wrap city-visit-unit-modal">',
+                `<div class="city-visit-modal-desc"><strong>${escapeHtml(ownerName)}</strong>의 유닛 보관함</div>`,
+                `<div class="city-visit-modal-desc city-visit-unit-empty">${escapeHtml(summaryText)}</div>`,
+                '</div>'
+            ].join('');
+        } else {
+            const cardsHtml = entries.map((entry) => {
+                const icon = entry.iconUrl
+                    ? `<img class="city-action-unitbar-icon" src="${escapeHtml(entry.iconUrl)}" alt="${escapeHtml(entry.name)}">`
+                    : `<span class="city-action-unitbar-icon-fallback">${escapeHtml(String(entry.name || '').slice(0, 2))}</span>`;
+                return (
+                    `<div class="btn-unit city-action-unitbar-item city-visit-unit-item" title="${escapeHtml(entry.name)} ${formatNumber(entry.count)}기">` +
+                    icon +
+                    `<span class="city-action-unitbar-name">${escapeHtml(entry.name)}</span>` +
+                    `<span class="city-action-unitbar-meta">${escapeHtml(entry.typeLabel)}</span>` +
+                    `<span class="city-action-unitbar-badge">${formatNumber(entry.count)}기</span>` +
+                    '</div>'
+                );
+            }).join('');
+
+            html = (
+                '<div class="city-action-unitbar-wrap city-visit-unitbar-wrap">' +
+                `<div class="city-visit-unitbar-head">${escapeHtml(ownerName)} · 유닛 ${formatNumber(kindCount)}종 / 총 ${formatNumber(totalCount)}기</div>` +
+                `<div class="city-action-unitbar">${cardsHtml}</div>` +
+                '</div>'
+            );
+        }
+
+        gameRef.openCityActionModal('유닛보관함', html, {
+            allowHtml: true,
+            layout: 'bar',
+            detail: ''
+        });
+    }
+
     function drawInventoryUnitIcon(unitKey) {
         const key = normalizeUnitKey(unitKey);
         if (!key) return null;
@@ -1727,6 +1828,11 @@
 
         if (key === 'alliance') {
             openAllianceMenu();
+            return;
+        }
+
+        if (key === 'units') {
+            openVisitUnitInventory();
             return;
         }
 

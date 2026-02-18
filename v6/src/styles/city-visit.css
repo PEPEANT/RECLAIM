@@ -322,6 +322,34 @@
     gap: 0.5rem;
 }
 
+.city-visit-unitbar-wrap {
+    display: grid;
+    gap: 0.42rem;
+}
+
+.city-visit-unitbar-head {
+    color: #cbd5e1;
+    font-size: 0.7rem;
+    line-height: 1.35;
+    font-weight: 700;
+    padding: 0 0.08rem;
+}
+
+.city-visit-unit-item {
+    cursor: default !important;
+    pointer-events: none;
+}
+
+.city-visit-unit-empty {
+    border: 1px solid rgba(100, 116, 139, 0.5);
+    border-radius: 0.44rem;
+    background: rgba(15, 23, 42, 0.72);
+    color: #cbd5e1;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    padding: 0.56rem 0.62rem;
+}
+
 .city-visit-modal-desc {
     color: #cbd5e1;
     font-size: 0.82rem;

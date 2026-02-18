@@ -2,7 +2,7 @@
 (function attachCityConstructionValidation(global) {
     'use strict';
 
-    const MAX_COUNTED_BUILDINGS = 8;
+    const DEFAULT_PER_TILE_MAX = 8;
     const TAX_OFFICE_MAX_OWNED = 1;
     const GLOBAL_BUILD_LIMIT_EXCLUDED_TILES = new Set([
         'road',
@@ -45,12 +45,13 @@
     function countOwnedCountedBuildings(state, deps) {
         const isObjectTool = deps && deps.isObjectTool;
         if (!state || !Array.isArray(state.grid) || typeof isObjectTool !== 'function') {
-            return { total: 0, taxOffice: 0 };
+            return { total: 0, taxOffice: 0, counts: {} };
         }
 
         const seen = new Set();
         let total = 0;
         let taxOffice = 0;
+        const counts = Object.create(null);
 
         for (let i = 0; i < state.grid.length; i++) {
             const rawTile = state.grid[i] ?? null;
@@ -65,12 +66,13 @@
             if (!isCountedBuildingTile(normalizedTile)) continue;
 
             total += 1;
+            counts[normalizedTile] = (counts[normalizedTile] || 0) + 1;
             if (normalizedTile === 'tax_office') {
                 taxOffice += 1;
             }
         }
 
-        return { total, taxOffice };
+        return { total, taxOffice, counts };
     }
 
     function isMapInputLocked(game, options) {
@@ -182,8 +184,12 @@
             if (tool === 'tax_office' && owned.taxOffice >= TAX_OFFICE_MAX_OWNED) {
                 return { ok: false, reason: '세무소는 1개만 건설할 수 있습니다.' };
             }
-            if (owned.total >= MAX_COUNTED_BUILDINGS) {
-                return { ok: false, reason: `건물은 최대 ${MAX_COUNTED_BUILDINGS}개까지 건설할 수 있습니다.` };
+
+            const maxOwnedMeta = BUILDING_DEFS[tool] && BUILDING_DEFS[tool].maxOwned;
+            const maxAllowed = Number.isFinite(Number(maxOwnedMeta)) ? Math.max(0, Math.floor(Number(maxOwnedMeta))) : DEFAULT_PER_TILE_MAX;
+            const currentCount = (owned.counts && owned.counts[tool]) ? owned.counts[tool] : 0;
+            if (currentCount >= maxAllowed) {
+                return { ok: false, reason: `${BUILDING_DEFS[tool]?.name || tool}은(는) 최대 ${maxAllowed}개까지 건설할 수 있습니다.` };
             }
         }
 

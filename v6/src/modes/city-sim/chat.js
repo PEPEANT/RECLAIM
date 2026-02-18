@@ -5,6 +5,8 @@
     const CHAT_LIMIT = 80;
     const RANK_LIMIT = 50;
     const RANK_FETCH_LIMIT = 500;
+    const RANK_ENTRY_MIN_LEVEL = 5;
+    const RANK_ENTRY_MIN_POP = 10;
     const LEVEL_BADGE_BY_LEVEL = [
         null,
         'png/level.png/leftbar_level.1.png',
@@ -101,6 +103,23 @@
     function getLevelBadgePath(level) {
         const lv = Math.max(1, Math.min(19, Math.floor(toNumber(level, 1))));
         return LEVEL_BADGE_BY_LEVEL[lv] || LEVEL_BADGE_BY_LEVEL[1];
+    }
+
+    function isRankingEligibleLevel(level, pop) {
+        const safeLevel = Math.max(1, Math.floor(toNumber(level, 1)));
+        const safePop = Math.max(0, Math.floor(toNumber(pop, 0)));
+        return safeLevel >= RANK_ENTRY_MIN_LEVEL && safePop >= RANK_ENTRY_MIN_POP;
+    }
+
+    function sortRankingRows(rows) {
+        rows.sort((a, b) => {
+            if (b.level !== a.level) return b.level - a.level;
+            if (b.money !== a.money) return b.money - a.money;
+            if (b.gold !== a.gold) return b.gold - a.gold;
+            if (b.pop !== a.pop) return b.pop - a.pop;
+            return a.displayName.localeCompare(b.displayName);
+        });
+        return rows;
     }
 
     function tsToMs(ts) {
@@ -804,42 +823,40 @@
                     lastActiveAtMs
                 };
             });
+            const filtered = next.filter((row) => isRankingEligibleLevel(row.level, row.pop));
 
             const myUid = getCurrentUid();
-            if (myUid && !next.some((row) => row.uid === myUid)) {
+            if (myUid && !filtered.some((row) => row.uid === myUid)) {
                 const user = getAuthUser();
                 const guestUser = isGuestSession() || isAnonymousAuthUser(user);
-                next.push({
-                    uid: myUid,
-                    displayName: String(
-                        (_myProfile && _myProfile.displayName)
-                        || (guestUser ? getGuestDisplayName(user, '') : '')
-                        || (user && user.displayName)
-                        || (user && user.email ? String(user.email).split('@')[0] : '')
-                        || '\uc775\uba85\uad00'
-                    ),
-                    avatarUrl: normalizeAvatarUrl(_myProfile && _myProfile.avatarUrl),
-                    level: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1))),
-                    money: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.money, 0))),
-                    gold: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.gold, 0))),
-                    pop: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0))),
-                    maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
-                    honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
-                    kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
-                    isGuest: guestUser,
-                    lastActiveAt: null,
-                    lastActiveAtMs: nowMs
-                });
+                const myLevel = Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1)));
+                const myPop = Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0)));
+                if (isRankingEligibleLevel(myLevel, myPop)) {
+                    filtered.push({
+                        uid: myUid,
+                        displayName: String(
+                            (_myProfile && _myProfile.displayName)
+                            || (guestUser ? getGuestDisplayName(user, '') : '')
+                            || (user && user.displayName)
+                            || (user && user.email ? String(user.email).split('@')[0] : '')
+                            || '\uc775\uba85\uad00'
+                        ),
+                        avatarUrl: normalizeAvatarUrl(_myProfile && _myProfile.avatarUrl),
+                        level: myLevel,
+                        money: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.money, 0))),
+                        gold: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.gold, 0))),
+                        pop: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0))),
+                        maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
+                        honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
+                        kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
+                        isGuest: guestUser,
+                        lastActiveAt: null,
+                        lastActiveAtMs: nowMs
+                    });
+                }
             }
 
-            next.sort((a, b) => {
-                if (b.level !== a.level) return b.level - a.level;
-                if (b.money !== a.money) return b.money - a.money;
-                if (b.gold !== a.gold) return b.gold - a.gold;
-                if (b.pop !== a.pop) return b.pop - a.pop;
-                return a.displayName.localeCompare(b.displayName);
-            });
-            return next.slice(0, RANK_LIMIT);
+            return sortRankingRows(filtered).slice(0, RANK_LIMIT);
         };
 
         const bindRanking = (query, fallbackMode) => {
@@ -884,7 +901,9 @@
                 if (myUid) {
                     const user = getAuthUser();
                     const guestUser = isGuestSession() || isAnonymousAuthUser(user);
-                    _ranking = [{
+                    const myLevel = Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1)));
+                    const myPop = Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0)));
+                    _ranking = isRankingEligibleLevel(myLevel, myPop) ? [{
                         uid: myUid,
                         displayName: String(
                             (_myProfile && _myProfile.displayName)
@@ -894,7 +913,7 @@
                             || '\uc775\uba85\uad00'
                         ),
                         avatarUrl: normalizeAvatarUrl(_myProfile && _myProfile.avatarUrl),
-                        level: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1))),
+                        level: myLevel,
                         money: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.money, 0))),
                         gold: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.gold, 0))),
                         pop: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0))),
@@ -904,7 +923,7 @@
                         isGuest: guestUser,
                         lastActiveAt: null,
                         lastActiveAtMs: Date.now()
-                    }];
+                    }] : [];
                     if (_activeTab === 'ranking') {
                         _renderRanking();
                         return;
@@ -1201,46 +1220,45 @@
 
         let rowsHtml = '';
         const myUid = getCurrentUid();
-        const rankingRows = _ranking.slice();
+        const rankingRows = _ranking.filter((row) => isRankingEligibleLevel(row && row.level, row && row.pop)).slice();
 
         if (myUid && !rankingRows.some((row) => row.uid === myUid)) {
             const user = getAuthUser();
             const guestUser = isGuestSession() || isAnonymousAuthUser(user);
-            rankingRows.push({
-                uid: myUid,
-                displayName: String(
-                    (_myProfile && _myProfile.displayName)
-                    || (guestUser ? getGuestDisplayName(user, '') : '')
-                    || (user && user.displayName)
-                    || (user && user.email ? String(user.email).split('@')[0] : '')
-                    || '\uc775\uba85\uad00'
-                ),
-                level: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1))),
-                money: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.money, 0))),
-                gold: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.gold, 0))),
-                pop: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0))),
-                maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
-                honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
-                kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
-                isGuest: guestUser,
-                lastActiveAt: null,
-                lastActiveAtMs: Date.now()
-            });
+            const myLevel = Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1)));
+            const myPop = Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0)));
+            if (isRankingEligibleLevel(myLevel, myPop)) {
+                rankingRows.push({
+                    uid: myUid,
+                    displayName: String(
+                        (_myProfile && _myProfile.displayName)
+                        || (guestUser ? getGuestDisplayName(user, '') : '')
+                        || (user && user.displayName)
+                        || (user && user.email ? String(user.email).split('@')[0] : '')
+                        || '\uc775\uba85\uad00'
+                    ),
+                    level: myLevel,
+                    money: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.money, 0))),
+                    gold: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.gold, 0))),
+                    pop: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0))),
+                    maxPop: Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.maxPop, 1))),
+                    honor: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.honor, 0))),
+                    kills: Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.kills, 0))),
+                    isGuest: guestUser,
+                    lastActiveAt: null,
+                    lastActiveAtMs: Date.now()
+                });
+            }
         }
 
-        rankingRows.sort((a, b) => {
-            if (b.level !== a.level) return b.level - a.level;
-            if (b.money !== a.money) return b.money - a.money;
-            if (b.gold !== a.gold) return b.gold - a.gold;
-            if (b.pop !== a.pop) return b.pop - a.pop;
-            return a.displayName.localeCompare(b.displayName);
-        });
+        sortRankingRows(rankingRows);
 
         for (let i = 0; i < rankingRows.length; i += 1) {
             const r = rankingRows[i];
             const rank = i + 1;
             const trClass = (r.uid === myUid) ? 'me' : '';
             const meLabel = (r.uid === myUid) ? ' (\ub098)' : '';
+            const guestBadge = (r.isGuest === true) ? '<span class="ranking-user-badge guest">게스트</span>' : '';
             const visitBtn = (r.uid && r.uid !== myUid)
                 ? `<button type="button" class="ranking-visit-btn" data-uid="${escapeHtml(r.uid)}" onclick="CitySimChat.visitBase(this.dataset.uid)">\ubc29\ubb38</button>`
                 : '<span class="ranking-visit-muted">-</span>';
@@ -1248,7 +1266,7 @@
             rowsHtml += `
                 <tr class="${trClass}">
                     <td><span class="ranking-rank">${rank}</span></td>
-                    <td>${escapeHtml(r.displayName)}${meLabel}</td>
+                    <td><span class="ranking-name-wrap">${escapeHtml(r.displayName)}${meLabel}${guestBadge}</span></td>
                     <td><span class="ranking-level-wrap"><img class="ranking-level-badge" src="${escapeHtml(getLevelBadgePath(r.level))}" alt="레벨 ${formatNumber(r.level)} 계급장">Lv.${formatNumber(r.level)}</span></td>
                     <td>${formatNumber(r.money)}</td>
                     <td>${formatNumber(r.gold)}</td>
@@ -1258,7 +1276,7 @@
         }
 
         if (!rowsHtml) {
-            rowsHtml = '<tr><td colspan="7" style="text-align:center;color:#64748b;padding:1.8rem;">\ub7ad\ud0b9 \ub370\uc774\ud130\uac00 \uc5c6\uc2b5\ub2c8\ub2e4.</td></tr>';
+            rowsHtml = `<tr><td colspan="7" style="text-align:center;color:#64748b;padding:1.8rem;">레벨 ${RANK_ENTRY_MIN_LEVEL} · 인구 ${RANK_ENTRY_MIN_POP} 이상 랭킹 데이터가 없습니다.</td></tr>`;
         }
 
         container.innerHTML = `

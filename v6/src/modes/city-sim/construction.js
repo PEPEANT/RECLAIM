@@ -65,7 +65,7 @@
             name: '공항',
             icon: '공항',
             category: 'build',
-            maxOwned: Number.POSITIVE_INFINITY,
+            maxOwned: 2,
             costMoney: 2500
         },
         airport_tr: {
@@ -108,7 +108,7 @@
             name: '연구소',
             icon: '연구',
             category: 'build',
-            maxOwned: Number.POSITIVE_INFINITY,
+            maxOwned: 2,
             costMoney: 1667
         },
         oilrig: {
@@ -140,7 +140,7 @@
             name: '회사',
             icon: '회사',
             category: 'build',
-            maxOwned: Number.POSITIVE_INFINITY,
+            maxOwned: 6,
             costMoney: 800
         },
         apartment_large: {
@@ -148,7 +148,7 @@
             name: '아파트',
             icon: '아파트',
             category: 'build',
-            maxOwned: Number.POSITIVE_INFINITY,
+            maxOwned: 4,
             costMoney: 500
         },
         shop_store: {
