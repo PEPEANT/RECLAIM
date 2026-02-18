@@ -823,7 +823,7 @@
                     lastActiveAtMs
                 };
             });
-            const filtered = next.filter((row) => isRankingEligibleLevel(row.level, row.pop));
+            const filtered = next.filter((row) => row.isGuest !== true && isRankingEligibleLevel(row.level, row.pop));
 
             const myUid = getCurrentUid();
             if (myUid && !filtered.some((row) => row.uid === myUid)) {
@@ -831,7 +831,7 @@
                 const guestUser = isGuestSession() || isAnonymousAuthUser(user);
                 const myLevel = Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1)));
                 const myPop = Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0)));
-                if (isRankingEligibleLevel(myLevel, myPop)) {
+                if (!guestUser && isRankingEligibleLevel(myLevel, myPop)) {
                     filtered.push({
                         uid: myUid,
                         displayName: String(
@@ -903,7 +903,7 @@
                     const guestUser = isGuestSession() || isAnonymousAuthUser(user);
                     const myLevel = Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1)));
                     const myPop = Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0)));
-                    _ranking = isRankingEligibleLevel(myLevel, myPop) ? [{
+                    _ranking = (!guestUser && isRankingEligibleLevel(myLevel, myPop)) ? [{
                         uid: myUid,
                         displayName: String(
                             (_myProfile && _myProfile.displayName)
@@ -1220,14 +1220,14 @@
 
         let rowsHtml = '';
         const myUid = getCurrentUid();
-        const rankingRows = _ranking.filter((row) => isRankingEligibleLevel(row && row.level, row && row.pop)).slice();
+        const rankingRows = _ranking.filter((row) => row && row.isGuest !== true && isRankingEligibleLevel(row.level, row.pop)).slice();
 
         if (myUid && !rankingRows.some((row) => row.uid === myUid)) {
             const user = getAuthUser();
             const guestUser = isGuestSession() || isAnonymousAuthUser(user);
             const myLevel = Math.max(1, Math.floor(toNumber(_myProfile && _myProfile.level, 1)));
             const myPop = Math.max(0, Math.floor(toNumber(_myProfile && _myProfile.pop, 0)));
-            if (isRankingEligibleLevel(myLevel, myPop)) {
+            if (!guestUser && isRankingEligibleLevel(myLevel, myPop)) {
                 rankingRows.push({
                     uid: myUid,
                     displayName: String(
