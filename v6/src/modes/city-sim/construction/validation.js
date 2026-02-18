@@ -2,10 +2,75 @@
 (function attachCityConstructionValidation(global) {
     'use strict';
 
+    const MAX_COUNTED_BUILDINGS = 8;
+    const TAX_OFFICE_MAX_OWNED = 1;
+    const GLOBAL_BUILD_LIMIT_EXCLUDED_TILES = new Set([
+        'road',
+        'tree',
+        'hq',
+        'park',
+        'park_plaza',
+        'monument'
+    ]);
+
     function getDeps() {
         return (global.CitySimConstructionInternals && typeof global.CitySimConstructionInternals === 'object')
             ? global.CitySimConstructionInternals
             : {};
+    }
+
+    function normalizeOwnedObject(state, deps, index, tile) {
+        if (!state || !Array.isArray(state.grid)) {
+            return { index, tile };
+        }
+        const normalizeObjectSelection = deps && deps.normalizeObjectSelection;
+        if (typeof normalizeObjectSelection !== 'function') {
+            return { index, tile };
+        }
+        const normalized = normalizeObjectSelection(state, index, tile) || {};
+        const nextIndex = Number(normalized.index);
+        const nextTile = String(normalized.tile || '').trim();
+        if (!Number.isInteger(nextIndex) || nextIndex < 0 || nextIndex >= state.grid.length || !nextTile) {
+            return { index, tile };
+        }
+        return { index: nextIndex, tile: nextTile };
+    }
+
+    function isCountedBuildingTile(tile) {
+        const key = String(tile || '').trim();
+        if (!key) return false;
+        return !GLOBAL_BUILD_LIMIT_EXCLUDED_TILES.has(key);
+    }
+
+    function countOwnedCountedBuildings(state, deps) {
+        const isObjectTool = deps && deps.isObjectTool;
+        if (!state || !Array.isArray(state.grid) || typeof isObjectTool !== 'function') {
+            return { total: 0, taxOffice: 0 };
+        }
+
+        const seen = new Set();
+        let total = 0;
+        let taxOffice = 0;
+
+        for (let i = 0; i < state.grid.length; i++) {
+            const rawTile = state.grid[i] ?? null;
+            if (!rawTile || !isObjectTool(rawTile)) continue;
+
+            const normalized = normalizeOwnedObject(state, deps, i, rawTile);
+            const normalizedTile = String(normalized.tile || '').trim();
+            const key = `${normalized.index}:${normalizedTile}`;
+            if (!normalizedTile || seen.has(key)) continue;
+            seen.add(key);
+
+            if (!isCountedBuildingTile(normalizedTile)) continue;
+
+            total += 1;
+            if (normalizedTile === 'tax_office') {
+                taxOffice += 1;
+            }
+        }
+
+        return { total, taxOffice };
     }
 
     function isMapInputLocked(game, options) {
@@ -112,6 +177,16 @@
         }
 
         const shouldCharge = shouldChargeBuildPlacementCost(state, index, tool);
+        if (shouldCharge && isObjectTool(tool) && isCountedBuildingTile(tool)) {
+            const owned = countOwnedCountedBuildings(state, deps);
+            if (tool === 'tax_office' && owned.taxOffice >= TAX_OFFICE_MAX_OWNED) {
+                return { ok: false, reason: '세무소는 1개만 건설할 수 있습니다.' };
+            }
+            if (owned.total >= MAX_COUNTED_BUILDINGS) {
+                return { ok: false, reason: `건물은 최대 ${MAX_COUNTED_BUILDINGS}개까지 건설할 수 있습니다.` };
+            }
+        }
+
         const costMoney = getBuildToolCostMoney(tool);
         if (shouldCharge && costMoney > 0) {
             if (!CitySimEconomy || typeof CitySimEconomy.canPayCost !== 'function' || !CitySimEconomy.canPayCost(game, { costMoney })) {
