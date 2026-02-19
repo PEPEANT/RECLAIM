@@ -31,11 +31,11 @@
     };
 
     // 팝업 캔버스 최대 크기 (화면 높이 기준)
-    const POPUP_MAX_H_RATIO = 0.72; // 화면 높이의 72%
-    const POPUP_MAX_W_RATIO = 0.30; // 화면 너비의 30%
-    const POPUP_SUBJECT_SCALE = 1.12; // 인물 확대
+    const POPUP_MAX_H_RATIO = 0.82; // 화면 높이의 82% (팝업 자체 확대)
+    const POPUP_MAX_W_RATIO = 0.36; // 화면 너비의 36% (팝업 자체 확대)
+    const POPUP_SUBJECT_SCALE = 1.0;  // 머리 잘림 방지: draw 확대 비활성
     const POPUP_SHIFT_X_RATIO = -0.18; // 인물을 더 왼쪽으로 이동
-    const POPUP_SHIFT_Y_PX = 8;        // 인물을 살짝 아래로 이동
+    const POPUP_SHIFT_Y_PX = 4;        // 인물을 살짝 아래로 이동
 
     // ── 상태 ─────────────────────────────────────
     let popup      = null;
