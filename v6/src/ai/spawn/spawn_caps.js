@@ -8,6 +8,7 @@
     _canSpawnUnit(id) {
         const u = CONFIG.units[id];
         if (!u) return false;
+        if (game && typeof game.isEnemySpawnBlockedUnit === 'function' && game.isEnemySpawnBlockedUnit(id)) return false;
         if (game.enemySupply < u.cost) return false;
         if (game.enemyCooldowns && game.enemyCooldowns[id] > 0) return false;
         if (game.enemyStock && game.enemyStock[id] <= 0) return false;

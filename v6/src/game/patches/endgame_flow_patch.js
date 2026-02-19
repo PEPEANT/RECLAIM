@@ -1,8 +1,31 @@
 (function () {
     if (typeof window.game === 'undefined') return;
     Object.assign(window.game, {
+        _stopPersistentBattleSfx() {
+            const visited = new Set();
+            const unitLists = [this.players, this.enemies, this.civilians];
+
+            unitLists.forEach((list) => {
+                if (!Array.isArray(list)) return;
+                list.forEach((unit) => {
+                    if (!unit || visited.has(unit)) return;
+                    visited.add(unit);
+                    if (typeof unit._stopTankMGSound === 'function') {
+                        try { unit._stopTankMGSound(); } catch (_) { }
+                    }
+                });
+            });
+
+            if (typeof AudioSystem !== 'undefined' && typeof AudioSystem.stopIcbmRaise === 'function') {
+                try { AudioSystem.stopIcbmRaise(true); } catch (_) { }
+            }
+        },
+
         // [FIX] 메모리 누수 방지 - 게임 종료 시 타이머 정리
         _cleanupTimers() {
+            // 전투 루프 정지 시 잔류 사운드(MBT 기관총/ICBM 상승음) 정리
+            this._stopPersistentBattleSfx();
+
             // AI 타이머 정리
             if (typeof AI !== 'undefined') {
                 if (AI._nukeWarningTimeout) { clearTimeout(AI._nukeWarningTimeout); AI._nukeWarningTimeout = null; }

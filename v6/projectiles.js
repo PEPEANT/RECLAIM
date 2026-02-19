@@ -502,8 +502,19 @@
             // ??컻 VFX
             if (typeof VFX !== 'undefined') {
                 const isAir = this.target && this.target.stats && this.target.stats.type === 'air';
-                // [P1] 대전차 미사일 - atm/airburst 프리셋 사용
-                VFX.spawn(game, isAir ? 'airburst' : 'atm', this.x, this.y, { anchorGround: !isAir });
+                const targetStats = (this.target && this.target.stats) ? this.target.stats : null;
+                const isArmoredTarget = !!(
+                    targetStats
+                    && (
+                        targetStats.type === 'mech'
+                        || targetStats.category === 'armored'
+                        || targetStats.id === 'icbm'
+                        || targetStats.id === 'icbm_enemy'
+                    )
+                );
+                // [C-03] RPG/공병 미사일: 기갑 타격 시 더 큰 폭발 프리셋 사용
+                const impactKind = isAir ? 'airburst' : (isArmoredTarget ? 'atm_heavy' : 'atm');
+                VFX.spawn(game, impactKind, this.x, this.y, { anchorGround: !isAir });
             }
 
             // ??컻 ?ъ슫??
@@ -653,6 +664,30 @@
 
         const list = [...enemiesList, ...enemyBldgs, ...bunkers];
         const radius = this.type === 'artillery' || this.type === 'bomb' ? 120 : (this.type === 'rocket' ? 50 : 15);
+        const directHitTypes = new Set(['shell', 'rocket', 'artillery', 'bomb']);
+        let directTargetApplied = false;
+
+        // [P0 FIX] Prevent "hit without damage":
+        // shell/rocket can call hit() within a larger proximity window than the area-damage radius.
+        // Apply direct damage to the intended target first, then skip duplicate splash on the same target.
+        if (directHitTypes.has(this.type) && this.target && !this.target.dead && this.target.team !== this.team) {
+            const targetInvulnerable = !!(this.target.stats && this.target.stats.invulnerable);
+            if (!targetInvulnerable) {
+                const isUnitTarget = (this.target.stats !== undefined);
+                const halfW = isUnitTarget
+                    ? (this.target.width ? this.target.width / 2 : 10)
+                    : Math.max(12, Number(this.target.width) || 12);
+                const halfH = isUnitTarget
+                    ? (this.target.height ? this.target.height / 2 : 12)
+                    : Math.max(20, Number(this.target.height) || 20);
+                const directRadius = 32;
+                if (Math.abs(this.target.x - this.x) <= (directRadius + halfW)
+                    && Math.abs(this.target.y - this.y) <= (directRadius + halfH)) {
+                    this.target.takeDamage(this.damage, this.type, this.x, this.y, this.vx, this.vy, this.source);
+                    directTargetApplied = true;
+                }
+            }
+        }
 
         if (this.type === 'machinegun' || this.type === 'bullet') {
             // Single target Logic
@@ -705,6 +740,7 @@
             list.forEach(u => {
                 if (!u || u.dead) return;
                 if (u.team === this.team) return;
+                if (directTargetApplied && u === this.target) return;
 
                 const isUnit = (u.stats !== undefined);
                 if (isUnit && u.stats.type === 'air' && !['rocket', 'aa_shell'].includes(this.type)) return;
@@ -814,6 +850,8 @@
             ctx.translate(this.x, this.y);
             const ang = Math.atan2(this.vy || 1, this.vx || 0);
             ctx.rotate(ang);
+            const artilleryVisualScale = 0.78; // C-04: make SPG shell visually smaller
+            ctx.scale(artilleryVisualScale, artilleryVisualScale);
 
             if (designs && designs.drawArtilleryShell) {
                 designs.drawArtilleryShell(ctx, 1);
@@ -1000,5 +1038,3 @@
         }
     }
 }
-
-

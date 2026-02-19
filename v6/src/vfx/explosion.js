@@ -682,6 +682,19 @@
             smoke: { spd: 1.5, liftMin: 0.8, liftMax: 2.2, lifeMin: 30, lifeMax: 60, rMin: 7, rMax: 18 },
             dust: { spd: 10, lifeMin: 18, lifeMax: 40, rMin: 3, rMax: 7 }
         },
+        // C-03: RPG/공병 미사일이 기갑에 맞을 때 체감 보강용 프리셋
+        atm_heavy: {
+            life: 0.82,
+            decay: 0.055,
+            shake: 11,
+            flash: 0.22,
+            wave: { maxR: 220, speed: 32, width: 12, color: 'rgba(255,220,160,0.78)', life: 1.0 },
+            count: { fire: 34, dust: 24, smoke: 16, spark: 46 },
+            fire: { spdMin: 1.6, spdMax: 9.8, spread: 0.86, liftMin: 5, liftMax: 12, lifeMin: 22, lifeMax: 46, rMin: 4.5, rMax: 13.5 },
+            spark: { spdMin: 11, spdMax: 30, lifeMin: 10, lifeMax: 24, rMin: 1.1, rMax: 2.6 },
+            smoke: { spd: 1.7, liftMin: 0.9, liftMax: 2.6, lifeMin: 34, lifeMax: 68, rMin: 8, rMax: 20 },
+            dust: { spd: 11, lifeMin: 20, lifeMax: 45, rMin: 3.2, rMax: 7.8 }
+        },
 
         // 포탄/기관포 명중 (탱크 vs 탱크, 탱크 vs 보병) - 작지만 강렬
         shell_hit: {
@@ -749,6 +762,7 @@
                             (kind === 'tank_shell') ? 0.95 :
                             (kind === 'aircraft') ? 0.80 :
                                 (kind === 'airburst') ? 0.55 :
+                                    (kind === 'atm_heavy') ? 0.62 :
                                     (kind === 'atm') ? 0.50 :
                                         (kind === 'shell_hit') ? 0.42 :
                                             (kind === 'hit') ? 0.45 :

@@ -17,8 +17,9 @@
     // caps: [1웨이브 한도, 2웨이브 한도, 3웨이브 한도]
     occupationWaveCaps: {
         default: { waveAt: [60 * 90, 60 * 210], caps: [10, 14, 18] },
-        1: { caps: [8, 10, 12] },
-        2: { caps: [9, 11, 13] },
+        // B-01: first occupation stages are intentionally lighter in early waves.
+        1: { caps: [6, 8, 10] },
+        2: { caps: [7, 9, 11] },
         3: { caps: [10, 13, 15] },
         4: { caps: [10, 12, 14] },
         5: { caps: [11, 14, 16] },
@@ -61,24 +62,24 @@
         },
         1: {
             early: [
-                { id: 'infantry', w: 6 }, { id: 'humvee', w: 3 }, { id: 'engineer', w: 2 }
+                { id: 'infantry', w: 8 }, { id: 'humvee', w: 2 }, { id: 'engineer', w: 1 }
             ],
             mid: [
-                { id: 'infantry', w: 3 }, { id: 'humvee', w: 3 }, { id: 'mbt', w: 2 }, { id: 'aa_tank', w: 2 }, { id: 'drone_operator', w: 2 }
+                { id: 'infantry', w: 4 }, { id: 'humvee', w: 3 }, { id: 'mbt', w: 1 }, { id: 'aa_tank', w: 1 }, { id: 'drone_operator', w: 1 }
             ],
             late: [
-                { id: 'mbt', w: 3 }, { id: 'apc', w: 2 }, { id: 'aa_tank', w: 3 }, { id: 'fighter', w: 2 }, { id: 'apache', w: 2 }, { id: 'spg', w: 1 }
+                { id: 'mbt', w: 2 }, { id: 'apc', w: 2 }, { id: 'aa_tank', w: 2 }, { id: 'fighter', w: 1 }, { id: 'apache', w: 1 }, { id: 'spg', w: 1 }
             ]
         },
         2: {
             early: [
-                { id: 'infantry', w: 5 }, { id: 'engineer', w: 3 }, { id: 'drone_operator', w: 2 }
+                { id: 'infantry', w: 6 }, { id: 'engineer', w: 2 }, { id: 'drone_operator', w: 1 }
             ],
             mid: [
-                { id: 'mbt', w: 3 }, { id: 'apc', w: 3 }, { id: 'spg', w: 2 }, { id: 'aa_tank', w: 2 }, { id: 'humvee', w: 2 }
+                { id: 'mbt', w: 2 }, { id: 'apc', w: 2 }, { id: 'spg', w: 1 }, { id: 'aa_tank', w: 1 }, { id: 'humvee', w: 3 }
             ],
             late: [
-                { id: 'mbt', w: 3 }, { id: 'spg', w: 3 }, { id: 'apache', w: 2 }, { id: 'fighter', w: 2 }, { id: 'bomber', w: 1 }, { id: 'drone_operator', w: 2 }
+                { id: 'mbt', w: 2 }, { id: 'spg', w: 2 }, { id: 'apache', w: 1 }, { id: 'fighter', w: 1 }, { id: 'bomber', w: 1 }, { id: 'drone_operator', w: 1 }
             ]
         },
         3: {

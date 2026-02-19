@@ -12,6 +12,12 @@
         return { enabled, active, battle, frozen };
     }
 
+    function getOccupationAttackLimitSeconds(stageId) {
+        const id = Math.floor(Number(stageId) || 0);
+        if (id === 1) return 24 * 60;
+        return 12 * 60;
+    }
+
     window.GameVictory = {
         check(game, elapsedSeconds, playerHQ, alivePlayerUnits, aliveEnemyUnits) {
             if (!game || game.isGameOver) return;
@@ -25,8 +31,9 @@
             const mapApi = (typeof Maps !== 'undefined' && Maps) ? Maps : null;
             const currentMap = mapApi ? Maps.currentMap : null;
             const campaignBattleTab = String(game._campaignBattleTab || '').trim().toLowerCase();
+            const isOccupationBattle = campaignBattleTab === 'occupation';
             const stageId = Math.floor(Number(game.activeCampaignStageId) || 0);
-            const isOccupationFinalStage = (campaignBattleTab === 'occupation' && stageId === 7);
+            const isOccupationFinalStage = (isOccupationBattle && stageId === 7);
             const rawWinCondition = (mapApi && typeof mapApi.getRule === 'function')
                 ? mapApi.getRule('winCondition')
                 : 'hq_destroy';
@@ -50,6 +57,13 @@
             const survivalTime = isOccupationFinalStage
                 ? 600
                 : Math.max(1, Number(survivalRule) || 600);
+            const occupationAttackLimitSeconds = (isOccupationBattle && !isOccupationFinalStage)
+                ? getOccupationAttackLimitSeconds(stageId)
+                : 0;
+            const occupationAttackTimedOut = (
+                occupationAttackLimitSeconds > 0
+                && elapsedSeconds >= occupationAttackLimitSeconds
+            );
 
             const skirmish = getSkirmishState(game);
             const skirmishBattle = skirmish.battle;
@@ -82,6 +96,17 @@
 
             const playerHasHQ = !!playerHQ;
             const playerWiped = (alivePlayerUnits <= 0) && (game.playerEverSeen || skirmishBattle);
+            const playerSpawnFlagAlive = (game.buildings || []).some((b) =>
+                b
+                && !b.dead
+                && !b.destroying
+                && b.team === 'player'
+                && b.type === 'spawn_flag_player'
+                && Number(b.hp) > 0
+            );
+            // Occupation mode without HQ should not auto-lose on temporary wipe
+            // while a spawn flag hub is still alive.
+            const ignoreWipeLose = isOccupationBattle && !playerHasHQ && playerSpawnFlagAlive;
 
             const enemyHQExists = !!enemyHQAny;
             const enemyHQDestroyed = enemyHQExists
@@ -127,7 +152,10 @@
                 game.endGame('win', '작전 성공', '적 부대를 모두 섬멸했습니다.');
             } else if (winCondition === 'survival' && survived) {
                 game.endGame('win', '작전 성공', `${Math.floor(survivalTime / 60)}분 방어에 성공했습니다.`);
-            } else if (!playerHasHQ && playerWiped) {
+            } else if (winCondition === 'hq_destroy' && occupationAttackTimedOut) {
+                const limitMinutes = Math.floor(occupationAttackLimitSeconds / 60);
+                game.endGame('lose', '작전 실패', `${limitMinutes}분 제한시간 내 적 HQ를 파괴하지 못했습니다.`);
+            } else if (!playerHasHQ && playerWiped && !ignoreWipeLose) {
                 game.endGame('lose', '작전 실패', '아군 부대가 전멸했습니다.');
             }
         }

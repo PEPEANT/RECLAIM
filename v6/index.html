@@ -1178,110 +1178,160 @@
     </div>
 
     <!-- Option Modal -->
-    <div id="option-modal" class="modal-overlay">
+    <div id="option-modal" class="modal-overlay" onclick="if(event.target===this){ui.closeOptions();}">
         <div class="option-panel">
+            <button id="opt-modal-close-btn" type="button" class="opt-modal-close" onclick="ui.closeOptions()" aria-label="닫기">×</button>
             <h2 id="opt-modal-title" class="text-2xl font-bold text-white mb-6 border-b border-slate-700 pb-2" data-lang="options">
                 SETTINGS
             </h2>
 
-            <div class="opt-tab-bar mb-4">
-                <button type="button" class="opt-tab-btn active" data-opt-tab-btn="profile">프로필</button>
-                <button type="button" class="opt-tab-btn" data-opt-tab-btn="system">언어/오디오</button>
-                <button type="button" class="opt-tab-btn" data-opt-tab-btn="game">후퇴/종료</button>
-            </div>
-
-            <div id="opt-tab-profile" class="opt-tab-panel active mb-5">
-                <div id="opt-profile-section" class="opt-profile-section">
-                    <div class="opt-profile-row">
-                        <div id="opt-profile-avatar" class="opt-profile-avatar">?</div>
-                        <div class="opt-profile-info">
-                            <div id="opt-profile-name" class="opt-profile-name">로그인 필요</div>
-                            <div id="opt-profile-status" class="opt-profile-status">로그아웃 상태</div>
-                        </div>
-                    </div>
-                    <div id="opt-rename-row" class="opt-rename-row hidden">
-                        <input id="opt-rename-input" type="text" maxlength="20" placeholder="새 이름 입력"
-                            class="opt-rename-input">
-                        <button id="opt-rename-confirm" type="button" class="opt-rename-confirm">확인</button>
-                        <button id="opt-rename-cancel" type="button" class="opt-rename-cancel">취소</button>
-                    </div>
-                    <div class="opt-profile-actions">
-                        <button id="opt-avatar-btn" type="button" class="opt-profile-btn">사진 변경</button>
-                        <button id="opt-avatar-reset-btn" type="button" class="opt-profile-btn">사진 삭제</button>
-                        <button id="opt-rename-btn" type="button" class="opt-profile-btn">이름 변경</button>
-                        <button id="opt-login-btn" type="button" class="opt-profile-btn">로그인</button>
-                        <button id="opt-delete-btn" type="button" class="opt-profile-btn opt-delete-btn">초기화</button>
-                    </div>
-                    <input id="opt-avatar-input" type="file" accept="image/*" class="hidden">
+            <div class="opt-shell">
+                <div class="opt-tab-bar mb-4" role="tablist" aria-label="Settings Category">
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="gameplay">게임방법</button>
+                    <button type="button" class="opt-tab-btn active" data-opt-tab-btn="general">일반</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="video">비디오</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="audio">오디오</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="account">계정</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="language">언어</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="credits">제작자</button>
                 </div>
-            </div>
 
-            <div id="opt-tab-system" class="opt-tab-panel mb-5">
-                <div class="mb-4">
-                    <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio_settings">AUDIO</h3>
-                    <div class="space-y-3">
-                        <div>
-                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>Master Volume</span><span
-                                    id="vol-master-val">50%</span></div>
-                            <input type="range" min="0" max="100" value="50" oninput="ui.setVolume('master', this.value)">
+                <div class="opt-content">
+                    <div id="opt-tab-gameplay" class="opt-tab-panel mb-5">
+                        <div class="opt-info-card">
+                            <div class="opt-info-title">게임방법</div>
+                            <ul class="opt-info-list">
+                                <li>거점/생산 건물을 선택하면 유닛 생성 패널이 열립니다.</li>
+                                <li>지형 터치: 이동 명령, 적 터치: 공격 명령.</li>
+                                <li>명령바에서 후진/홀드/전진과 스킬/상호작용을 사용합니다.</li>
+                                <li>국지전 프리배치 종료 후 전투 시작 시 생성 패널이 숨겨집니다.</li>
+                            </ul>
                         </div>
-                        <div>
-                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM</span><span
-                                    id="vol-bgm-val">40%</span></div>
-                            <input type="range" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
+                    </div>
+
+                    <div id="opt-tab-general" class="opt-tab-panel active mb-5">
+                        <div class="opt-game-card">
+                            <div id="opt-game-title" class="opt-game-title">전투/종료</div>
+                            <div id="opt-game-desc" class="opt-game-desc">전투 중에는 후퇴로 시티 복귀, 평시에는 종료 확인을 사용할 수 있습니다.</div>
+                            <div class="opt-game-actions">
+                                <button id="opt-exit-btn" onclick="ui.openRetreatConfirmationFromOptions(event);"
+                                    class="opt-game-btn opt-game-btn-retreat"
+                                    data-lang="retreat">후퇴</button>
+                                <button id="opt-quit-btn" onclick="ui.closeOptions(); ui.showExitConfirmation('quit');"
+                                    class="opt-game-btn opt-game-btn-exit"
+                                    data-lang="menu_exit">게임 종료</button>
+                                <button id="opt-lobby-btn" type="button" onclick="ui.closeOptions(); game.backToLobby();"
+                                    class="opt-game-btn opt-game-btn-lobby">로비로 가기</button>
+                            </div>
                         </div>
-                        <div>
-                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>SFX</span><span
-                                    id="vol-sfx-val">60%</span></div>
-                            <input type="range" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
-                        </div>
-                        <div id="opt-bgm-select-row">
-                            <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM Select</span></div>
-                            <select id="opt-bgm-select" onchange="ui.changeBGM(this.value)"
-                                class="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-xs">
-                                <option value="0">BGM 0 (Default)</option>
-                                <option value="1">BGM 1</option>
-                                <option value="2">BGM 2</option>
-                            </select>
-                        </div>
+
                         <div class="flex items-center justify-between bg-slate-900/70 border border-slate-700 rounded px-3 py-2">
                             <label for="opt-iog-always-open" class="text-xs text-gray-300">IOG 항상 열기</label>
                             <input id="opt-iog-always-open" type="checkbox" onchange="ui.setIogAlwaysOpen(this.checked)">
                         </div>
                     </div>
-                </div>
 
-                <div>
-                    <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="lang_settings">LANGUAGE</h3>
-                    <div class="flex gap-2">
-                        <button onclick="Lang.setLang('ko')"
-                            class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
-                            data-lang="lang_ko">KOREAN</button>
-                        <button onclick="Lang.setLang('en')"
-                            class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
-                            data-lang="lang_en">ENGLISH</button>
+                    <div id="opt-tab-video" class="opt-tab-panel mb-5">
+                        <div class="opt-info-card">
+                            <div class="opt-info-title">비디오</div>
+                            <p class="opt-info-text">모바일 가로 플레이 기준으로 HUD 가독성과 입력 정확도를 우선 적용합니다.</p>
+                            <div class="opt-video-control">
+                                <button id="opt-fullscreen-toggle" type="button" class="opt-video-toggle">전체화면 켜기</button>
+                                <div id="opt-fullscreen-state" class="opt-video-state">현재: 창 모드</div>
+                            </div>
+                            <ul class="opt-info-list">
+                                <li>주소창/하단바 노출 시 화면 회전 후 다시 열면 복구됩니다.</li>
+                                <li>고해상도 기기에서 버튼이 작으면 UI 배율 옵션을 우선 적용합니다.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-audio" class="opt-tab-panel mb-5">
+                        <div class="mb-4">
+                            <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio_settings">AUDIO</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>Master Volume</span><span
+                                            id="vol-master-val">50%</span></div>
+                                    <input type="range" min="0" max="100" value="50" oninput="ui.setVolume('master', this.value)">
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM</span><span
+                                            id="vol-bgm-val">40%</span></div>
+                                    <input type="range" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>SFX</span><span
+                                            id="vol-sfx-val">60%</span></div>
+                                    <input type="range" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
+                                </div>
+                                <div id="opt-bgm-select-row">
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM Select</span></div>
+                                    <select id="opt-bgm-select" onchange="ui.changeBGM(this.value)"
+                                        class="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-xs">
+                                        <option value="0">BGM 0 (Default)</option>
+                                        <option value="1">BGM 1</option>
+                                        <option value="2">BGM 2</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-account" class="opt-tab-panel mb-5">
+                        <div id="opt-profile-section" class="opt-profile-section">
+                            <div class="opt-profile-row">
+                                <div id="opt-profile-avatar" class="opt-profile-avatar">?</div>
+                                <div class="opt-profile-info">
+                                    <div id="opt-profile-name" class="opt-profile-name">로그인 필요</div>
+                                    <div id="opt-profile-status" class="opt-profile-status">로그아웃 상태</div>
+                                </div>
+                            </div>
+                            <div id="opt-rename-row" class="opt-rename-row hidden">
+                                <input id="opt-rename-input" type="text" maxlength="20" placeholder="새 이름 입력"
+                                    class="opt-rename-input">
+                                <button id="opt-rename-confirm" type="button" class="opt-rename-confirm">확인</button>
+                                <button id="opt-rename-cancel" type="button" class="opt-rename-cancel">취소</button>
+                            </div>
+                            <div class="opt-profile-actions">
+                                <button id="opt-avatar-btn" type="button" class="opt-profile-btn">사진 변경</button>
+                                <button id="opt-avatar-reset-btn" type="button" class="opt-profile-btn">사진 삭제</button>
+                                <button id="opt-rename-btn" type="button" class="opt-profile-btn">이름 변경</button>
+                                <button id="opt-login-btn" type="button" class="opt-profile-btn">로그인</button>
+                                <button id="opt-delete-btn" type="button" class="opt-profile-btn opt-delete-btn">초기화</button>
+                            </div>
+                            <input id="opt-avatar-input" type="file" accept="image/*" class="hidden">
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-language" class="opt-tab-panel mb-5">
+                        <div>
+                            <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="lang_settings">LANGUAGE</h3>
+                            <div class="flex gap-2">
+                                <button onclick="Lang.setLang('ko')"
+                                    class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
+                                    data-lang="lang_ko">KOREAN</button>
+                                <button onclick="Lang.setLang('en')"
+                                    class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
+                                    data-lang="lang_en">ENGLISH</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-credits" class="opt-tab-panel mb-5">
+                        <div class="opt-info-card">
+                            <div class="opt-info-title">제작자</div>
+                            <p class="opt-info-text">훈서기</p>
+                            <ul class="opt-info-list">
+                                <li>최초 제작일: 2025.12.09 21:15:48</li>
+                                <li>생성형 AI: 제미나이3 제작</li>
+                            </ul>
+                        </div>
                     </div>
                 </div>
             </div>
 
-            <div id="opt-tab-game" class="opt-tab-panel mb-5">
-                <div class="opt-game-card">
-                    <div id="opt-game-title" class="opt-game-title">전투/종료</div>
-                    <div id="opt-game-desc" class="opt-game-desc">전투 중에는 후퇴로 시티 복귀, 평시에는 종료 확인을 사용할 수 있습니다.</div>
-                    <div class="opt-game-actions">
-                        <button id="opt-exit-btn" onclick="ui.openRetreatConfirmationFromOptions(event);"
-                            class="opt-game-btn opt-game-btn-retreat"
-                            data-lang="retreat">후퇴</button>
-                        <button id="opt-quit-btn" onclick="ui.closeOptions(); ui.showExitConfirmation('quit');"
-                            class="opt-game-btn opt-game-btn-exit"
-                            data-lang="menu_exit">게임 종료</button>
-                        <button id="opt-lobby-btn" type="button" onclick="ui.closeOptions(); game.backToLobby();"
-                            class="opt-game-btn opt-game-btn-lobby">로비로 가기</button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="mb-1">
+            <div class="mb-1 opt-close-row">
                 <button onclick="ui.closeOptions()"
                     class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm"
                     data-lang="close">CLOSE</button>

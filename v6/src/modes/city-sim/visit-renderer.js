@@ -20,7 +20,7 @@
     const spriteUrlCache = new Map();
     const inventoryIconCache = new Map();
     const drillgroundMissileIconCache = new Map();
-    const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['icbm', 'icbm_enemy', 'emp', 'nuke', 'tactical_missile']);
+    const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['emp', 'nuke', 'tactical_missile']);
     const AIRPORT_TILE_RE = /^airport_r\d+c\d+$/;
     const PARK_PLAZA_TILE_SET = new Set(['park_plaza', 'park_plaza_tr', 'park_plaza_bl', 'park_plaza_br']);
     let _visitView = { x: 0, y: 0, scale: 1 };

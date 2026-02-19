@@ -243,6 +243,10 @@
         const frame = game.frame || 0;
         const isOccupationFinalStage = (typeof this._getOccupationStageId === 'function')
             && this._getOccupationStageId() === 7;
+        const occupationStageId = (typeof this._getOccupationStageId === 'function')
+            ? this._getOccupationStageId()
+            : 0;
+        const isOccupationEarlyStage = occupationStageId > 0 && occupationStageId <= 2;
         const enemyUnitCount = this._getAliveEnemyUnitCount();
         if (!this._canSpawnByWaveCap(1, frame)) return;
         const aliveCap = this._getGlobalAliveCap(frame);
@@ -274,9 +278,12 @@
         // 초반에는 보수적으로 유지 (긴급 상황은 일부 완화)
         if (isEarly) {
             const isEmergency = (info.air >= 4 || info.tank >= 4 || (info.hasBunker && info.infantry >= 6));
-            const earlyLimit = isEmergency
+            let earlyLimit = isEmergency
                 ? aliveCap
                 : Math.max(6, aliveCap - 2);
+            if (!isEmergency && isOccupationEarlyStage) {
+                earlyLimit = Math.max(4, aliveCap - 4);
+            }
             if (enemyUnitCount >= earlyLimit) return;
         }
 
@@ -290,6 +297,8 @@
         let extraChance = (this.difficulty === 'elite') ? 0.32 : (this.difficulty === 'veteran' ? 0.2 : 0.1);
         if (isOccupationFinalStage) {
             extraChance = Math.min(0.68, extraChance + 0.16);
+        } else if (isOccupationEarlyStage) {
+            extraChance *= 0.55;
         }
         if (Math.random() > extraChance) return;
 

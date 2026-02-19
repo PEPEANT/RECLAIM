@@ -458,7 +458,7 @@
     const buildCardPreviewCache = new Map();
     const inventoryIconCache = new Map();
     const drillgroundMissileIconCache = new Map();
-    const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['icbm', 'icbm_enemy', 'emp', 'nuke', 'tactical_missile']);
+    const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['emp', 'nuke', 'tactical_missile']);
     const CITY_OWN_SIGN_REFRESH_MS = 15000;
 
     function getBuildingSpriteSize() {
@@ -3827,7 +3827,37 @@
         return targets;
     }
 
-    function applyHonorMedalToTarget(game, target) {
+    function resolveHonorMedalTarget(game, targetInput) {
+        const targetId = String(
+            (typeof targetInput === 'string')
+                ? targetInput
+                : (targetInput?.id || '')
+        ).trim();
+
+        if (targetId) {
+            const latest = collectHonorMedalTargets(game).find((entry) => entry && entry.id === targetId);
+            if (latest) return latest;
+        }
+
+        if (!targetInput || typeof targetInput !== 'object') return null;
+        const source = String(targetInput.source || '').trim();
+        if (source !== 'inventory' && source !== 'drillground') return null;
+        const unitKey = normalizeUnitKey(targetInput.unitKey);
+        if (!unitKey) return null;
+        return {
+            id: targetId,
+            source,
+            sourceLabel: String(targetInput.sourceLabel || '').trim(),
+            index: Number.isInteger(Number(targetInput.index)) ? Number(targetInput.index) : null,
+            unitKey,
+            unit: getUnitDefByKey(unitKey),
+            displayName: String(targetInput.displayName || '').trim(),
+            count: Math.max(0, Math.floor(Number(targetInput.count) || 0))
+        };
+    }
+
+    function applyHonorMedalToTarget(game, targetInput) {
+        const target = resolveHonorMedalTarget(game, targetInput);
         if (!target) return { ok: false, reason: '지급 대상을 찾을 수 없습니다.' };
         const medalCount = getHonorMedalCount(game);
         if (medalCount <= 0) {
@@ -3990,7 +4020,9 @@
                 `</div>`
             ),
             {
-                allowHtml: true
+                allowHtml: true,
+                layout: 'bar',
+                detail: ''
             }
         );
 
@@ -4001,6 +4033,7 @@
         const cards = Array.from(msgEl.querySelectorAll('[data-city-honor-target]'));
         const applyBtn = msgEl.querySelector('[data-city-honor-apply]');
         let selectedId = '';
+        let applying = false;
 
         const syncSelectionUi = () => {
             cards.forEach((card) => {
@@ -4008,32 +4041,31 @@
                 card.classList.toggle('is-current', !!selectedId && cardId === selectedId);
             });
             if (applyBtn) {
-                applyBtn.disabled = !selectedId;
+                applyBtn.disabled = applying || !selectedId;
             }
         };
 
-        cards.forEach((card) => {
-            card.addEventListener('click', () => {
-                selectedId = String(card.getAttribute('data-city-honor-target') || '');
-                syncSelectionUi();
-            });
-        });
-        syncSelectionUi();
-
-        if (!applyBtn) return;
-        applyBtn.addEventListener('click', () => {
+        const commitApply = () => {
+            if (applying) return;
             if (!selectedId) {
                 showToast('유닛을 먼저 선택하세요.');
                 return;
             }
+
             const target = targetMap.get(selectedId);
             if (!target) {
                 showToast('지급 대상을 찾을 수 없습니다.');
                 return;
             }
-            const result = applyHonorMedalToTarget(game, target);
+
+            applying = true;
+            syncSelectionUi();
+
+            const result = applyHonorMedalToTarget(game, selectedId);
             if (!result.ok) {
                 showToast(result.reason || '명예훈장을 지급할 수 없습니다.');
+                applying = false;
+                syncSelectionUi();
                 return;
             }
 
@@ -4052,7 +4084,23 @@
                     veteranLevel: result.veteran.level
                 });
             }, 0);
+        };
+
+        cards.forEach((card) => {
+            card.addEventListener('click', () => {
+                const cardId = String(card.getAttribute('data-city-honor-target') || '');
+                const alreadySelected = !!selectedId && selectedId === cardId;
+                selectedId = cardId;
+                syncSelectionUi();
+                if (alreadySelected) {
+                    commitApply();
+                }
+            });
         });
+        syncSelectionUi();
+
+        if (!applyBtn) return;
+        applyBtn.addEventListener('click', commitApply);
     }
 
     function openVeteranItemTargetPicker(game, itemKey) {

@@ -91,8 +91,15 @@ class Building extends Entity {
     }
 
     takeDamage(amount, attackType = null) {
+        let dmg = Number(amount);
+        if (!Number.isFinite(dmg) || dmg <= 0) return;
+        if (!Number.isFinite(this.hp)) {
+            const fallbackHp = Number.isFinite(Number(this.maxHp)) ? Number(this.maxHp) : 1;
+            this.hp = Math.max(1, fallbackHp);
+        }
+
         // [NEW] 피격 시 HP바 표시 + 3초 뒤 숨김 예약(피격될 때마다 연장)
-        if (amount > 0) {
+        if (dmg > 0) {
             this.hideHp = false;
             this.hpVisibleUntil = game.frame + 180; // 60fps 기준 3초
         }
@@ -100,7 +107,7 @@ class Building extends Entity {
         // [NEW] 주둔 보병 수에 따른 방어력 증가 (보병 1기당 5% 피해 감소, 최대 35%)
         if (this.type === 'bunker' && this.garrisonUnits && this.garrisonUnits.length > 0) {
             const defenseBonus = Math.min(0.35, this.garrisonUnits.length * 0.05);
-            amount = amount * (1 - defenseBonus);
+            dmg *= (1 - defenseBonus);
         }
 
         // [NEW] 폭발형 공격인지 확인 (탱크/폭격기/미사일/드론/험비 등)
@@ -112,7 +119,7 @@ class Building extends Entity {
                 this._destroyBunkerInstant();
                 return;
             }
-            this.hp -= amount;
+            this.hp -= dmg;
             if (this.hp <= 0) {
                 // [NEW] 폭발형 공격으로 파괴 시 재점령 불가 + 파괴 상태로 변경
                 if (isExplosive) {
@@ -131,7 +138,7 @@ class Building extends Entity {
             }
         } else {
             if (this.destroying) return;
-            this.hp -= amount;
+            this.hp -= dmg;
             if (this.hp <= 0) {
                 this.hp = 0;
                 if (this.garrisonUnits && this.garrisonUnits.length > 0) {

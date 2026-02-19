@@ -11,7 +11,7 @@
         special_forces: 0,
         special_ops: 0,
         drone_operator: 0,
-        humvee: 20,
+        humvee: 24, // C-02: humvee was rendered slightly below ground; lift by +4px
         apc: -1.6,
         mbt: 2,
         spg: 6.3,

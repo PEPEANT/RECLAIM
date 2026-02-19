@@ -3335,27 +3335,59 @@ const game = {
         const isOccupationBattle = campaignTab === 'occupation';
         const stageId = Math.floor(Number(this.activeCampaignStageId) || 0);
         const isOccupationFinalStage = isOccupationBattle && stageId === 7;
+        const isOccupationEarlyStage = isOccupationBattle && stageId > 0 && stageId <= 2;
         const enemyBaseMult = isOccupationBattle
-            ? (isOccupationFinalStage ? 1.45 : 1.1)
+            ? (isOccupationFinalStage ? 1.45 : (isOccupationEarlyStage ? 0.92 : 1.1))
             : 1.5;
         const enemyThreatStep = isOccupationBattle
-            ? (isOccupationFinalStage ? 0.10 : 0.06)
+            ? (isOccupationFinalStage ? 0.10 : (isOccupationEarlyStage ? 0.035 : 0.06))
             : 0.1;
         const enemyThreatMult = 1 + ((threatLevel - 1) * enemyThreatStep);
         const occupationMinStock = isOccupationBattle
-            ? {
-                infantry: 20,
-                engineer: 8,
-                humvee: 8,
-                apc: 6,
-                mbt: 8,
-                spg: 4,
-                aa_tank: 4,
-                fighter: 3,
-                apache: 3,
-                bomber: 2,
-                drone_operator: 5
-            }
+            ? (
+                stageId === 1
+                    ? {
+                        infantry: 12,
+                        engineer: 4,
+                        humvee: 4,
+                        apc: 2,
+                        mbt: 2,
+                        spg: 1,
+                        aa_tank: 1,
+                        fighter: 0,
+                        apache: 1,
+                        bomber: 0,
+                        drone_operator: 2
+                    }
+                    : (stageId === 2
+                        ? {
+                            infantry: 14,
+                            engineer: 5,
+                            humvee: 5,
+                            apc: 3,
+                            mbt: 4,
+                            spg: 2,
+                            aa_tank: 2,
+                            fighter: 1,
+                            apache: 1,
+                            bomber: 0,
+                            drone_operator: 3
+                        }
+                        : {
+                            infantry: 20,
+                            engineer: 8,
+                            humvee: 8,
+                            apc: 6,
+                            mbt: 8,
+                            spg: 4,
+                            aa_tank: 4,
+                            fighter: 3,
+                            apache: 3,
+                            bomber: 2,
+                            drone_operator: 5
+                        }
+                    )
+            )
             : null;
         const occupationFinalMinStock = isOccupationFinalStage
             ? {
@@ -3414,17 +3446,21 @@ const game = {
 
             this.playerStock[k] = finalCount;
             let enemyCount = Math.ceil(CONFIG.units[k].maxCount * enemyBaseMult);
-            if (k === 'drone_suicide' || k === 'drone_at') {
-                enemyCount = Math.ceil(enemyCount * 0.5);
-            }
-            if (isDroneKey) {
-                enemyCount = Math.ceil(enemyCount * 1.1);
-            }
-            enemyCount = Math.ceil(enemyCount * enemyThreatMult);
-            if (occupationFinalMinStock && Object.prototype.hasOwnProperty.call(occupationFinalMinStock, k)) {
-                enemyCount = Math.max(enemyCount, occupationFinalMinStock[k]);
-            } else if (occupationMinStock && Object.prototype.hasOwnProperty.call(occupationMinStock, k)) {
-                enemyCount = Math.max(enemyCount, occupationMinStock[k]);
+            if (this.isEnemySpawnBlockedUnit(k)) {
+                enemyCount = 0;
+            } else {
+                if (k === 'drone_suicide' || k === 'drone_at') {
+                    enemyCount = Math.ceil(enemyCount * 0.5);
+                }
+                if (isDroneKey) {
+                    enemyCount = Math.ceil(enemyCount * 1.1);
+                }
+                enemyCount = Math.ceil(enemyCount * enemyThreatMult);
+                if (occupationFinalMinStock && Object.prototype.hasOwnProperty.call(occupationFinalMinStock, k)) {
+                    enemyCount = Math.max(enemyCount, occupationFinalMinStock[k]);
+                } else if (occupationMinStock && Object.prototype.hasOwnProperty.call(occupationMinStock, k)) {
+                    enemyCount = Math.max(enemyCount, occupationMinStock[k]);
+                }
             }
             this.enemyStock[k] = enemyCount;
             this.spawnQueue[k] = 0;
@@ -3470,7 +3506,7 @@ const game = {
             // [R 4.2] disabled 유닛 및 BLOCKED_UNITS 스킵
             const unitDef = CONFIG.units[key];
             if (!unitDef) continue;
-            if (unitDef.disabled === true) continue;
+            if (this.isEnemySpawnBlockedUnit(key)) continue;
             if (BLOCKED_UNITS.includes(key)) continue;
 
             const count = Math.max(0, Math.floor(Number(this.enemyStock[key]) || 0));
@@ -3496,6 +3532,21 @@ const game = {
             this.enemyStock[key] = Math.max(0, count - spawnCount);
             budgetLeft -= spawnCount;
         }
+    },
+
+    isEnemySpawnBlockedUnit(key) {
+        const unitDef = (CONFIG && CONFIG.units) ? CONFIG.units[key] : null;
+        if (!unitDef) return true;
+        if (unitDef.disabled === true) return true;
+
+        const unitType = String(unitDef.type || '').trim().toLowerCase();
+        const unitCategory = String(unitDef.category || '').trim().toLowerCase();
+        if (unitType === 'civilian' || unitCategory === 'civilian') return true;
+        if (unitDef.isBuilder === true || unitDef.isCameraman === true) return true;
+
+        // B-03: 점령전 적군 스폰 풀 정리 (비전투 유틸 유닛 제외)
+        if (key === 'worker' || key === 'recon' || key === 'cameraman') return true;
+        return false;
     },
 
     start() {
@@ -4768,10 +4819,16 @@ const game = {
             : null;
         const isAirUnit = !!(unitDef && unitDef.type === 'air');
         const preserveDroneLaunch = (key === 'drone_suicide' || key === 'drone_at');
+        const isSkirmishPlacementPhase = !!(
+            typeof SkirmishMode !== 'undefined'
+            && SkirmishMode
+            && SkirmishMode.isActive === true
+            && SkirmishMode.phase === 'placement'
+        );
 
         // Air units (except operator-launched drones) always enter from off-map.
-        // This applies to normal battle, skirmish, and enemy spawns via the same path.
-        if (isAirUnit && !preserveDroneLaunch && (team === 'player' || team === 'enemy')) {
+        // During skirmish predeploy placement, keep requested spawnX so air units can be placed on-map.
+        if (isAirUnit && !preserveDroneLaunch && (team === 'player' || team === 'enemy') && !isSkirmishPlacementPhase) {
             const mapW = (typeof CONFIG !== 'undefined' && Number.isFinite(Number(CONFIG.mapWidth)))
                 ? Number(CONFIG.mapWidth)
                 : 6000;
@@ -4921,6 +4978,8 @@ const game = {
 
     spawnEnemy(key) {
         const u = CONFIG.units[key];
+        if (!u) return false;
+        if (this.isEnemySpawnBlockedUnit(key)) return false;
         if (this.enemySupply < u.cost || this.enemyCooldowns[key] > 0 || this.enemyStock[key] <= 0) return false;
         const hasEnemyHqType = this.buildings.some(b => b && b.type === 'hq_enemy');
         const hq = this.buildings.find(b => b && !b.dead && b.type === 'hq_enemy');
@@ -5129,7 +5188,30 @@ const game = {
     },
 
     // [FIX] 메모리 누수 방지 - 게임 종료 시 타이머 정리
+    _stopPersistentBattleSfx() {
+        const visited = new Set();
+        const unitLists = [this.players, this.enemies, this.civilians];
+
+        unitLists.forEach((list) => {
+            if (!Array.isArray(list)) return;
+            list.forEach((unit) => {
+                if (!unit || visited.has(unit)) return;
+                visited.add(unit);
+                if (typeof unit._stopTankMGSound === 'function') {
+                    try { unit._stopTankMGSound(); } catch (_) { }
+                }
+            });
+        });
+
+        if (typeof AudioSystem !== 'undefined' && typeof AudioSystem.stopIcbmRaise === 'function') {
+            try { AudioSystem.stopIcbmRaise(true); } catch (_) { }
+        }
+    },
+
     _cleanupTimers() {
+        // 전투 루프가 멈출 때 남아있는 지속 사운드(MBT 기관총/ICBM 상승음) 정리
+        this._stopPersistentBattleSfx();
+
         // AI 타이머 정리
         if (typeof AI !== 'undefined') {
             if (AI._nukeWarningTimeout) { clearTimeout(AI._nukeWarningTimeout); AI._nukeWarningTimeout = null; }
@@ -5238,7 +5320,9 @@ const game = {
                 this.$missionText.textContent = '10:00까지 방어선을 유지하고 적의 총공세를 버텨내세요.';
                 return;
             }
-            this.$missionText.textContent = '총사령부를 파괴하거나 적을 모두 섬멸하세요.';
+            const limitMinutes = stageId === 1 ? 24 : 12;
+            const timerLabel = `${String(limitMinutes).padStart(2, '0')}:00`;
+            this.$missionText.textContent = `${timerLabel} 안에 적 총사령부를 파괴하거나 적을 모두 섬멸하세요.`;
             return;
         }
         if (campaignBattleTab === 'skirmish') {

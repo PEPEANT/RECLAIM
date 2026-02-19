@@ -9,7 +9,9 @@ const ui = {
     _optProfileAliasKey: 'reclaim_profile_alias_v1',
     _optProfileAvatarKey: 'reclaim_profile_avatar_v1',
     _optTabsBound: false,
-    _optActiveTab: 'profile',
+    _optFullscreenBound: false,
+    _optFullscreenDocBound: false,
+    _optActiveTab: 'general',
     _optContext: 'general',
     _exitAction: 'quit',
     _veteranTabSignature: '',
@@ -17,6 +19,7 @@ const ui = {
     init() {
         this.initUnitScroller();
         this.bindOptionProfileActions();
+        this.bindOptionFullscreenControl();
     },
 
     ensureGlobalToastElement() {
@@ -148,9 +151,6 @@ const ui = {
         }
 
         const icbmSkillKeys = new Set(['nuke', 'tactical_missile', 'emp']);
-        const icbmSkillMode = (typeof game !== 'undefined' && typeof game.shouldShowIcbmSkills === 'function')
-            ? game.shouldShowIcbmSkills()
-            : false;
 
         Object.keys(CONFIG.units).forEach(key => {
             const u = CONFIG.units[key];
@@ -163,15 +163,15 @@ const ui = {
             if (u.hideFromUnitBar === true) return;
             // [R 4.3] 드론병 전용 발진 드론은 생성바에서 제거 (명령 스킬 전용)
             if (u.droneLaunchOnly === true) return;
+            // ICBM payload skills are command-key only (never shown in unit placement bar).
+            if (icbmSkillKeys.has(key)) return;
 
             // 버튼 DOM 생성
             const btn = document.createElement('div');
             btn.id = `btn-${key}`;
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none';
             let isVisible = false;
-            if (icbmSkillMode) {
-                isVisible = icbmSkillKeys.has(key);
-            } else if (icbmSkillKeys.has(key)) {
+            if (icbmSkillKeys.has(key)) {
                 isVisible = false;
             } else {
                 const unitCategory = this.getUnitCategoryForTab(key, u);
@@ -458,9 +458,6 @@ const ui = {
 
     updateUnitButtons(cat, stock, cooldowns, supply, queue) {
         const icbmSkillKeys = new Set(['nuke', 'tactical_missile', 'emp']);
-        const icbmSkillMode = (typeof game !== 'undefined' && typeof game.shouldShowIcbmSkills === 'function')
-            ? game.shouldShowIcbmSkills()
-            : false;
         const safeStock = (stock && typeof stock === 'object') ? stock : {};
         const safeCooldowns = (cooldowns && typeof cooldowns === 'object') ? cooldowns : {};
         const safeQueue = (queue && typeof queue === 'object') ? queue : {};
@@ -530,9 +527,7 @@ const ui = {
             currentCount = Math.max(0, Math.floor(Number(currentCount) || 0));
 
             let isVisible = false;
-            if (icbmSkillMode) {
-                isVisible = icbmSkillKeys.has(key);
-            } else if (icbmSkillKeys.has(key)) {
+            if (icbmSkillKeys.has(key)) {
                 isVisible = false;
             } else {
                 const unitCategory = this.getUnitCategoryForTab(key, u);
@@ -593,7 +588,6 @@ const ui = {
             // 5. 버튼 활성/비활성 상태
             let isActive = true;
             if (u.isSkill) {
-                if (!icbmSkillMode) isActive = false;
                 if (currentCount <= 0) isActive = false;
                 if (currentCooldown > 0) isActive = false;
                 if (typeof game.hasReadyIcbmLauncher === 'function' && !game.hasReadyIcbmLauncher('player')) isActive = false;
@@ -934,11 +928,18 @@ const ui = {
     },
 
     setOptionTab(tab) {
-        const next = String(tab || '').trim();
+        const requested = String(tab || '').trim();
+        const tabButtons = Array.from(document.querySelectorAll('[data-opt-tab-btn]'));
+        const tabPanels = document.querySelectorAll('.opt-tab-panel');
+        if (!tabButtons.length) return;
+
+        const visibleButtons = tabButtons.filter((btn) => !btn.classList.contains('hidden'));
+        if (!visibleButtons.length) return;
+
+        const requestedButton = visibleButtons.find((btn) => btn.dataset.optTabBtn === requested);
+        const next = requestedButton ? requested : String(visibleButtons[0].dataset.optTabBtn || '').trim();
         if (!next) return;
 
-        const tabButtons = document.querySelectorAll('[data-opt-tab-btn]');
-        const tabPanels = document.querySelectorAll('.opt-tab-panel');
         tabButtons.forEach((btn) => {
             const isActive = btn.dataset.optTabBtn === next;
             btn.classList.toggle('active', isActive);
@@ -1310,6 +1311,113 @@ const ui = {
         if (renameBtn) renameBtn.disabled = false;
     },
 
+    isFullscreenAvailable() {
+        const root = document.documentElement;
+        const canEnter = !!(root && (
+            root.requestFullscreen
+            || root.webkitRequestFullscreen
+            || root.msRequestFullscreen
+        ));
+        const canExit = !!(
+            document.exitFullscreen
+            || document.webkitExitFullscreen
+            || document.msExitFullscreen
+        );
+        return canEnter || canExit;
+    },
+
+    isFullscreenActive() {
+        return !!(
+            document.fullscreenElement
+            || document.webkitFullscreenElement
+            || document.msFullscreenElement
+        );
+    },
+
+    requestAppFullscreen() {
+        const root = document.documentElement;
+        if (!root) return Promise.reject(new Error('fullscreen_root_missing'));
+        if (root.requestFullscreen) return root.requestFullscreen();
+        if (root.webkitRequestFullscreen) {
+            root.webkitRequestFullscreen();
+            return Promise.resolve();
+        }
+        if (root.msRequestFullscreen) {
+            root.msRequestFullscreen();
+            return Promise.resolve();
+        }
+        return Promise.reject(new Error('fullscreen_not_supported'));
+    },
+
+    exitAppFullscreen() {
+        if (document.exitFullscreen) return document.exitFullscreen();
+        if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+            return Promise.resolve();
+        }
+        if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+            return Promise.resolve();
+        }
+        return Promise.reject(new Error('fullscreen_exit_not_supported'));
+    },
+
+    syncOptionFullscreenState() {
+        const btn = document.getElementById('opt-fullscreen-toggle');
+        const state = document.getElementById('opt-fullscreen-state');
+        if (!btn) return;
+
+        const available = this.isFullscreenAvailable();
+        const active = this.isFullscreenActive();
+
+        btn.disabled = !available;
+        if (!available) {
+            btn.innerText = '전체화면 미지원';
+            if (state) state.innerText = '현재 기기/브라우저는 전체화면 전환을 지원하지 않습니다.';
+            return;
+        }
+
+        btn.innerText = active ? '전체화면 끄기' : '전체화면 켜기';
+        if (state) state.innerText = active ? '현재: 전체화면 모드' : '현재: 창 모드';
+    },
+
+    async toggleOptionFullscreen() {
+        if (!this.isFullscreenAvailable()) {
+            this.syncOptionFullscreenState();
+            this.showToast('이 브라우저는 전체화면을 지원하지 않습니다.');
+            return;
+        }
+
+        try {
+            if (this.isFullscreenActive()) await this.exitAppFullscreen();
+            else await this.requestAppFullscreen();
+        } catch (_) {
+            this.showToast('전체화면 전환에 실패했습니다.');
+        } finally {
+            this.syncOptionFullscreenState();
+        }
+    },
+
+    bindOptionFullscreenControl() {
+        const toggleBtn = document.getElementById('opt-fullscreen-toggle');
+        if (toggleBtn && !this._optFullscreenBound) {
+            toggleBtn.addEventListener('click', () => {
+                this.toggleOptionFullscreen();
+            });
+            this._optFullscreenBound = true;
+        }
+
+        if (!this._optFullscreenDocBound) {
+            const onChange = () => this.syncOptionFullscreenState();
+            document.addEventListener('fullscreenchange', onChange);
+            document.addEventListener('webkitfullscreenchange', onChange);
+            document.addEventListener('MSFullscreenChange', onChange);
+            this._optFullscreenDocBound = true;
+        }
+
+        this.syncOptionFullscreenState();
+    },
+
     isElementVisibleById(id) {
         const el = document.getElementById(id);
         if (!el) return false;
@@ -1376,7 +1484,7 @@ const ui = {
                 modalTitle: '시티 설정',
                 gameTitle: '시티/종료',
                 gameDesc: '시티에서는 로비 이동 또는 게임 종료를 사용할 수 있습니다.',
-                showProfileTab: true,
+                showAccountTab: true,
                 showRetreat: false,
                 showQuit: true,
                 showLobby: true
@@ -1385,7 +1493,7 @@ const ui = {
                 modalTitle: '맵 선택 설정',
                 gameTitle: '맵 선택/종료',
                 gameDesc: '맵 선택 화면에서는 로비 이동 또는 게임 종료를 사용할 수 있습니다.',
-                showProfileTab: false,
+                showAccountTab: false,
                 showRetreat: false,
                 showQuit: true,
                 showLobby: true
@@ -1394,7 +1502,7 @@ const ui = {
                 modalTitle: '인게임 설정',
                 gameTitle: '전투/종료',
                 gameDesc: '전투 중에는 후퇴로 시티 복귀, 종료 확인을 사용할 수 있습니다.',
-                showProfileTab: false,
+                showAccountTab: false,
                 showRetreat: true,
                 showQuit: true,
                 showLobby: true
@@ -1403,7 +1511,7 @@ const ui = {
                 modalTitle: 'SETTINGS',
                 gameTitle: '전투/종료',
                 gameDesc: '전투 중에는 후퇴로 시티 복귀, 평시에는 종료 확인을 사용할 수 있습니다.',
-                showProfileTab: true,
+                showAccountTab: true,
                 showRetreat: false,
                 showQuit: true,
                 showLobby: true
@@ -1415,9 +1523,13 @@ const ui = {
         if (gameTitleEl) gameTitleEl.innerText = cfg.gameTitle;
         if (gameDescEl) gameDescEl.innerText = cfg.gameDesc;
 
-        this.setOptionTabVisibility('profile', cfg.showProfileTab);
-        this.setOptionTabVisibility('system', true);
-        this.setOptionTabVisibility('game', true);
+        this.setOptionTabVisibility('gameplay', true);
+        this.setOptionTabVisibility('general', true);
+        this.setOptionTabVisibility('video', true);
+        this.setOptionTabVisibility('audio', true);
+        this.setOptionTabVisibility('account', cfg.showAccountTab);
+        this.setOptionTabVisibility('language', true);
+        this.setOptionTabVisibility('credits', true);
 
         if (exitBtn) exitBtn.style.display = cfg.showRetreat ? '' : 'none';
         if (quitBtn) quitBtn.style.display = cfg.showQuit ? '' : 'none';
@@ -1473,12 +1585,14 @@ const ui = {
         document.getElementById('option-modal').classList.add('active');
         this.bindOptionTabs();
         this.bindOptionProfileActions();
+        this.bindOptionFullscreenControl();
         this.syncOptionProfile();
         this.applyOptionContext(context);
 
-        let defaultTab = 'profile';
-        if (context === 'ingame') defaultTab = 'game';
-        else if (context === 'city' || context === 'map-select') defaultTab = 'system';
+        let defaultTab = 'gameplay';
+        if (context === 'ingame' || context === 'city' || context === 'map-select') {
+            defaultTab = 'general';
+        }
 
         const nextTab = requestedTab || defaultTab;
         this.setOptionTab(nextTab);

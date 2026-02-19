@@ -25,6 +25,7 @@ const HUD = {
     _skirmishRightSlotPredeploy: false,
     _contextRightSlotUnitPanel: false,
     _forceHqRightSlotOpen: false,
+    _icbmCommandIconCache: {},
 
     // DOM References (cached)
     elements: {
@@ -255,12 +256,134 @@ const HUD = {
         return document.querySelector(`[data-hud-cmd="${role}"]`);
     },
 
-    setHudCommandButtonVisual(btn, iconClass, label) {
+    setHudCommandButtonVisual(btn, iconClass, label, iconImageUrl = '') {
         if (!btn) return;
         const iconNode = btn.querySelector('.cmd-icon');
         const labelNode = btn.querySelector('span:last-child');
-        if (iconNode) iconNode.innerHTML = `<i class='${iconClass}'></i>`;
+        if (iconNode) {
+            if (iconImageUrl) {
+                iconNode.innerHTML = '';
+                const img = document.createElement('img');
+                img.className = 'cmd-icon-img';
+                img.src = iconImageUrl;
+                img.alt = '';
+                img.setAttribute('aria-hidden', 'true');
+                iconNode.appendChild(img);
+            } else {
+                iconNode.innerHTML = `<i class='${iconClass}'></i>`;
+            }
+        }
         if (labelNode) labelNode.textContent = label;
+    },
+
+    getIcbmPayloadPalette(payloadKey) {
+        const key = String(payloadKey || '').trim();
+        if (key === 'emp') {
+            return { body: '#dbeafe', nose: '#60a5fa', band: '#2563eb', fin: '#334155', glow: 'rgba(59,130,246,0.24)' };
+        }
+        if (key === 'tactical_missile') {
+            return { body: '#f3f4f6', nose: '#ef4444', band: '#f59e0b', fin: '#64748b', glow: 'rgba(239,68,68,0.20)' };
+        }
+        if (key === 'nuke') {
+            return { body: '#e5e7eb', nose: '#ef4444', band: '#111827', fin: '#475569', glow: 'rgba(248,113,113,0.20)' };
+        }
+        return { body: '#e2e8f0', nose: '#cbd5e1', band: '#facc15', fin: '#475569', glow: 'rgba(250,204,21,0.22)' };
+    },
+
+    getIcbmPayloadCommandIcon(payloadKey) {
+        const key = String(payloadKey || '').trim();
+        if (!key) return '';
+        if (!this._icbmCommandIconCache || typeof this._icbmCommandIconCache !== 'object') {
+            this._icbmCommandIconCache = {};
+        }
+        if (Object.prototype.hasOwnProperty.call(this._icbmCommandIconCache, key)) {
+            return this._icbmCommandIconCache[key] || '';
+        }
+
+        if (typeof document === 'undefined') {
+            this._icbmCommandIconCache[key] = '';
+            return '';
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 40;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            this._icbmCommandIconCache[key] = '';
+            return '';
+        }
+
+        const palette = this.getIcbmPayloadPalette(key);
+        const bodyX = 12;
+        const bodyY = 15;
+        const bodyW = 34;
+        const bodyH = 10;
+
+        if (palette.glow) {
+            ctx.fillStyle = palette.glow;
+            ctx.beginPath();
+            ctx.ellipse(30, 24, 24, 10, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = palette.body;
+        ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+
+        ctx.fillStyle = palette.nose;
+        ctx.beginPath();
+        ctx.moveTo(bodyX + bodyW, bodyY);
+        ctx.lineTo(bodyX + bodyW + 8, bodyY + (bodyH / 2));
+        ctx.lineTo(bodyX + bodyW, bodyY + bodyH);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = palette.band;
+        ctx.fillRect(bodyX + Math.round(bodyW * 0.55), bodyY, 5, bodyH);
+
+        ctx.fillStyle = palette.fin;
+        ctx.beginPath();
+        ctx.moveTo(bodyX + 6, bodyY);
+        ctx.lineTo(bodyX + 1, bodyY - 5);
+        ctx.lineTo(bodyX + 1, bodyY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(bodyX + 6, bodyY + bodyH);
+        ctx.lineTo(bodyX + 1, bodyY + bodyH + 5);
+        ctx.lineTo(bodyX + 1, bodyY + bodyH);
+        ctx.closePath();
+        ctx.fill();
+
+        if (key === 'emp') {
+            ctx.strokeStyle = '#1d4ed8';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(bodyX + 12, bodyY + 2);
+            ctx.lineTo(bodyX + 17, bodyY + 2);
+            ctx.lineTo(bodyX + 13, bodyY + 8);
+            ctx.lineTo(bodyX + 20, bodyY + 8);
+            ctx.stroke();
+        } else if (key === 'nuke') {
+            const cx = bodyX + 15;
+            const cy = bodyY + 5;
+            ctx.strokeStyle = '#111827';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 3.2, 0, Math.PI * 2);
+            ctx.stroke();
+            for (let i = 0; i < 3; i++) {
+                const ang = (Math.PI * 2 * i) / 3;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + Math.cos(ang) * 5.2, cy + Math.sin(ang) * 5.2);
+                ctx.stroke();
+            }
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        this._icbmCommandIconCache[key] = dataUrl;
+        return dataUrl;
     },
 
     setHudButtonEnabled(btn, enabled) {
@@ -328,11 +451,29 @@ const HUD = {
             case 'drone_at':
                 return { key: 'cmd_drone_at', fallback: 'AT DRONE', icon: 'fa-solid fa-shield-halved' };
             case 'icbm_tactical':
-                return { key: 'cmd_icbm_tactical', fallback: 'TACTICAL', icon: 'fa-solid fa-bullseye', targetingType: 'tactical_missile' };
+                return {
+                    key: 'cmd_icbm_tactical',
+                    fallback: 'TACTICAL',
+                    icon: 'fa-solid fa-bullseye',
+                    iconImageKey: 'tactical_missile',
+                    targetingType: 'tactical_missile'
+                };
             case 'icbm_emp':
-                return { key: 'cmd_icbm_emp', fallback: 'EMP', icon: 'fa-solid fa-bolt-lightning', targetingType: 'emp' };
+                return {
+                    key: 'cmd_icbm_emp',
+                    fallback: 'EMP',
+                    icon: 'fa-solid fa-bolt-lightning',
+                    iconImageKey: 'emp',
+                    targetingType: 'emp'
+                };
             case 'icbm_nuke':
-                return { key: 'cmd_icbm_nuke', fallback: 'NUKE', icon: 'fa-solid fa-radiation', targetingType: 'nuke' };
+                return {
+                    key: 'cmd_icbm_nuke',
+                    fallback: 'NUKE',
+                    icon: 'fa-solid fa-radiation',
+                    iconImageKey: 'nuke',
+                    targetingType: 'nuke'
+                };
             default:
                 return { key: 'cmd_more', fallback: 'MORE', icon: 'fa-solid fa-ellipsis' };
         }
@@ -554,7 +695,15 @@ const HUD = {
         }
 
         const meta = this.getMappedCommandMeta(mappedCmd);
-        this.setHudCommandButtonVisual(btn, meta.icon, this.getLangText(meta.key, meta.fallback));
+        const iconImageUrl = meta.iconImageKey
+            ? this.getIcbmPayloadCommandIcon(meta.iconImageKey)
+            : '';
+        this.setHudCommandButtonVisual(
+            btn,
+            meta.icon,
+            this.getLangText(meta.key, meta.fallback),
+            iconImageUrl
+        );
         this.setHudButtonEnabled(btn, this.isMappedCommandAvailable(mappedCmd, ctx));
 
         const isActive = (mappedCmd === 'camera')

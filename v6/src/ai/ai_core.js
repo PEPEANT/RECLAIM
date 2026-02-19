@@ -80,6 +80,12 @@
             this.spawnFamilyCooldownUntil = {};
         }
 
+        const occupationStageId = (typeof this._getOccupationStageId === 'function')
+            ? this._getOccupationStageId()
+            : 0;
+        const isOccupationFinalStage = occupationStageId === 7;
+        const isOccupationEarlyStage = occupationStageId > 0 && occupationStageId <= 2;
+
         // [UPDATED] Dynamic Spawn Rate Logic - 초반 물량 완화
         let currentRate = this.settings[this.difficulty].rate;
 
@@ -88,6 +94,15 @@
         if (frame < EARLY_END) {
             // 초반에는 스폰 간격을 1.5배로 늘림
             currentRate = Math.max(currentRate * 1.5, 180);
+        }
+
+        // B-01: occupation early stages(1~2) tempo down for onboarding.
+        if (isOccupationEarlyStage) {
+            if (frame < 60 * 120) {
+                currentRate = Math.max(currentRate * 1.35, 230);
+            } else if (frame < 60 * 240) {
+                currentRate = Math.max(currentRate * 1.18, 185);
+            }
         }
 
         // Elite 난이도 추가 조정
@@ -103,10 +118,6 @@
             currentRate -= reduction;
         }
 
-        const occupationStageId = (typeof this._getOccupationStageId === 'function')
-            ? this._getOccupationStageId()
-            : 0;
-        const isOccupationFinalStage = occupationStageId === 7;
         if (isOccupationFinalStage) {
             const tempoMult = (frame < 60 * 120) ? 0.88 : 0.72;
             currentRate = Math.max(24, currentRate * tempoMult);

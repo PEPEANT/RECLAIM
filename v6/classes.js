@@ -782,11 +782,13 @@ class Unit extends Entity {
             if (this.icbmRaiseSoundPlaying && typeof AudioSystem !== 'undefined' && typeof AudioSystem.syncIcbmRaise === 'function') {
                 AudioSystem.syncIcbmRaise(this.x);
             }
-            // ICBM launcher raise motion intentionally slower for heavier launch animation.
-            this.icbmAngle = Math.min(90, (this.icbmAngle || 0) + 0.45);
+            // C-05: ICBM 포대 상승 구간을 더 길게 가져가 발사 전 준비시간을 늘린다.
+            const ICBM_RAISE_STEP_DEG = 0.34;
+            const ICBM_PRELAUNCH_HOLD_FRAMES = 24;
+            this.icbmAngle = Math.min(90, (this.icbmAngle || 0) + ICBM_RAISE_STEP_DEG);
             if (this.icbmAngle >= 90) {
                 this.icbmLaunchState = 'firing';
-                this.icbmLaunchTimer = 18;
+                this.icbmLaunchTimer = ICBM_PRELAUNCH_HOLD_FRAMES;
             }
             this.updateFacing();
             return true;
@@ -2069,7 +2071,16 @@ class Unit extends Entity {
         };
         ctx.save();
         ctx.translate(this.x, this.y + snapDy);
-        ctx.scale(1.4, 1.4);  // [VISUAL] unit size boost for visibility
+        const ARMORED_RENDER_BOOST = {
+            humvee: 1.18,
+            apc: 1.16,
+            mbt: 1.16,
+            spg: 1.16,
+            aa_tank: 1.12
+        };
+        const armoredBoost = Number(ARMORED_RENDER_BOOST[id]) || 1;
+        const baseRenderScale = 1.4;
+        ctx.scale(baseRenderScale * armoredBoost, baseRenderScale * armoredBoost);  // [C-01] armored visual size boost
 
         // ... (?꾩닠 ?쒕줎 ?쎌삩 諛뺤뒪 肄붾뱶??洹몃?濡??좎?) ...
         if (id === 'tactical_drone' && this.lockedTarget && !this.lockedTarget.dead) {
@@ -2504,6 +2515,7 @@ class Unit extends Entity {
             const black = '#020617';
             const glass = '#1e293b';
             const useCombatTruck = (this.skinVariant === 'combat_truck');
+            const HUMVEE_WHEEL_Y = 8;
 
             ctx.save();
             ctx.scale(1.1, 1.1);
@@ -2514,13 +2526,10 @@ class Unit extends Entity {
             if (useCombatTruck) {
                 const drawWheel = (x, rOuter = 7) => {
                     ctx.fillStyle = '#000';
-                    ctx.beginPath(); ctx.arc(x, 12, rOuter, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x, HUMVEE_WHEEL_Y, rOuter, 0, Math.PI * 2); ctx.fill();
                     ctx.fillStyle = '#4a5568';
-                    ctx.beginPath(); ctx.arc(x, 12, Math.max(3, rOuter * 0.5), 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x, HUMVEE_WHEEL_Y, Math.max(3, rOuter * 0.5), 0, Math.PI * 2); ctx.fill();
                 };
-                drawWheel(-25);
-                drawWheel(10);
-                drawWheel(28);
 
                 ctx.fillStyle = '#2d3748';
                 ctx.fillRect(-36, 4, 74, 7);
@@ -2564,16 +2573,19 @@ class Unit extends Entity {
                 ctx.fillRect(16, -15, 18, 2);
                 ctx.fillStyle = '#000';
                 ctx.fillRect(33, -15, 4, 2);
+
+                // Wheels are drawn last to stay above body layer.
+                drawWheel(-25);
+                drawWheel(10);
+                drawWheel(28);
             } else {
                 // Wheels
                 const drawWheel = (x) => {
                     ctx.fillStyle = tireColor;
-                    ctx.beginPath(); ctx.arc(x, 12, 6.5, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x, HUMVEE_WHEEL_Y, 6.5, 0, Math.PI * 2); ctx.fill();
                     ctx.fillStyle = '#334155';
-                    ctx.beginPath(); ctx.arc(x, 12, 3, 0, Math.PI * 2); ctx.fill();
+                    ctx.beginPath(); ctx.arc(x, HUMVEE_WHEEL_Y, 3, 0, Math.PI * 2); ctx.fill();
                 };
-                drawWheel(-25);
-                drawWheel(25);
 
                 // Body (Slant back styling)
                 ctx.fillStyle = bodyMain;
@@ -2613,6 +2625,10 @@ class Unit extends Entity {
                 ctx.fillStyle = bodyDark; ctx.fillRect(-2, -16, 12, 3); // Base
                 ctx.fillStyle = black; ctx.fillRect(2, -15, 18, 1.5); // Gun
                 ctx.fillRect(0, -17, 6, 2.5); // Shield
+
+                // Wheels are drawn last to stay above body layer.
+                drawWheel(-25);
+                drawWheel(25);
             }
 
             ctx.restore();
