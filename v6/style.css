@@ -2182,6 +2182,36 @@ input[type=range]::-webkit-slider-runnable-track {
     display: none !important;
 }
 
+#chat-hq-open-btn {
+    height: 40px;
+    min-height: 40px;
+    padding: 0 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(59, 130, 246, 0.72);
+    background: rgba(15, 23, 42, 0.9);
+    color: #dbeafe;
+    font-family: 'Rajdhani', 'Noto Sans KR', sans-serif;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    box-shadow: 0 6px 14px rgba(2, 6, 23, 0.4);
+    cursor: pointer;
+}
+
+#chat-hq-open-btn:hover {
+    background: rgba(30, 64, 175, 0.82);
+    border-color: rgba(147, 197, 253, 0.95);
+    color: #fff;
+}
+
+#chat-hq-open-btn.hidden {
+    display: none !important;
+}
+
 #chat-panel.is-collapsed {
     width: 40px !important;
     min-width: 40px !important;
@@ -2347,10 +2377,10 @@ input[type=range]::-webkit-slider-runnable-track {
     line-height: 1;
 }
 
+#hud-camera-btn,
 #hud-option-btn {
     position: fixed;
-    top: 12px;
-    right: 12px;
+    top: max(10px, calc(env(safe-area-inset-top, 0px) + 10px));
     z-index: 99999;
     width: 44px;
     height: 44px;
@@ -2359,15 +2389,30 @@ input[type=range]::-webkit-slider-runnable-track {
     justify-content: center;
     border: 1px solid rgba(59, 130, 246, 0.55);
     border-radius: 10px;
-    background: rgba(2, 6, 23, 0.60);
+    background: rgba(2, 6, 23, 0.6);
     color: #e5e7eb;
     cursor: pointer;
     user-select: none;
 }
 
+#hud-option-btn {
+    right: max(12px, calc(env(safe-area-inset-right, 0px) + 12px));
+}
+
+#hud-camera-btn {
+    right: max(64px, calc(env(safe-area-inset-right, 0px) + 64px));
+}
+
+#hud-camera-btn:hover,
 #hud-option-btn:hover {
-    background: rgba(2, 6, 23, 0.80);
-    border-color: rgba(147, 197, 253, 0.90);
+    background: rgba(2, 6, 23, 0.8);
+    border-color: rgba(147, 197, 253, 0.9);
+}
+
+#hud-camera-btn.active {
+    background: rgba(12, 74, 110, 0.85);
+    border-color: rgba(56, 189, 248, 0.95);
+    color: #e0f2fe;
 }
 
 .hidden {
@@ -8204,5 +8249,594 @@ input[type=range]::-webkit-slider-runnable-track {
         width: min(74vw, 210px) !important;
         max-width: min(74vw, 210px) !important;
         padding: 0.4rem 0.44rem !important;
+    }
+}
+
+/* ============================================
+   [HUD V2] Combat Layout (Minimap + Commands)
+   - Production UI opens contextually as bottom sheet
+   ============================================ */
+#hud-footer {
+    --hud-main-height: clamp(86px, 16vh, 124px);
+    --hud-cmd-gap: 8px;
+    --hud-cmd-min-h: 52px;
+    --hud-cmd-font: 12px;
+    --hud-cmd-icon: 18px;
+    --hud-cmd-col-min: 72px;
+    --hud-cmd-col-max: 118px;
+    --hud-cmd-btn-min: 48px;
+    --hud-cmd-pad-y: 6px;
+    --hud-cmd-pad-x: 4px;
+    --hud-sheet-slide: 18px;
+    --hud-sheet-open-ms: 180ms;
+    --hud-sheet-close-ms: 160ms;
+    --hud-sheet-fade-in-ms: 150ms;
+    --hud-sheet-fade-out-ms: 130ms;
+    height: var(--hud-main-height) !important;
+    min-height: var(--hud-main-height) !important;
+    max-height: var(--hud-main-height) !important;
+    padding-top: 6px !important;
+    padding-right: max(6px, env(safe-area-inset-right, 0px)) !important;
+    padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-left: max(6px, env(safe-area-inset-left, 0px)) !important;
+    gap: var(--hud-cmd-gap);
+    align-items: stretch;
+}
+
+/* Keep lobby/hidden-state authoritative even when desktop split forces display */
+#hud-footer.hidden {
+    display: none !important;
+}
+
+/* Legacy overlay unit panel must stay hidden unless HUD moves it into right slot/production area */
+#hud-overlay #unit-panel-container {
+    display: none !important;
+}
+
+#hud-left {
+    flex: 0 0 clamp(196px, 29vw, 340px) !important;
+    min-width: 0;
+    padding: 6px !important;
+    gap: 6px;
+    border: 1px solid rgba(59, 130, 246, 0.42);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.78) 0%, rgba(2, 6, 23, 0.92) 100%);
+    overflow: hidden;
+}
+
+#hud-right {
+    flex: 1 1 auto !important;
+    max-width: min(66vw, 860px);
+    min-width: 0;
+    min-height: 0;
+    padding: 6px !important;
+    border: 1px solid rgba(59, 130, 246, 0.42);
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(15, 23, 42, 0.82) 0%, rgba(2, 6, 23, 0.94) 100%);
+    overflow: hidden;
+}
+
+#hud-footer:not(.hud-right-unitpanel-active) #hud-right {
+    border-color: transparent !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+}
+
+#hud-footer.hud-skirmish-predeploy #hud-right {
+    display: flex !important;
+}
+
+#hud-footer.hud-skirmish-predeploy #hud-left {
+    flex: 0 0 clamp(176px, 27vw, 320px) !important;
+}
+
+#hud-footer.hud-skirmish-predeploy #hud-production-area {
+    opacity: 0 !important;
+    visibility: hidden !important;
+    pointer-events: none !important;
+}
+
+#hud-footer.hud-right-unitpanel-active #hud-command-grid {
+    display: none !important;
+}
+
+#hud-footer.hud-right-unitpanel-active #hud-right #unit-panel-container {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+    margin: 0 !important;
+    min-height: 0 !important;
+    overflow: hidden !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+}
+
+#hud-production-area #unit-panel-container {
+    display: flex !important;
+}
+
+#hud-footer.hud-right-unitpanel-active #hud-right #unit-list-wrapper {
+    flex: 1 1 auto;
+    min-height: 0;
+    min-width: 0;
+}
+
+#hud-footer.hud-right-unitpanel-active #hud-right #unit-list-container {
+    height: auto !important;
+    min-height: clamp(84px, 12vh, 112px);
+}
+
+#hud-footer.hud-right-unitpanel-active #hud-right #unit-panel-container .unit-category-row {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    flex: 0 0 40px !important;
+    width: 40px !important;
+    min-width: 40px !important;
+    min-height: 0 !important;
+    gap: 2px !important;
+    border-bottom: none !important;
+    border-right: 1px solid rgba(71, 85, 105, 0.75) !important;
+    padding: 2px !important;
+}
+
+#hud-footer.hud-right-unitpanel-active #hud-right #unit-panel-container .unit-category-row .btn-category {
+    flex: 1 1 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 0 !important;
+    padding: 2px 1px !important;
+    font-size: 10px !important;
+    line-height: 1 !important;
+    letter-spacing: 0 !important;
+    writing-mode: vertical-lr;
+    text-orientation: upright;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+}
+
+/* Desktop split layout: minimap / command / production are independent panels */
+@media (min-width: 1025px) {
+    #hud-footer {
+        --hud-desktop-bottom-gap: 10px;
+        --hud-desktop-cmd-h: clamp(110px, 15vh, 166px);
+        position: fixed !important;
+        inset: 0 !important;
+        height: auto !important;
+        min-height: 0 !important;
+        max-height: none !important;
+        padding: 0 !important;
+        border: none !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        pointer-events: none !important;
+        display: block !important;
+    }
+
+    #hud-left,
+    #hud-right,
+    #hud-production-area {
+        pointer-events: auto !important;
+    }
+
+    #hud-left {
+        position: fixed !important;
+        left: max(10px, env(safe-area-inset-left, 0px));
+        bottom: calc(var(--hud-desktop-bottom-gap) + env(safe-area-inset-bottom, 0px));
+        width: clamp(228px, 24vw, 360px) !important;
+        height: clamp(160px, 25vh, 260px) !important;
+        flex: none !important;
+    }
+
+    #hud-right {
+        position: fixed !important;
+        left: calc(max(10px, env(safe-area-inset-left, 0px)) + clamp(228px, 24vw, 360px) + 14px);
+        right: max(12px, env(safe-area-inset-right, 0px));
+        bottom: calc(var(--hud-desktop-bottom-gap) + env(safe-area-inset-bottom, 0px));
+        width: auto !important;
+        max-width: none !important;
+        min-width: 0 !important;
+        min-height: var(--hud-desktop-cmd-h) !important;
+        flex: none !important;
+    }
+
+    #hud-command-grid {
+        min-height: var(--hud-desktop-cmd-h);
+        overflow-x: hidden !important;
+    }
+
+    #hud-command-grid .hud-cmd-btn {
+        flex: 1 1 0 !important;
+        max-width: none !important;
+        min-width: max(86px, var(--hud-cmd-btn-min)) !important;
+    }
+
+    #hud-production-area {
+        left: 50% !important;
+        right: auto !important;
+        width: min(940px, calc(100vw - 28px)) !important;
+        bottom: calc(var(--hud-desktop-bottom-gap) + env(safe-area-inset-bottom, 0px) + var(--hud-desktop-cmd-h) + 12px) !important;
+        min-height: 118px;
+        max-height: min(44vh, 420px);
+        transform: translateX(-50%) translateY(var(--hud-sheet-slide));
+    }
+
+    #hud-footer.hud-show-production #hud-production-area {
+        transform: translateX(-50%) translateY(0);
+    }
+
+    #hud-footer.hud-right-unitpanel-active #hud-right {
+        min-height: clamp(150px, 24vh, 270px) !important;
+    }
+
+    #hud-footer.hud-right-unitpanel-active #hud-right #unit-list-container {
+        min-height: 104px;
+        height: auto !important;
+    }
+}
+
+#hud-center {
+    flex: 0 0 0 !important;
+    width: 0 !important;
+    min-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: none !important;
+    overflow: visible !important;
+    pointer-events: auto !important;
+}
+
+#hud-info-area,
+#hud-selection-info {
+    display: none !important;
+}
+
+#hud-minimap-wrapper {
+    min-height: 0 !important;
+    border-radius: 10px !important;
+}
+
+#hud-controls-bar {
+    display: none !important;
+}
+
+#hud-command-grid {
+    display: flex !important;
+    flex-direction: row !important;
+    flex-wrap: nowrap !important;
+    align-items: stretch;
+    justify-content: flex-start;
+    gap: clamp(14px, 2.2vw, 28px) !important;
+    padding: 0 !important;
+    padding-bottom: 2px !important;
+    width: 100%;
+    min-width: 0;
+    background: transparent !important;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(148, 163, 184, 0.75) transparent;
+}
+
+#hud-command-grid::-webkit-scrollbar {
+    height: 4px;
+}
+
+#hud-command-grid::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.65);
+    border-radius: 999px;
+}
+
+#hud-command-grid .hud-cmd-group {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: var(--hud-cmd-gap);
+    flex: 0 0 auto;
+    min-width: max-content;
+    padding: 4px;
+    border-radius: 12px;
+    border: 1px solid rgba(71, 85, 105, 0.78);
+    background: rgba(15, 23, 42, 0.72);
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.45);
+}
+
+#hud-command-grid .hud-cmd-group-move {
+    order: 2;
+    border-color: rgba(59, 130, 246, 0.78);
+    background: rgba(30, 64, 175, 0.2);
+    margin-left: clamp(10px, 1.6vw, 18px);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25);
+}
+
+#hud-command-grid .hud-cmd-group-action {
+    order: 1;
+    border-color: rgba(148, 163, 184, 0.6);
+    background: rgba(15, 23, 42, 0.5);
+}
+
+.hud-cmd-btn {
+    flex: 0 0 clamp(var(--hud-cmd-col-min), 9.2vw, var(--hud-cmd-col-max)) !important;
+    min-width: max(var(--hud-cmd-col-min), var(--hud-cmd-btn-min)) !important;
+    max-width: var(--hud-cmd-col-max);
+    min-height: var(--hud-cmd-min-h) !important;
+    border-radius: 10px !important;
+    padding: var(--hud-cmd-pad-y) var(--hud-cmd-pad-x) !important;
+    font-size: var(--hud-cmd-font) !important;
+    white-space: nowrap;
+}
+
+.hud-cmd-btn .cmd-icon {
+    font-size: var(--hud-cmd-icon) !important;
+}
+
+#hud-command-grid .hud-cmd-btn>span:last-child {
+    display: block;
+    max-width: 100%;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+#hud-production-area {
+    position: fixed !important;
+    left: max(8px, env(safe-area-inset-left, 0px));
+    right: max(8px, env(safe-area-inset-right, 0px));
+    bottom: calc(var(--hud-main-height) + env(safe-area-inset-bottom, 0px) + 10px);
+    min-height: 92px;
+    max-height: min(55vh, 360px);
+    padding: 8px !important;
+    border-radius: 12px !important;
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    background: rgba(2, 6, 23, 0.95);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
+    overflow-y: auto;
+    overflow-x: hidden;
+    z-index: 74;
+    transform: translateY(var(--hud-sheet-slide));
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+        transform var(--hud-sheet-close-ms) cubic-bezier(0.22, 0.61, 0.36, 1),
+        opacity var(--hud-sheet-fade-out-ms) ease,
+        visibility 0s linear var(--hud-sheet-close-ms);
+}
+
+#hud-footer.hud-show-production #hud-production-area {
+    transform: translateY(0);
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transition:
+        transform var(--hud-sheet-open-ms) cubic-bezier(0.22, 0.61, 0.36, 1),
+        opacity var(--hud-sheet-fade-in-ms) ease,
+        visibility 0s;
+}
+
+@media (max-width: 768px) {
+    #hud-footer {
+        --hud-main-height: clamp(92px, 18vh, 132px);
+        --hud-cmd-gap: 8px;
+        --hud-cmd-min-h: 62px;
+        --hud-cmd-font: 11px;
+        --hud-cmd-icon: 20px;
+        --hud-cmd-col-min: 72px;
+        --hud-cmd-col-max: 96px;
+        --hud-cmd-pad-y: 7px;
+        --hud-cmd-pad-x: 5px;
+        --hud-sheet-open-ms: 180ms;
+        --hud-sheet-close-ms: 150ms;
+        --hud-sheet-fade-in-ms: 145ms;
+        --hud-sheet-fade-out-ms: 120ms;
+        gap: var(--hud-cmd-gap);
+    }
+
+    #hud-left {
+        flex-basis: clamp(80px, 18vw, 108px) !important;
+    }
+
+    #hud-right {
+        max-width: none;
+    }
+
+    #hud-footer.hud-skirmish-predeploy #hud-left {
+        flex: 0 0 clamp(84px, 22vw, 112px) !important;
+    }
+
+    #hud-controls-bar {
+        display: none !important;
+    }
+
+    #hud-command-grid {
+        flex-wrap: nowrap !important;
+        overflow-x: auto;
+        overflow-y: hidden;
+        -webkit-overflow-scrolling: touch;
+        gap: max(6px, calc(var(--hud-cmd-gap) - 1px)) !important;
+    }
+
+    #hud-command-grid .hud-cmd-group {
+        padding: 3px;
+    }
+
+    #hud-command-grid .hud-cmd-group-move {
+        margin-left: max(8px, calc(var(--hud-cmd-gap) + 2px));
+    }
+
+    #hud-command-grid .hud-cmd-btn>span:last-child {
+        font-size: max(9px, calc(var(--hud-cmd-font) - 1px)) !important;
+    }
+
+    #hud-production-area {
+        left: max(6px, env(safe-area-inset-left, 0px));
+        right: max(6px, env(safe-area-inset-right, 0px));
+        bottom: calc(var(--hud-main-height) + env(safe-area-inset-bottom, 0px) + 8px);
+        max-height: min(55vh, 320px);
+        padding: 6px !important;
+    }
+}
+
+/* Mobile landscape command presets by width */
+@media (orientation: landscape) and (max-width: 960px) {
+    #hud-footer {
+        --hud-cmd-col-min: 66px;
+        --hud-cmd-col-max: 90px;
+        --hud-cmd-min-h: 58px;
+        --hud-cmd-gap: 7px;
+        --hud-cmd-font: 10px;
+        --hud-cmd-icon: 18px;
+        --hud-cmd-pad-y: 6px;
+        --hud-cmd-pad-x: 4px;
+    }
+}
+
+@media (orientation: landscape) and (max-width: 820px) {
+    #hud-footer {
+        --hud-cmd-col-min: 58px;
+        --hud-cmd-col-max: 82px;
+        --hud-cmd-min-h: 54px;
+        --hud-cmd-gap: 6px;
+        --hud-cmd-font: 10px;
+        --hud-cmd-icon: 17px;
+        --hud-cmd-pad-y: 5px;
+        --hud-cmd-pad-x: 3px;
+    }
+}
+
+@media (orientation: landscape) and (max-width: 680px) {
+    #hud-footer {
+        --hud-cmd-col-min: 48px;
+        --hud-cmd-col-max: 72px;
+        --hud-cmd-min-h: 50px;
+        --hud-cmd-gap: 5px;
+        --hud-cmd-font: 9px;
+        --hud-cmd-icon: 16px;
+        --hud-cmd-pad-y: 4px;
+        --hud-cmd-pad-x: 3px;
+        --hud-sheet-open-ms: 165ms;
+        --hud-sheet-close-ms: 140ms;
+        --hud-sheet-fade-in-ms: 130ms;
+        --hud-sheet-fade-out-ms: 110ms;
+    }
+
+    #hud-command-grid .hud-cmd-btn>span:last-child {
+        display: none;
+    }
+
+    .hud-cmd-btn .cmd-icon {
+        margin: 0 auto;
+    }
+
+    #hud-command-grid .hud-cmd-group-move {
+        margin-left: 6px;
+    }
+}
+
+@media (orientation: landscape) and (max-height: 500px) {
+    #hud-footer {
+        --hud-main-height: clamp(78px, 18vh, 98px);
+        --hud-sheet-open-ms: 155ms;
+        --hud-sheet-close-ms: 130ms;
+        --hud-sheet-fade-in-ms: 120ms;
+        --hud-sheet-fade-out-ms: 95ms;
+    }
+
+    #hud-production-area {
+        max-height: min(50vh, 240px);
+    }
+}
+
+/* Mobile unit production: move category tabs to left sidebar to save vertical space */
+@media (pointer: coarse) and (orientation: landscape) and (max-width: 960px) {
+    #unit-panel-container {
+        display: flex !important;
+        flex-direction: row !important;
+        align-items: stretch !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+    }
+
+    #unit-panel-container .unit-category-row {
+        display: flex !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        flex: 0 0 36px !important;
+        width: 36px !important;
+        min-width: 36px !important;
+        min-height: 0 !important;
+        gap: 2px !important;
+        border-bottom: none !important;
+        border-right: 1px solid rgba(71, 85, 105, 0.75) !important;
+        padding: 2px !important;
+    }
+
+    #unit-panel-container .unit-category-row .btn-category {
+        flex: 1 1 0 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        padding: 2px 1px !important;
+        font-size: 9px !important;
+        line-height: 1 !important;
+        letter-spacing: 0 !important;
+        writing-mode: vertical-lr;
+        text-orientation: upright;
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+    }
+
+    #unit-list-wrapper {
+        flex: 1 1 auto !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        width: auto !important;
+    }
+
+    #unit-list-container {
+        height: 100% !important;
+        min-height: 74px !important;
+        padding: 3px !important;
+        gap: 3px !important;
+        align-items: center !important;
+        overflow-x: auto !important;
+        overflow-y: hidden !important;
+    }
+
+    #unit-list-container .btn-unit {
+        width: 46px !important;
+        min-width: 46px !important;
+        height: 46px !important;
+    }
+
+    #unit-list-container .btn-unit canvas {
+        width: 30px !important;
+        height: 26px !important;
+    }
+}
+
+/* Mobile visual separation: minimap and production/command blocks should look independent */
+@media (pointer: coarse) and (orientation: landscape) and (max-width: 960px) {
+    #hud-footer {
+        background: transparent !important;
+        border-top: none !important;
+        box-shadow: none !important;
+        gap: max(8px, var(--hud-cmd-gap)) !important;
+    }
+
+    #hud-left,
+    #hud-right {
+        box-shadow: 0 10px 22px rgba(2, 6, 23, 0.55);
     }
 }

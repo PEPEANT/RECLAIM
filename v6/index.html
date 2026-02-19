@@ -176,7 +176,7 @@
                         <span class="cmd-ico"><i class="fa-solid fa-video"></i></span>
                         <span data-lang="cmd_camera">CAMERA</span>
                     </button>
-                    <button data-cmd="move" class="cmd-btn-action">
+                    <button data-cmd="move" class="cmd-btn-action hidden">
                         <span class="cmd-ico"><i class="fa-solid fa-up-down-left-right"></i></span>
                         <span data-lang="cmd_move">MOVE</span>
                     </button>
@@ -205,7 +205,9 @@
             </div>
         </div>
 
-
+        <button id="hud-camera-btn" class="hidden" aria-label="Camera Lock">
+            <i class="fa-solid fa-video"></i>
+        </button>
         <button id="hud-option-btn" class="hidden" onclick="ui.openOptions()" aria-label="Options">
             <i class="fa-solid fa-gear"></i>
         </button>
@@ -329,6 +331,10 @@
                         <div id="chat-list"></div>
                     </div>
                 </div>
+                <button id="chat-hq-open-btn" class="hidden pointer-events-auto" title="거점 생산창 열기">
+                    <i class="fa-solid fa-house-flag"></i>
+                    <span>HQ</span>
+                </button>
 
                 <div id="unit-panel-container"
                     class="flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
@@ -340,10 +346,6 @@
                             class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_armored">ARMORED</button>
                         <button onclick="game.setCategory('air')" id="tab-air"
                             class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_air">AIR</button>
-                        <button onclick="game.setCategory('veteran')" id="tab-veteran"
-                            class="btn-category flex-1 py-2 text-xs md:text-sm hidden" data-lang="cat_special">특수</button>
-                        <button id="tab-drone-only" class="btn-category flex-1 py-2 text-xs md:text-sm hidden" disabled
-                            data-lang="cat_drone">DRONE</button>
                     </div>
 
                     <div id="unit-list-wrapper" class="relative">
@@ -1358,59 +1360,39 @@
         <!-- Right Panel: Commands -->
         <section id="hud-right" class="hud-panel hud-right">
             <div id="hud-command-grid">
-                <!-- 1: Camera / Move / Stop -->
-                <button class="hud-cmd-btn" data-hud-cmd="camera">
-                    <span class="cmd-icon"><i class="fa-solid fa-video"></i></span>
-                    <span data-lang="cmd_camera">CAMERA</span>
-                </button>
-                <button class="hud-cmd-btn" data-hud-cmd="move">
-                    <span class="cmd-icon"><i class="fa-solid fa-up-down-left-right"></i></span>
-                    <span data-lang="cmd_move">MOVE</span>
-                </button>
-                <button class="hud-cmd-btn" data-hud-cmd="stop">
-                    <span class="cmd-icon"><i class="fa-solid fa-pause"></i></span>
-                    <span data-lang="cmd_stop">STOP</span>
-                </button>
+                <div class="hud-cmd-group hud-cmd-group-action">
+                    <button id="hud-cmd-skill1" class="hud-cmd-btn" data-hud-cmd="skill1">
+                        <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
+                        <span data-lang="cmd_skill1">SKILL 1</span>
+                    </button>
 
-                <!-- 2: Attack / Retreat -->
-                <button class="hud-cmd-btn" data-hud-cmd="attack">
-                    <span class="cmd-icon"><i class="fa-solid fa-crosshairs"></i></span>
-                    <span data-lang="cmd_attack">ATTACK</span>
-                </button>
-                <button class="hud-cmd-btn" data-hud-cmd="retreat">
-                    <span class="cmd-icon"><i class="fa-solid fa-arrow-rotate-left"></i></span>
-                    <span data-lang="cmd_retreat">RETREAT</span>
-                </button>
-                <!-- Recon: show only if recon unit selected -->
-                <button id="hud-cmd-recon" class="hud-cmd-btn is-hidden" data-hud-cmd="recon">
-                    <span class="cmd-icon"><i class="fa-solid fa-binoculars"></i></span>
-                    <span data-lang="cmd_recon">RECON</span>
-                </button>
-                <!-- Smoke: show only if smoke unit selected -->
-                <button id="hud-cmd-smoke" class="hud-cmd-btn is-hidden" data-hud-cmd="smoke">
-                    <span class="cmd-icon"><i class="fa-solid fa-smog"></i></span>
-                    <span data-lang="cmd_smoke">SMOKE</span>
-                </button>
-                <!-- Drop: show only if transport unit selected -->
-                <button id="hud-cmd-drop" class="hud-cmd-btn is-hidden" data-hud-cmd="drop">
-                    <span class="cmd-icon"><i class="fa-solid fa-arrow-down"></i></span>
-                    <span data-lang="cmd_drop">DROP</span>
-                </button>
-                <!-- Eject: show only if building selected -->
-                <button id="hud-cmd-eject" class="hud-cmd-btn is-hidden" data-hud-cmd="eject">
-                    <span class="cmd-icon"><i class="fa-solid fa-door-open"></i></span>
-                    <span data-lang="cmd_eject">EJECT</span>
-                </button>
-                <!-- News: show only if cameraman selected -->
-                <button id="hud-cmd-news" class="hud-cmd-btn is-hidden" data-hud-cmd="news">
-                    <span class="cmd-icon"><i class="fa-solid fa-tower-broadcast"></i></span>
-                    <span data-lang="cmd_news">NEWS</span>
-                </button>
-                <!-- Missile: show only if fighter jet selected -->
-                <button id="hud-cmd-missile" class="hud-cmd-btn is-hidden" data-hud-cmd="missile">
-                    <span class="cmd-icon"><i class="fa-solid fa-rocket"></i></span>
-                    <span data-lang="cmd_missile">MISSILE</span>
-                </button>
+                    <button id="hud-cmd-skill2" class="hud-cmd-btn" data-hud-cmd="skill2">
+                        <span class="cmd-icon"><i class="fa-solid fa-star"></i></span>
+                        <span data-lang="cmd_skill2">SKILL 2</span>
+                    </button>
+
+                    <button id="hud-cmd-interact" class="hud-cmd-btn" data-hud-cmd="interact">
+                        <span class="cmd-icon"><i class="fa-solid fa-hand-pointer"></i></span>
+                        <span data-lang="cmd_interact">INTERACT</span>
+                    </button>
+                </div>
+
+                <div class="hud-cmd-group hud-cmd-group-move">
+                    <button id="hud-cmd-backward" class="hud-cmd-btn" data-hud-cmd="backward">
+                        <span class="cmd-icon"><i class="fa-solid fa-angles-left"></i></span>
+                        <span data-lang="cmd_backward">BACKWARD</span>
+                    </button>
+
+                    <button id="hud-cmd-hold" class="hud-cmd-btn" data-hud-cmd="hold">
+                        <span class="cmd-icon"><i class="fa-solid fa-hand"></i></span>
+                        <span data-lang="cmd_hold">HOLD</span>
+                    </button>
+
+                    <button id="hud-cmd-forward" class="hud-cmd-btn" data-hud-cmd="forward">
+                        <span class="cmd-icon"><i class="fa-solid fa-angles-right"></i></span>
+                        <span data-lang="cmd_forward">FORWARD</span>
+                    </button>
+                </div>
             </div>
         </section>
     </footer>

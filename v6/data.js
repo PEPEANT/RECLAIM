@@ -49,6 +49,13 @@
             allowAir: true, ignoreDrone: true, airDamageMult: 0.35,
             yOffset: 0,
         },
+        // [CAMPAIGN][C] 점령전 HQ 미존재 맵에서 HQ 대체 생산 거점
+        spawn_flag_player: {
+            hp: 2200, width: 72, height: 96, name: '전개 깃발',
+            canShoot: false,
+            yOffset: 0,
+            hpBarOffsetY: 18
+        },
         bunker: { hp: 2000, width: 80, height: 60, color: '#475569', name: '전술 벙커', damage: 25, range: 350, rate: 30 },
         turret: { hp: 1500, width: 50, height: 60, color: '#64748b', name: 'CIWS 포탑', damage: 12, range: 500, rate: 8, antiAir: true }
     },
@@ -230,7 +237,8 @@
             width: 16, height: 8, color: '#94a3b8', type: 'air', stealth: true, lockOn: true, category: 'infantry',
             splashRadius: 120,  // [FIX] 약한 폭발
             role: '자폭 공격', description: '보병/경장갑을 향해 돌진해 폭발하는 1회용 드론.',
-            droneLaunchOnly: true
+            droneLaunchOnly: true,
+            hideFromUnitBar: true
         },
         drone_at: {
             id: 'drone_at', name: 'AT드론', cost: 55, cooldown: 100, maxCount: 12,
@@ -238,7 +246,8 @@
             width: 24, height: 12, color: '#facc15', type: 'air', splash: true, lockOn: true, category: 'infantry',
             splashRadius: 260,  // [FIX] 전술급 폭발
             role: '대전차', description: '장갑/건물을 우선 타격한다. 전술급 폭발로 광역 피해를 준다.',
-            droneLaunchOnly: true
+            droneLaunchOnly: true,
+            hideFromUnitBar: true
         },
         tactical_drone: {
             id: 'tactical_drone', name: '전술드론', cost: 50, cooldown: 120, maxCount: 0,

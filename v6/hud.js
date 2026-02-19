@@ -1,10 +1,10 @@
-/**
+﻿/**
  * hud.js - Fixed Bottom HUD (StarCraft-style)
  *
- * 핵심 원칙:
- * - HUD는 "표시 + 버튼 트리거"만 담당
- * - 실제 행동은 기존 시스템(game, unit_commands)이 수행
- * - 선택 소스는 game 1개, HUD는 표시만
+ * ???堉??????
+ * - HUD??"??戮?뻣 + ?뺢퀗????筌뤾봇遊뷸ㅀ?嶺??????
+ * - ???깆젷 ??怨뺤쭢?? ?リ옇?????戮?츩??game, unit_commands)????臾먮뺄
+ * - ??ルㅎ臾????裕??game 1?? HUD????戮?뻣嶺?
  */
 
 const HUD = {
@@ -21,6 +21,10 @@ const HUD = {
     // [P1] Dirty-checking state for optimized updates
     _lastMinimapHash: '',
     _lastCmdState: '',
+    _resolvedCommandMap: null,
+    _skirmishRightSlotPredeploy: false,
+    _contextRightSlotUnitPanel: false,
+    _forceHqRightSlotOpen: false,
 
     // DOM References (cached)
     elements: {
@@ -31,7 +35,9 @@ const HUD = {
         selectionInfo: null,
         productionArea: null,
         commandGrid: null,
-        zoomDisplay: null
+        rightPanel: null,
+        zoomDisplay: null,
+        cameraBtn: null
     },
 
     /**
@@ -49,7 +55,9 @@ const HUD = {
         this.elements.selectionInfo = document.getElementById('hud-selection-info');
         this.elements.productionArea = document.getElementById('hud-production-area');
         this.elements.commandGrid = document.getElementById('hud-command-grid');
+        this.elements.rightPanel = document.getElementById('hud-right');
         this.elements.zoomDisplay = document.getElementById('hud-zoom-display');
+        this.elements.cameraBtn = document.getElementById('hud-camera-btn');
 
         // Setup input blocking (critical for touch devices)
         this.setupInputBlocking();
@@ -72,8 +80,8 @@ const HUD = {
         if (this.elements.unitPanel) {
             this.elements.unitPanelOriginalParent = this.elements.unitPanel.parentElement;
             this.elements.unitPanelOriginalNextSibling = this.elements.unitPanel.nextSibling;
-            // [3.8] Unit panel always visible from game start
-            this.elements.unitPanel.style.display = 'flex';
+            // Start hidden; show only when production sheet opens
+            this.elements.unitPanel.style.display = 'none';
         }
 
         // Cache additional elements for building label feature
@@ -216,327 +224,640 @@ const HUD = {
                 this.updateZoomDisplay();
             });
         }
+
+        const cameraBtn = this.elements.cameraBtn;
+        if (cameraBtn) {
+            cameraBtn.addEventListener('click', (e) => {
+                e.stopPropagation();
+                if (typeof game.toggleCameraLock !== 'function') return;
+                game.toggleCameraLock();
+                this._lastCmdState = '';
+                this.updateCommandButtons();
+                if (typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') {
+                    app.markUiDirty();
+                }
+            });
+        }
     },
 
     /**
      * Setup command buttons (connect to existing command system)
      */
+    getLangText(key, fallback) {
+        if (typeof Lang !== 'undefined' && Lang && typeof Lang.getText === 'function') {
+            const text = Lang.getText(key);
+            if (typeof text === 'string' && text.trim()) return text;
+        }
+        return fallback;
+    },
+
+    getHudCommandButton(role) {
+        return document.querySelector(`[data-hud-cmd="${role}"]`);
+    },
+
+    setHudCommandButtonVisual(btn, iconClass, label) {
+        if (!btn) return;
+        const iconNode = btn.querySelector('.cmd-icon');
+        const labelNode = btn.querySelector('span:last-child');
+        if (iconNode) iconNode.innerHTML = `<i class='${iconClass}'></i>`;
+        if (labelNode) labelNode.textContent = label;
+    },
+
+    setHudButtonEnabled(btn, enabled) {
+        if (!btn) return;
+        btn.disabled = !enabled;
+        btn.classList.toggle('disabled', !enabled);
+    },
+
+    updateTopCameraButton(lockedOverride) {
+        const btn = this.elements.cameraBtn || document.getElementById('hud-camera-btn');
+        if (!btn) return;
+        const locked = (typeof lockedOverride === 'boolean')
+            ? lockedOverride
+            : ((typeof game.isCameraLocked === 'function') ? !!game.isCameraLocked() : !!game.cameraLockActive);
+        btn.classList.toggle('active', locked);
+        btn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+    },
+
+    getSkirmishPhase() {
+        if (typeof SkirmishMode !== 'undefined' && SkirmishMode && SkirmishMode.isActive) {
+            return String(SkirmishMode.phase || '').trim().toLowerCase();
+        }
+        return '';
+    },
+
+    isCommandLockedByMode() {
+        const phase = this.getSkirmishPhase();
+        return phase === 'placement' || phase === 'countdown';
+    },
+
+    isIcbmPayloadReady(payloadKey) {
+        if (!payloadKey || typeof game.isIcbmSkillKey !== 'function' || !game.isIcbmSkillKey(payloadKey)) {
+            return false;
+        }
+        if (typeof game.shouldShowIcbmSkills !== 'function' || !game.shouldShowIcbmSkills()) return false;
+        if (typeof game.hasReadyIcbmLauncher !== 'function' || !game.hasReadyIcbmLauncher('player')) return false;
+
+        const cfg = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.units) ? CONFIG.units[payloadKey] : null;
+        if (!cfg || !cfg.chargeKey) return false;
+        const charges = Math.max(0, Number(game.skillCharges?.[cfg.chargeKey]) || 0);
+        const cooldown = Math.max(0, Number(game.cooldowns?.[payloadKey]) || 0);
+        return charges > 0 && cooldown <= 0;
+    },
+
+    getMappedCommandMeta(cmd) {
+        switch (cmd) {
+            case 'move':
+                return { key: 'cmd_move', fallback: 'MOVE', icon: 'fa-solid fa-up-down-left-right', targetingType: '__move__' };
+            case 'recon':
+                return { key: 'cmd_recon', fallback: 'RECON', icon: 'fa-solid fa-binoculars' };
+            case 'smoke':
+                return { key: 'cmd_smoke', fallback: 'SMOKE', icon: 'fa-solid fa-smog', targetingType: '__smoke__' };
+            case 'drop':
+                return { key: 'cmd_drop', fallback: 'DROP', icon: 'fa-solid fa-arrow-down', targetingType: '__drop__' };
+            case 'missile':
+                return { key: 'cmd_missile', fallback: 'MISSILE', icon: 'fa-solid fa-rocket', targetingType: '__missile__' };
+            case 'news':
+                return { key: 'cmd_news', fallback: 'BROADCAST', icon: 'fa-solid fa-tower-broadcast', targetingType: '__news__' };
+            case 'camera':
+                return { key: 'cmd_camera', fallback: 'CAMERA', icon: 'fa-solid fa-video' };
+            case 'eject':
+                return { key: 'cmd_eject', fallback: 'EJECT', icon: 'fa-solid fa-right-from-bracket' };
+            case 'drone_suicide':
+                return { key: 'cmd_drone_suicide', fallback: 'SUICIDE DRONE', icon: 'fa-solid fa-skull-crossbones' };
+            case 'drone_at':
+                return { key: 'cmd_drone_at', fallback: 'AT DRONE', icon: 'fa-solid fa-shield-halved' };
+            case 'icbm_tactical':
+                return { key: 'cmd_icbm_tactical', fallback: 'TACTICAL', icon: 'fa-solid fa-bullseye', targetingType: 'tactical_missile' };
+            case 'icbm_emp':
+                return { key: 'cmd_icbm_emp', fallback: 'EMP', icon: 'fa-solid fa-bolt-lightning', targetingType: 'emp' };
+            case 'icbm_nuke':
+                return { key: 'cmd_icbm_nuke', fallback: 'NUKE', icon: 'fa-solid fa-radiation', targetingType: 'nuke' };
+            default:
+                return { key: 'cmd_more', fallback: 'MORE', icon: 'fa-solid fa-ellipsis' };
+        }
+    },
+
+    getRoleDefaultMeta(role) {
+        switch (role) {
+            case 'skill1':
+                return { key: 'cmd_skill1', fallback: 'SKILL 1', icon: 'fa-solid fa-bolt' };
+            case 'skill2':
+                return { key: 'cmd_skill2', fallback: 'SKILL 2', icon: 'fa-solid fa-star' };
+            case 'interact':
+                return { key: 'cmd_interact', fallback: 'INTERACT', icon: 'fa-solid fa-hand-pointer' };
+            case 'more':
+            default:
+                return { key: 'cmd_more', fallback: 'MORE', icon: 'fa-solid fa-ellipsis' };
+        }
+    },
+
+    getCommandContext() {
+        const selectedUnits = [];
+        if (game.selectedUnits && typeof game.selectedUnits.forEach === 'function') {
+            game.selectedUnits.forEach(u => {
+                if (u && !u.dead) selectedUnits.push(u);
+            });
+        }
+
+        let hasRecon = false;
+        let hasSmokeCharge = false;
+        let canDrop = false;
+        let hasMissileCharge = false;
+        let hasCameraman = false;
+
+        selectedUnits.forEach(u => {
+            const stats = u.stats || {};
+            const id = stats.id;
+
+            if (id === 'recon') hasRecon = true;
+            if (id === 'special_forces' && (u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
+            if (id && ['blackhawk', 'chinook', 'apc', 'humvee'].includes(id) && (u.transportDropsLeft || 0) > 0) {
+                canDrop = true;
+            }
+
+            const supportsMissile = (typeof game.unitHasMissileCommand === 'function')
+                ? game.unitHasMissileCommand(u)
+                : (id === 'fighter');
+            if (supportsMissile && (u.missileChargesLeft || 0) > 0) {
+                hasMissileCharge = true;
+            }
+
+            if (u.isCameraman || stats.isCameraman) hasCameraman = true;
+        });
+
+        const skirmishPhase = this.getSkirmishPhase();
+        const skirmishPredeploy = skirmishPhase === 'placement' || skirmishPhase === 'countdown';
+        const skirmishBattle = skirmishPhase === 'battle';
+        const commandLockedByMode = this.isCommandLockedByMode();
+
+        const selectedOperators = (typeof game.getSelectedOperators === 'function')
+            ? game.getSelectedOperators()
+            : selectedUnits.filter(u => u && u.stats?.operator === true);
+        const deployableOperators = (typeof game.getDeployableOperators === 'function')
+            ? game.getDeployableOperators()
+            : selectedOperators.filter(u => (u.droneChargesLeft || 0) > 0 && (!u.ownedDrone || u.ownedDrone.dead));
+
+        const selectedIcbm = (typeof game.getSelectedIcbmLaunchers === 'function')
+            ? game.getSelectedIcbmLaunchers()
+            : selectedUnits.filter(u => u && u.stats?.id === 'icbm');
+
+        const canIcbmTactical = skirmishBattle && this.isIcbmPayloadReady('tactical_missile');
+        const canIcbmEmp = skirmishBattle && this.isIcbmPayloadReady('emp');
+        const canIcbmNuke = skirmishBattle && this.isIcbmPayloadReady('nuke');
+
+        const cameraLocked = (typeof game.isCameraLocked === 'function') ? game.isCameraLocked() : false;
+
+        const selectedBunker = (game.selectedBuilding && game.selectedBuilding.type === 'bunker')
+            ? game.selectedBuilding
+            : null;
+        const canEject = !!(
+            selectedBunker &&
+            selectedBunker.team === 'player' &&
+            Array.isArray(selectedBunker.garrisonUnits) &&
+            selectedBunker.garrisonUnits.length > 0
+        );
+
+        return {
+            selectedUnits,
+            hasSelection: selectedUnits.length > 0,
+            hasRecon,
+            hasSmokeCharge,
+            canDrop,
+            hasMissileCharge,
+            hasCameraman,
+            skirmishPhase,
+            skirmishPredeploy,
+            skirmishBattle,
+            commandLockedByMode,
+            hasOperatorSelection: selectedOperators.length > 0,
+            hasDeployableOperator: deployableOperators.length > 0,
+            hasSelectedIcbm: selectedIcbm.length > 0,
+            canDroneSuicide: (!commandLockedByMode) && deployableOperators.length > 0,
+            canDroneAt: (!commandLockedByMode) && deployableOperators.length > 0,
+            canIcbmTactical,
+            canIcbmEmp,
+            canIcbmNuke,
+            canEject,
+            selectedBunker,
+            cameraLocked,
+            targetingType: game.targetingType || null,
+            buildModeActive: !!(game.buildMode && game.buildMode.active) || commandLockedByMode,
+            canMove: selectedUnits.length > 0,
+            canCamera: selectedUnits.length > 0 || cameraLocked
+        };
+    },
+
+    getCurrentStance(units) {
+        if (!Array.isArray(units) || units.length === 0) return 'forward';
+
+        let forward = 0;
+        let hold = 0;
+        let backward = 0;
+        units.forEach(u => {
+            const mode = (u && u.commandMode) || 'attack';
+            if (mode === 'retreat') backward++;
+            else if (mode === 'stop') hold++;
+            else forward++;
+        });
+
+        if (backward >= hold && backward >= forward) return 'backward';
+        if (hold >= backward && hold >= forward) return 'hold';
+        return 'forward';
+    },
+
+    isMappedCommandAvailable(cmd, ctx) {
+        if (!ctx) return false;
+
+        if (ctx.buildModeActive) return false;
+        if (ctx.targetingType) {
+            const meta = this.getMappedCommandMeta(cmd);
+            if (!meta || !meta.targetingType) return false;
+            return ctx.targetingType === meta.targetingType;
+        }
+
+        switch (cmd) {
+            case 'move': return !!ctx.canMove;
+            case 'recon': return !!ctx.hasRecon;
+            case 'smoke': return !!ctx.hasSmokeCharge;
+            case 'drop': return !!ctx.canDrop;
+            case 'missile': return !!ctx.hasMissileCharge;
+            case 'news': return !!ctx.hasCameraman;
+            case 'camera': return !!ctx.canCamera;
+            case 'eject': return !!ctx.canEject;
+            case 'drone_suicide': return !!ctx.canDroneSuicide;
+            case 'drone_at': return !!ctx.canDroneAt;
+            case 'icbm_tactical': return !!ctx.canIcbmTactical;
+            case 'icbm_emp': return !!ctx.canIcbmEmp;
+            case 'icbm_nuke': return !!ctx.canIcbmNuke;
+            default: return false;
+        }
+    },
+
+    resolveCommandRoleMap(ctx) {
+        const map = {
+            cancel: 'cancel',
+            stance: 'stance',
+            skill1: null,
+            skill2: null,
+            interact: null
+        };
+
+        const used = new Set();
+        const pick = (candidates) => {
+            for (let i = 0; i < candidates.length; i++) {
+                const cmd = candidates[i];
+                if (used.has(cmd)) continue;
+                if (!this.isMappedCommandAvailable(cmd, ctx)) continue;
+                used.add(cmd);
+                return cmd;
+            }
+            return null;
+        };
+
+        if (ctx.skirmishBattle && ctx.hasSelectedIcbm) {
+            map.skill1 = pick(['icbm_tactical', 'icbm_emp', 'icbm_nuke']);
+            map.skill2 = pick(['icbm_emp', 'icbm_tactical', 'icbm_nuke']);
+            map.interact = pick(['icbm_nuke', 'drop', 'eject', 'news', 'recon']);
+            return map;
+        }
+
+        if (ctx.hasOperatorSelection) {
+            map.skill1 = pick(['drone_suicide', 'drone_at']);
+            map.skill2 = pick(['drone_at', 'drone_suicide']);
+            map.interact = pick(['drop', 'eject', 'news', 'recon']);
+            return map;
+        }
+
+        map.skill1 = pick(['missile', 'smoke', 'recon', 'news']);
+        map.skill2 = pick(['smoke', 'missile', 'news', 'recon']);
+        map.interact = pick(['drop', 'eject', 'news', 'recon', 'missile', 'smoke']);
+
+        return map;
+    },
+
+    renderMappedRoleButton(role, mappedCmd, ctx) {
+        const btn = this.getHudCommandButton(role);
+        if (!btn) return;
+
+        if (!mappedCmd) {
+            const fallbackMeta = this.getRoleDefaultMeta(role);
+            this.setHudCommandButtonVisual(
+                btn,
+                fallbackMeta.icon,
+                this.getLangText(fallbackMeta.key, fallbackMeta.fallback)
+            );
+            this.setHudButtonEnabled(btn, false);
+            btn.classList.remove('active');
+            btn.dataset.hudResolvedCmd = '';
+            return;
+        }
+
+        const meta = this.getMappedCommandMeta(mappedCmd);
+        this.setHudCommandButtonVisual(btn, meta.icon, this.getLangText(meta.key, meta.fallback));
+        this.setHudButtonEnabled(btn, this.isMappedCommandAvailable(mappedCmd, ctx));
+
+        const isActive = (mappedCmd === 'camera')
+            ? !!ctx.cameraLocked
+            : (meta.targetingType ? ctx.targetingType === meta.targetingType : false);
+        btn.classList.toggle('active', isActive);
+        btn.dataset.hudResolvedCmd = mappedCmd;
+    },
+
+    handleCancelCommand() {
+        if (game.targetingType && typeof game.cancelTargeting === 'function') {
+            game.cancelTargeting();
+            return true;
+        }
+
+        if (game.buildMode && game.buildMode.active && typeof game.cancelBuildMode === 'function') {
+            game.cancelBuildMode();
+            return true;
+        }
+
+        let changed = false;
+        if (game.selectedUnits && game.selectedUnits.size > 0 && typeof game.clearAllSelection === 'function') {
+            game.clearAllSelection();
+            changed = true;
+        }
+        if (game.selectedBuilding) {
+            game.selectedBuilding = null;
+            changed = true;
+        }
+        if (!changed && typeof game.isCameraLocked === 'function' && game.isCameraLocked() && typeof game.toggleCameraLock === 'function') {
+            game.toggleCameraLock();
+            changed = true;
+        }
+
+        if (changed && typeof game.updateHUDSelection === 'function') {
+            game.updateHUDSelection();
+        }
+
+        return changed;
+    },
+
+    executeRetreatWithDroneRecall(units) {
+        let droneRecalled = false;
+
+        for (let i = 0; i < units.length; i++) {
+            const u = units[i];
+            if (!u || u.dead) continue;
+            if (u.stats?.id === 'drone_suicide' || u.stats?.id === 'drone_at' || u.stats?.category === 'drone') {
+                if (typeof game.requestDroneRecall === 'function') {
+                    if (game.requestDroneRecall(u)) droneRecalled = true;
+                }
+            }
+        }
+
+        if (!droneRecalled) {
+            for (let i = 0; i < units.length; i++) {
+                const u = units[i];
+                if (!u || u.dead) continue;
+                if (u.stats?.operator && u.ownedDrone && !u.ownedDrone.dead && typeof game.requestDroneRecall === 'function') {
+                    if (game.requestDroneRecall(u.ownedDrone)) droneRecalled = true;
+                }
+            }
+        }
+
+        if (!droneRecalled) {
+            units.forEach(u => {
+                if (!u || u.dead) return;
+                u.commandMode = 'retreat';
+                u.returnToBase = true;
+            });
+        }
+    },
+
+    applyStance(stance, units) {
+        if (!Array.isArray(units) || units.length === 0) {
+            ui.showToast('Select a unit first.');
+            return false;
+        }
+
+        if (stance === 'backward') {
+            this.executeRetreatWithDroneRecall(units);
+        } else {
+            const commandMode = (stance === 'hold') ? 'stop' : 'attack';
+            units.forEach(u => {
+                if (!u || u.dead) return;
+                u.commandMode = commandMode;
+                u.returnToBase = false;
+            });
+        }
+
+        const stanceKey = (stance === 'hold')
+            ? 'cmd_hold'
+            : (stance === 'backward' ? 'cmd_backward' : 'cmd_forward');
+        ui.showToast(`${this.getLangText('cmd_stance', 'STANCE')}: ${this.getLangText(stanceKey, stance.toUpperCase())}`);
+
+        if (typeof game.updateHUDSelection === 'function') {
+            game.updateHUDSelection();
+        }
+        return true;
+    },
+
+    handleStanceCommand() {
+        const ctx = this.getCommandContext();
+        if (!ctx.hasSelection || ctx.targetingType || ctx.buildModeActive) {
+            if (!ctx.hasSelection) ui.showToast('Select a unit first.');
+            return false;
+        }
+
+        const current = this.getCurrentStance(ctx.selectedUnits);
+        const next = (current === 'forward')
+            ? 'hold'
+            : (current === 'hold' ? 'backward' : 'forward');
+
+        return this.applyStance(next, ctx.selectedUnits);
+    },
+
+    handleFixedStanceCommand(targetStance) {
+        if (!['forward', 'hold', 'backward'].includes(targetStance)) return false;
+        const ctx = this.getCommandContext();
+        if (!ctx.hasSelection || ctx.targetingType || ctx.buildModeActive) {
+            if (!ctx.hasSelection) ui.showToast('Select a unit first.');
+            return false;
+        }
+        return this.applyStance(targetStance, ctx.selectedUnits);
+    },
+
+    executeMappedCommand(cmd) {
+        switch (cmd) {
+            case 'move':
+                if (typeof game.prepareMoveCommand === 'function') {
+                    game.prepareMoveCommand();
+                    return true;
+                }
+                return false;
+            case 'recon':
+                if (typeof game.toggleScope === 'function') {
+                    game.toggleScope();
+                    ui.showToast('Enemy force analysis.');
+                    return true;
+                }
+                return false;
+            case 'smoke':
+                if (typeof game.prepareSmokeCommand === 'function') {
+                    game.prepareSmokeCommand();
+                    return true;
+                }
+                return false;
+            case 'drop':
+                if (typeof game.prepareDropCommand === 'function') {
+                    game.prepareDropCommand();
+                    return true;
+                }
+                return false;
+            case 'missile':
+                if (typeof game.prepareMissileCommand === 'function') {
+                    game.prepareMissileCommand();
+                    return true;
+                }
+                return false;
+            case 'news':
+                if (typeof game.prepareNewsCommand === 'function') {
+                    game.prepareNewsCommand();
+                    return true;
+                }
+                return false;
+            case 'drone_suicide':
+                if (typeof game.launchOperatorDroneFromCommand === 'function') {
+                    return game.launchOperatorDroneFromCommand('drone_suicide') === true;
+                }
+                return false;
+            case 'drone_at':
+                if (typeof game.launchOperatorDroneFromCommand === 'function') {
+                    return game.launchOperatorDroneFromCommand('drone_at') === true;
+                }
+                return false;
+            case 'icbm_tactical':
+                if (typeof game.triggerIcbmSkillFromCommand === 'function') {
+                    return game.triggerIcbmSkillFromCommand('tactical_missile') === true;
+                }
+                return false;
+            case 'icbm_emp':
+                if (typeof game.triggerIcbmSkillFromCommand === 'function') {
+                    return game.triggerIcbmSkillFromCommand('emp') === true;
+                }
+                return false;
+            case 'icbm_nuke':
+                if (typeof game.triggerIcbmSkillFromCommand === 'function') {
+                    return game.triggerIcbmSkillFromCommand('nuke') === true;
+                }
+                return false;
+            case 'camera':
+                if (typeof game.toggleCameraLock === 'function') {
+                    game.toggleCameraLock();
+                    if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+                    return true;
+                }
+                return false;
+            case 'eject': {
+                const b = game.selectedBuilding;
+                const canEject = !!(
+                    b &&
+                    b.type === 'bunker' &&
+                    b.team === 'player' &&
+                    Array.isArray(b.garrisonUnits) &&
+                    b.garrisonUnits.length > 0
+                );
+                if (!canEject || typeof b.ejectAllGarrison !== 'function') return false;
+                b.ejectAllGarrison();
+                ui.showToast('雅뚯눖紐??醫딅뻺 ?袁⑷퍥 獄쏄퀣??');
+                if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+                return true;
+            }
+            default:
+                return false;
+        }
+    },
+
     setupCommandButtons() {
         const cmdBtns = document.querySelectorAll('[data-hud-cmd]');
-
         cmdBtns.forEach(btn => {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
-                const cmd = btn.dataset.hudCmd;
+                if (btn.disabled) return;
 
-                const cameraLocked = (typeof game.isCameraLocked === 'function') ? game.isCameraLocked() : false;
+                const role = btn.dataset.hudCmd;
+                if (!role) return;
 
-                // Check if any units are selected
-                if (!game.selectedUnits || game.selectedUnits.size === 0) {
-                    if (!(cmd === 'camera' && cameraLocked)) {
-                        ui.showToast('유닛을 먼저 선택하세요');
-                        return;
-                    }
-                }
-
-                // Use existing command system from unit_commands.js
-                if (cmd === 'camera') {
-                    if (typeof game.toggleCameraLock === 'function') {
-                        game.toggleCameraLock();
-                    }
-                    if (typeof game.updateHUDSelection === 'function') {
-                        game.updateHUDSelection();
-                    }
-                    return;
-                } else if (cmd === 'recon') {
-                    // Recon 전력 분석(스코프 모달) (정찰기 전용)
-                    if (typeof game.toggleScope === 'function') {
-                        game.toggleScope();
-                        ui.showToast('적군 전력 분석');
-                    } else {
-                        ui.showToast('전력 분석 UI(scope-modal)가 없습니다');
-                    }
-
-                    cmdBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    game.updateHUDSelection();
-                    return;
-                } else if (cmd === 'eject') {
-                    // [NEW] 건물 주둔 유닛 배출
-                    if (game.selectedBuilding && game.selectedBuilding.type === 'bunker') {
-                        const b = game.selectedBuilding;
-                        if (b.garrisonUnits && b.garrisonUnits.length > 0 && b.team === 'player') {
-                            if (b.ejectAllGarrison) {
-                                b.ejectAllGarrison();
-                                ui.showToast('주둔 유닛 전체 배출!');
-                                game.updateHUDSelection();
-                            }
-                        } else {
-                            ui.showToast('배출할 유닛이 없습니다');
-                        }
-                    }
-                    return;
-                } else if (cmd === 'news') {
-                    // [NEW] 뉴스 송출 위치 지정 (카메라맨 전용)
-                    if (typeof game.prepareNewsCommand === 'function') {
-                        game.prepareNewsCommand();
-                    }
-                    return;
-                } else if (cmd === 'move') {
-                    // [ADD] move는 타겟팅 모드로 진입 (모바일 전용 흐름 포함)
-                    if (game.prepareMoveCommand) game.prepareMoveCommand();
-
-                    cmdBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    return;
-                } else if (cmd === 'smoke') {
-                    // [NEW] smoke grenade targeting (special forces only)
-                    if (game.prepareSmokeCommand) game.prepareSmokeCommand();
-
-                    if (game.targetingType === '__smoke__') {
-                        cmdBtns.forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                    }
-                    return;
-                } else if (cmd === 'drop') {
-                    // [NEW] transport drop command
-                    if (game.prepareDropCommand) game.prepareDropCommand();
-
-                    if (game.targetingType === '__drop__') {
-                        cmdBtns.forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                    }
-                    if (typeof game.updateHUDSelection === 'function') {
-                        game.updateHUDSelection();
-                    }
-                    return;
-                } else if (cmd === 'missile') {
-                    // [NEW] fighter jet missile targeting
-                    if (game.prepareMissileCommand) game.prepareMissileCommand();
-                    if (game.targetingType === '__missile__') {
-                        cmdBtns.forEach(b => b.classList.remove('active'));
-                        btn.classList.add('active');
-                    }
-                    return;
-                } else if (cmd === 'retreat') {
-                    // [P0-3] 후퇴 = 드론 복귀(회수) 통합
-                    // 1순위: 선택된 드론이 있으면 복귀
-                    // 2순위: 선택된 드론병의 ownedDrone 복귀
-                    // 3순위: 일반 유닛 후퇴
-                    let droneRecalled = false;
-
-                    // 선택된 유닛 중 드론 찾기
-                    for (const u of game.selectedUnits) {
-                        if (u && !u.dead && (u.stats?.id === 'drone_suicide' || u.stats?.id === 'drone_at' || u.stats?.category === 'drone')) {
-                            if (typeof game.requestDroneRecall === 'function') {
-                                game.requestDroneRecall(u);
-                                droneRecalled = true;
-                            }
-                        }
-                    }
-
-                    // 드론이 없으면 드론병의 ownedDrone 복귀
-                    if (!droneRecalled) {
-                        for (const u of game.selectedUnits) {
-                            if (u && !u.dead && u.stats?.operator && u.ownedDrone && !u.ownedDrone.dead) {
-                                if (typeof game.requestDroneRecall === 'function') {
-                                    game.requestDroneRecall(u.ownedDrone);
-                                    droneRecalled = true;
-                                }
-                            }
-                        }
-                    }
-
-                    // 드론 복귀가 없으면 일반 후퇴
-                    if (!droneRecalled) {
-                        game.selectedUnits.forEach(u => {
-                            if (!u.dead) {
-                                u.commandMode = 'retreat';
-                                u.returnToBase = true;
-                            }
-                        });
-                        ui.showToast(`${game.selectedUnits.size}개 유닛: 후퇴 명령`);
-                    }
-
-                    cmdBtns.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    game.updateHUDSelection();
-                    return;
+                let handled = false;
+                if (role === 'forward' || role === 'hold' || role === 'backward') {
+                    handled = this.handleFixedStanceCommand(role);
+                } else if (role === 'cancel') {
+                    handled = this.handleCancelCommand();
+                } else if (role === 'stance') {
+                    // Compatibility fallback for old markup; no longer used in fixed 3-button stance UI.
+                    handled = this.handleStanceCommand();
                 } else {
-                    // Apply command to selected units
-                    game.selectedUnits.forEach(u => {
-                        if (!u.dead) {
-                            u.commandMode = cmd;
-                            u.returnToBase = (cmd === 'retreat');
-                        }
-                    });
-
-                    // Show feedback
-                    const cmdNames = { stop: '정지', attack: '공격', retreat: '후퇴' };
-                    ui.showToast(`${game.selectedUnits.size}개 유닛: ${cmdNames[cmd] || cmd} 명령`);
+                    const roleMap = this._resolvedCommandMap || this.resolveCommandRoleMap(this.getCommandContext());
+                    const mapped = roleMap[role] || null;
+                    if (mapped) handled = this.executeMappedCommand(mapped);
                 }
 
-                // Visual feedback
-                cmdBtns.forEach(b => b.classList.remove('active'));
-                if (cmd !== 'camera') {
-                    btn.classList.add('active');
+                if (handled && typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') {
+                    app.markUiDirty();
                 }
 
-                // Update HUD selection display
-                game.updateHUDSelection();
+                this._lastCmdState = '';
+                this.updateCommandButtons();
             });
         });
     },
 
-    /**
-     * Update command button states based on selection
-     * [P1] Uses dirty-checking to avoid redundant DOM updates
-     */
     updateCommandButtons() {
-        const hasSelection = game.selectedUnits && game.selectedUnits.size > 0;
-        const cameraLocked = (typeof game.isCameraLocked === 'function') ? game.isCameraLocked() : false;
+        const ctx = this.getCommandContext();
+        this.updateTopCameraButton(ctx.cameraLocked);
+        const roleMap = this.resolveCommandRoleMap(ctx);
+        const stance = this.getCurrentStance(ctx.selectedUnits);
 
-        // [P1] Build state hash for dirty-checking
-        let stateKey = `sel:${hasSelection}|cam:${cameraLocked}`;
-        let hasTransport = false;
-        let canDrop = false;
-        let hasMissileUnit = false;
-        let hasMissileCharge = false;
-        if (hasSelection) {
-            let hasRecon = false, hasSF = false, hasSmokeCharge = false;
-            for (const u of game.selectedUnits) {
-                if (u && !u.dead) {
-                    if (u.stats?.id === 'recon') hasRecon = true;
-                    if (u.stats?.id === 'special_forces') {
-                        hasSF = true;
-                        if ((u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
-                    }
-                    if (u.stats?.id && ['blackhawk', 'chinook', 'apc', 'humvee'].includes(u.stats.id)) {
-                        hasTransport = true;
-                        if ((u.transportDropsLeft || 0) > 0) canDrop = true;
-                    }
-                    const supportsMissile = (typeof game.unitHasMissileCommand === 'function')
-                        ? game.unitHasMissileCommand(u)
-                        : (u.stats?.id === 'fighter');
-                    if (supportsMissile) {
-                        hasMissileUnit = true;
-                        if ((u.missileChargesLeft || 0) > 0) hasMissileCharge = true;
-                    }
-                }
-            }
-            stateKey += `|recon:${hasRecon}|sf:${hasSF}|smoke:${hasSmokeCharge}|drop:${hasTransport}|dropReady:${canDrop}|missileUnit:${hasMissileUnit}|missile:${hasMissileCharge}`;
-        }
-        if (game.selectedBuilding && game.selectedBuilding.type === 'bunker') {
-            const b = game.selectedBuilding;
-            const garrisonLen = b.garrisonUnits ? b.garrisonUnits.length : 0;
-            stateKey += `|eject:${b.team === 'player' && garrisonLen > 0}`;
-        }
+        const stateKey = [
+            `u:${ctx.selectedUnits.length}`,
+            `b:${ctx.selectedBunker ? ctx.selectedBunker.garrisonUnits.length : 0}`,
+            `cam:${ctx.cameraLocked ? 1 : 0}`,
+            `t:${ctx.targetingType || '-'}`,
+            `build:${ctx.buildModeActive ? 1 : 0}`,
+            `recon:${ctx.hasRecon ? 1 : 0}`,
+            `smoke:${ctx.hasSmokeCharge ? 1 : 0}`,
+            `drop:${ctx.canDrop ? 1 : 0}`,
+            `missile:${ctx.hasMissileCharge ? 1 : 0}`,
+            `news:${ctx.hasCameraman ? 1 : 0}`,
+            `eject:${ctx.canEject ? 1 : 0}`,
+            `stance:${stance}`,
+            `s1:${roleMap.skill1 || '-'}`,
+            `s2:${roleMap.skill2 || '-'}`,
+            `i:${roleMap.interact || '-'}`
+        ].join('|');
 
-        // [P1] Skip if state unchanged
         if (stateKey === this._lastCmdState) return;
         this._lastCmdState = stateKey;
+        this._resolvedCommandMap = roleMap;
 
-        const cmdBtns = document.querySelectorAll('[data-hud-cmd]');
+        const canStance = !!(ctx.hasSelection && !ctx.targetingType && !ctx.buildModeActive);
+        const fixedStanceButtons = [
+            { role: 'backward', key: 'cmd_backward', fallback: 'BACKWARD', icon: 'fa-solid fa-angles-left' },
+            { role: 'hold', key: 'cmd_hold', fallback: 'HOLD', icon: 'fa-solid fa-hand' },
+            { role: 'forward', key: 'cmd_forward', fallback: 'FORWARD', icon: 'fa-solid fa-angles-right' }
+        ];
 
-        // Recon 버튼은 "정찰기 선택 시에만" 노출
-        const reconBtn = document.querySelector('[data-hud-cmd="recon"]');
-        let hasRecon = false;
-        if (hasSelection) {
-            for (const u of game.selectedUnits) {
-                if (u && !u.dead && u.stats?.id === 'recon') { hasRecon = true; break; }
-            }
-        }
-        if (reconBtn) {
-            reconBtn.classList.toggle('is-hidden', !hasRecon);
-            reconBtn.disabled = !hasRecon;
-            reconBtn.classList.toggle('disabled', !hasRecon);
-        }
-
-        // Smoke 버튼은 "특수부대 선택 시에만" 노출
-        const smokeBtn = document.querySelector('[data-hud-cmd="smoke"]');
-        let hasSpecialForces = false;
-        let hasSmokeCharge = false;
-        if (hasSelection) {
-            for (const u of game.selectedUnits) {
-                if (u && !u.dead && u.stats?.id === 'special_forces') {
-                    hasSpecialForces = true;
-                    if ((u.smokeChargesLeft || 0) > 0) {
-                        hasSmokeCharge = true;
-                        break;
-                    }
-                }
-            }
-        }
-        if (smokeBtn) {
-            smokeBtn.classList.toggle('is-hidden', !hasSpecialForces);
-            smokeBtn.disabled = !hasSmokeCharge;
-            smokeBtn.classList.toggle('disabled', !hasSmokeCharge);
-        }
-
-        // [NEW] Drop 버튼: 수송 유닛 선택 시 노출
-        const dropBtn = document.querySelector('[data-hud-cmd="drop"]');
-        if (dropBtn) {
-            dropBtn.classList.toggle('is-hidden', !hasTransport);
-            dropBtn.disabled = !canDrop;
-            dropBtn.classList.toggle('disabled', !canDrop);
-        }
-
-        // [NEW] Missile 버튼: 전투기 선택 시 노출
-        const missileBtn = document.querySelector('[data-hud-cmd="missile"]');
-        if (missileBtn) {
-            missileBtn.classList.toggle('is-hidden', !hasMissileUnit);
-            missileBtn.disabled = !hasMissileCharge;
-            missileBtn.classList.toggle('disabled', !hasMissileCharge);
-        }
-
-        // [NEW] Eject 버튼은 "건물 선택 시 + 주둔 유닛 있을 때만" 노출
-        const ejectBtn = document.querySelector('[data-hud-cmd="eject"]');
-        let canEject = false;
-        if (game.selectedBuilding && game.selectedBuilding.type === 'bunker') {
-            const b = game.selectedBuilding;
-            canEject = b.team === 'player' && b.garrisonUnits && b.garrisonUnits.length > 0;
-        }
-        if (ejectBtn) {
-            ejectBtn.classList.toggle('is-hidden', !canEject);
-            ejectBtn.disabled = !canEject;
-            ejectBtn.classList.toggle('disabled', !canEject);
-        }
-
-        // [NEW] News 버튼은 "카메라맨 선택 시에만" 노출
-        const newsBtn = document.querySelector('[data-hud-cmd="news"]');
-        let hasCameraman = false;
-        if (hasSelection) {
-            for (const u of game.selectedUnits) {
-                if (u && !u.dead && u.isCameraman) { hasCameraman = true; break; }
-            }
-        }
-        if (newsBtn) {
-            newsBtn.classList.toggle('is-hidden', !hasCameraman);
-            newsBtn.disabled = !hasCameraman;
-            newsBtn.classList.toggle('disabled', !hasCameraman);
-        }
-
-        cmdBtns.forEach(btn => {
-            const cmd = btn.dataset.hudCmd;
-            if (cmd === 'camera') {
-                const canUseCamera = hasSelection || cameraLocked;
-                btn.disabled = !canUseCamera;
-                btn.classList.toggle('disabled', !canUseCamera);
-                btn.classList.toggle('active', cameraLocked);
-            } else if (cmd === 'smoke') {
-                const canUseSmoke = hasSelection && hasSmokeCharge;
-                btn.disabled = !canUseSmoke;
-                btn.classList.toggle('disabled', !canUseSmoke);
-            } else if (cmd === 'eject') {
-                // eject는 위에서 별도 처리
-            } else {
-                btn.disabled = !hasSelection;
-                btn.classList.toggle('disabled', !hasSelection);
-            }
+        fixedStanceButtons.forEach(def => {
+            const btn = this.getHudCommandButton(def.role);
+            if (!btn) return;
+            this.setHudCommandButtonVisual(
+                btn,
+                def.icon,
+                this.getLangText(def.key, def.fallback)
+            );
+            this.setHudButtonEnabled(btn, canStance);
+            btn.classList.toggle('active', canStance && stance === def.role);
+            btn.dataset.hudResolvedCmd = def.role;
         });
+
+        this.renderMappedRoleButton('skill1', roleMap.skill1, ctx);
+        this.renderMappedRoleButton('skill2', roleMap.skill2, ctx);
+        this.renderMappedRoleButton('interact', roleMap.interact, ctx);
     },
-
-
     /**
      * Setup minimap click-to-move (with pointer capture to prevent drag leak)
      */
@@ -595,15 +916,21 @@ const HUD = {
         if (this.elements.footer) {
             this.elements.footer.classList.remove('hidden');
         }
+        this.setSkirmishRightSlotMode(false);
         this.updateSpeedButtons(game.speed);
         this.updateZoomDisplay();
         this.hideLegacyUI();
+        this.hideProductionArea();
+        this._lastCmdState = '';
+        this.updateCommandButtons();
     },
 
     /**
      * Hide HUD (called when returning to lobby)
      */
     hide() {
+        this.setSkirmishRightSlotMode(false);
+        this.hideProductionArea();
         if (this.elements.footer) {
             this.elements.footer.classList.add('hidden');
         }
@@ -620,9 +947,17 @@ const HUD = {
         if (!info) return;
 
         this.selection = selection;
+        const isHqLikeSelection = !!(
+            selection &&
+            selection.kind === 'building' &&
+            (selection.buildingType === 'hq_player' || selection.buildingType === 'spawn_flag_player')
+        );
+        if (!isHqLikeSelection) {
+            this._forceHqRightSlotOpen = false;
+        }
 
         if (!selection) {
-            info.innerHTML = '<span class="hud-placeholder-text">유닛/건물을 선택하세요</span>';
+            info.innerHTML = '<span class="hud-placeholder-text">SELECT A UNIT/BUILDING</span>';
             this.updateProductionArea();
             this.updateCommandButtons();
             return;
@@ -631,19 +966,23 @@ const HUD = {
         if (selection.kind === 'unit') {
             info.innerHTML = `
                 <div class="hud-selection-item">
-                    <span class="hud-selection-type">유닛</span>
+                    <span class="hud-selection-type">UNIT</span>
                     <span class="hud-selection-name">${selection.name}</span>
-                    <span class="hud-selection-count">${selection.count}개</span>
+                    <span class="hud-selection-count">${selection.count || 1}</span>
                 </div>
             `;
         } else if (selection.kind === 'building') {
-            const isHQ = (selection.name === 'hq_player' && selection.team === 'player');
+            const isHQ = (
+                selection.team === 'player'
+                && (selection.buildingType === 'hq_player' || selection.buildingType === 'spawn_flag_player')
+            );
             const isBunker = (selection.buildingType === 'bunker');
 
             if (isHQ) {
-                info.innerHTML = '<span class="hud-placeholder-text">본부</span>';
+                const label = (selection.buildingType === 'spawn_flag_player') ? 'SPAWN FLAG' : 'HQ';
+                info.innerHTML = `<span class="hud-placeholder-text">${label}</span>`;
             } else if (isBunker && selection.building) {
-                // [NEW] 벙커(건물) 선택 시 주둔 보병 정보 표시
+                // [NEW] ?뺢퀣?욥뜮?濾곌쑬?囹? ??ルㅎ臾????낅슣?뽳쭗??곌랜????筌먲퐢沅???戮?뻣
                 const b = selection.building;
                 const garrisonCount = b.garrisonUnits ? b.garrisonUnits.length : 0;
                 const maxGarrison = b.maxGarrison || 7;
@@ -653,19 +992,19 @@ const HUD = {
 
                 let statusHtml = '';
                 if (!isDestroyed && garrisonCount > 0 && b.team === 'player') {
-                    // [NEW] 주둔 보병 종류별 그룹화
+                    // [NEW] ?낅슣?뽳쭗??곌랜?????リ턁筌잛옊???잙갭梨띄쳥??
                     const unitGroups = {};
                     b.garrisonUnits.forEach((u, idx) => {
                         if (!u || u.dead) return;
                         const id = u.stats?.id || 'unknown';
                         if (!unitGroups[id]) {
-                            unitGroups[id] = { name: u.stats?.name || '유닛', color: u.stats?.color || '#fff', count: 0, indices: [] };
+                            unitGroups[id] = { name: u.stats?.name || 'Unit', color: u.stats?.color || '#fff', count: 0, indices: [] };
                         }
                         unitGroups[id].count++;
                         unitGroups[id].indices.push(idx);
                     });
 
-                    // 종류별 프로필 UI 생성
+                    // ??リ턁筌잛옊???熬곣뫁夷??UI ??諛댁뎽
                     let profileHtml = '';
                     for (const [id, group] of Object.entries(unitGroups)) {
                         profileHtml += `
@@ -679,50 +1018,50 @@ const HUD = {
 
                     statusHtml = `
                         <div class="flex items-center gap-3">
-                            <span class="hud-selection-type" style="background: ${teamColor}">건물</span>
+                            <span class="hud-selection-type" style="background: ${teamColor}">BUILDING</span>
                             <span class="hud-selection-name">${selection.name}</span>
                             <span class="text-green-400 text-xs">+${defBonus}% DEF</span>
                         </div>
                         <div class="flex items-center gap-1 mt-1 flex-wrap">
                             ${profileHtml}
-                            <button id="hud-eject-all-btn" class="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded">전체배출</button>
+                            <button id="hud-eject-all-btn" class="px-2 py-0.5 bg-red-600 hover:bg-red-500 text-white text-xs rounded">ALL EJECT</button>
                         </div>
                     `;
                 } else {
                     statusHtml = `
                         <div class="flex items-center gap-3">
-                            <span class="hud-selection-type" style="background: ${teamColor}">건물</span>
+                            <span class="hud-selection-type" style="background: ${teamColor}">BUILDING</span>
                             <span class="hud-selection-name">${selection.name}</span>
                         </div>
                         <div class="flex items-center gap-2 mt-1">
-                            <span class="text-white">🪖 ${garrisonCount}/${maxGarrison}</span>
+                            <span class="text-white">GARRISON ${garrisonCount}/${maxGarrison}</span>
                         </div>
                     `;
                 }
 
                 info.innerHTML = `<div class="hud-selection-item">${statusHtml}</div>`;
 
-                // [NEW] 개별 배출 버튼 이벤트 바인딩
+                // [NEW] ?띠룇裕???꾩룄????뺢퀗??????繹???꾩룆????
                 info.querySelectorAll('[data-eject-type]').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const unitType = btn.dataset.ejectType;
                         if (b.ejectOneByType) {
                             b.ejectOneByType(unitType);
-                            ui.showToast(`${unitType} 1기 배출!`);
+                            ui.showToast(`${unitType} 1疫?獄쏄퀣??`);
                             game.updateHUDSelection();
                         }
                     });
                 });
 
-                // [NEW] 전체 배출 버튼 이벤트 바인딩
+                // [NEW] ?熬곣뫕???꾩룄????뺢퀗??????繹???꾩룆????
                 const ejectAllBtn = document.getElementById('hud-eject-all-btn');
                 if (ejectAllBtn) {
                     ejectAllBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         if (b.ejectAllGarrison) {
                             b.ejectAllGarrison();
-                            ui.showToast('주둔 유닛 전체 배출!');
+                            ui.showToast('雅뚯눖紐??醫딅뻺 ?袁⑷퍥 獄쏄퀣??');
                             game.updateHUDSelection();
                         }
                     });
@@ -730,13 +1069,13 @@ const HUD = {
             } else {
                 info.innerHTML = `
                     <div class="hud-selection-item">
-                        <span class="hud-selection-type">건물</span>
+                        <span class="hud-selection-type">BUILDING</span>
                         <span class="hud-selection-name">${selection.name}</span>
                     </div>
                 `;
             }
         } else if (selection.kind === 'multi') {
-            info.innerHTML = `<span style="color: #22c55e; font-weight: bold;">${selection.count}개 유닛 선택됨</span>`;
+            info.innerHTML = `<span style="color: #22c55e; font-weight: bold;">${selection.count} UNITS SELECTED</span>`;
         }
 
         this.updateProductionArea();
@@ -749,66 +1088,62 @@ const HUD = {
         const productionArea = this.elements.productionArea;
         const unitPanel = this.elements.unitPanel;
         const footer = this.elements.footer;
-        const infoArea = this.elements.infoArea;
         const buildingLabel = this.elements.buildingLabel;
         if (!productionArea || !unitPanel) return;
 
-        // [3.8] HQ 선택 시 특수탭 처리
+        if (typeof SkirmishMode !== 'undefined' && SkirmishMode && SkirmishMode.isActive) {
+            const phase = String(SkirmishMode.phase || '').trim().toLowerCase();
+            this.setSkirmishRightSlotMode(phase === 'placement' || phase === 'countdown');
+            this.hideProductionArea();
+            return;
+        }
+
+        const isHQSelected = !!(
+            game.selectedBuilding &&
+            (game.selectedBuilding.type === 'hq_player' || game.selectedBuilding.type === 'spawn_flag_player') &&
+            game.selectedBuilding.team === 'player'
+        );
+
+        // Keep veteran/special tab behavior unchanged
         const tabSpecial = document.getElementById('tab-special');
-        const isHQSelected = game.selectedBuilding &&
-            (game.selectedBuilding.type === 'hq_player' && game.selectedBuilding.team === 'player');
-        const hasAnySelection = (game.selectedUnits && game.selectedUnits.size > 0) ||
-            game.selectedBuilding || this.checkWorkerSelected();
+        const hasAnySelection = (game.selectedUnits && game.selectedUnits.size > 0) || game.selectedBuilding || this.checkWorkerSelected();
 
         if (tabSpecial) {
             if (isHQSelected) {
-                // HQ 선택 시: 특수탭 숨김
                 tabSpecial.style.display = 'none';
-                // 현재 카테고리가 special이면 infantry로 강제 전환
                 if (game.currentCategory === 'special') {
                     game.setCategory('infantry');
                 }
             } else if (!hasAnySelection) {
-                // 아무것도 선택 안 됨 (배경 클릭): 특수탭 표시 + 활성화
                 tabSpecial.style.display = '';
                 game.setCategory('special');
             } else {
-                // 다른 것(유닛, 작업자 등) 선택 시: 특수탭 표시만 (활성화는 안 함)
                 tabSpecial.style.display = '';
             }
         }
 
-        // [NEW] 작업자 선택 시 건물 버튼 표시
+        // Worker selected: show build actions
         const hasWorkerSelected = this.checkWorkerSelected();
         if (hasWorkerSelected) {
             this.showBuildButtons(productionArea, footer, buildingLabel);
             return;
         }
 
-        // [NEW] 건물 선택 시 해당 건물의 생산 탭 표시
+        // Production building selected: show building production
         const selectedBuilding = this.getSelectedProductionBuilding();
         if (selectedBuilding) {
             this.showProductionBuildingUI(selectedBuilding, productionArea, footer, buildingLabel);
             return;
         }
 
-        // [3.8] HQ production embedding - allow disabling on narrow/mobile screens
-        if (this.disableHQEmbedOnMobile && window.innerWidth <= this.mobileEmbedBreakpoint) {
-            // Keep the unit panel in its original parent (do not embed into production area)
-            productionArea.innerHTML = '';
-            if (this.elements.unitPanel && this.elements.unitPanelOriginalParent) {
-                if (!this.elements.unitPanelOriginalParent.contains(this.elements.unitPanel)) {
-                    this.elements.unitPanelOriginalParent.insertBefore(this.elements.unitPanel, this.elements.unitPanelOriginalNextSibling);
-                }
-                this.elements.unitPanel.style.display = 'flex';
-            }
-            if (footer) footer.classList.remove('hud-show-production');
-            if (buildingLabel) buildingLabel.textContent = '';
+        // HQ selected: show unit production sheet
+        if (isHQSelected) {
+            this.showHQProductionUI(productionArea, footer, buildingLabel);
             return;
         }
 
-        // Default behaviour: embed HQ unit panel into the production area
-        this.showHQProductionUI(productionArea, footer, buildingLabel);
+        // Default: close sheet in combat
+        this.hideProductionArea();
     },
 
     /**
@@ -908,7 +1243,7 @@ const HUD = {
     },
 
     // ============================================
-    // [NEW] 작업자 건설 버튼 관련 함수
+    // [NEW] ??얜????濾곌쑬?삭땻??뺢퀗?????㉱????貫??
     // ============================================
     checkWorkerSelected() {
         if (!game.selectedUnits || game.selectedUnits.size === 0) return false;
@@ -930,46 +1265,202 @@ const HUD = {
         return null;
     },
 
-    // [목표 C/D] HQ 선택 시 유닛탭 전체를 production area에 임베드
-    // worker는 infantry 카테고리에 포함되어 유닛탭에서 생산 가능
+    getQuickHQProductionBuilding() {
+        const buildings = Array.isArray(game?.buildings) ? game.buildings : [];
+        const isValidPlayerBuilding = (b) => !!(b && !b.dead && b.team === 'player');
+
+        // Prefer real HQ first.
+        const hq = buildings.find((b) => isValidPlayerBuilding(b) && b.type === 'hq_player');
+        if (hq) return hq;
+
+        // Fallback to spawn flag (capture/special maps).
+        const spawnFlag = buildings.find((b) => isValidPlayerBuilding(b) && b.type === 'spawn_flag_player');
+        if (spawnFlag) return spawnFlag;
+        return null;
+    },
+
+    openQuickHQProduction() {
+        if (!game || !game.running || game.isGameOver) return false;
+
+        const building = this.getQuickHQProductionBuilding();
+        if (!building) return false;
+
+        if (game.targetingType && typeof game.cancelTargeting === 'function') {
+            game.cancelTargeting();
+        }
+        if (game.buildMode && game.buildMode.active && typeof game.cancelBuildMode === 'function') {
+            game.cancelBuildMode();
+        }
+
+        if (typeof game.clearAllSelection === 'function') {
+            game.clearAllSelection();
+        } else if (game.selectedUnits && typeof game.selectedUnits.clear === 'function') {
+            game.selectedUnits.clear();
+        }
+
+        game.selectedBuilding = building;
+        this._forceHqRightSlotOpen = true;
+
+        if (typeof game.updateHUDSelection === 'function') {
+            game.updateHUDSelection();
+        } else {
+            this.setSelection({
+                kind: 'building',
+                name: building.name || building.type || 'Building',
+                buildingType: building.type,
+                building,
+                hp: building.hp || 0,
+                hpMax: building.maxHp || 100,
+                team: building.team || 'player'
+            });
+        }
+
+        this.setContextRightSlotMode(true);
+        if (this.elements.footer) this.elements.footer.classList.remove('hud-show-production');
+        if (this.elements.unitPanel) {
+            this.elements.unitPanel.classList.remove('hidden');
+            this.elements.unitPanel.style.display = 'flex';
+        }
+
+        if (typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') {
+            app.markUiDirty();
+        }
+
+        return true;
+    },
+
+    _applyRightSlotLayout() {
+        const footer = this.elements.footer;
+        const rightPanel = this.elements.rightPanel || document.getElementById('hud-right');
+        const commandGrid = this.elements.commandGrid || document.getElementById('hud-command-grid');
+        const unitPanel = this.elements.unitPanel;
+        const originalParent = this.elements.unitPanelOriginalParent;
+
+        const showUnitPanelInRight = !!(this._skirmishRightSlotPredeploy || this._contextRightSlotUnitPanel);
+        if (footer) {
+            footer.classList.toggle('hud-right-unitpanel-active', showUnitPanelInRight);
+        }
+        if (!rightPanel || !commandGrid || !unitPanel) return;
+
+        if (showUnitPanelInRight) {
+            if (!rightPanel.contains(unitPanel)) {
+                rightPanel.appendChild(unitPanel);
+            }
+            commandGrid.classList.add('hidden');
+            commandGrid.style.display = 'none';
+            unitPanel.classList.remove('hidden');
+            unitPanel.style.display = 'flex';
+            return;
+        }
+
+        commandGrid.classList.remove('hidden');
+        commandGrid.style.removeProperty('display');
+        if (originalParent && !originalParent.contains(unitPanel)) {
+            originalParent.insertBefore(
+                unitPanel,
+                this.elements.unitPanelOriginalNextSibling
+            );
+        }
+        unitPanel.classList.add('hidden');
+        unitPanel.style.display = 'none';
+    },
+
+    setSkirmishRightSlotMode(enabled) {
+        this._skirmishRightSlotPredeploy = enabled === true;
+        if (this.elements.footer) {
+            this.elements.footer.classList.toggle('hud-skirmish-predeploy', this._skirmishRightSlotPredeploy);
+        }
+        this._applyRightSlotLayout();
+    },
+
+    setContextRightSlotMode(enabled) {
+        this._contextRightSlotUnitPanel = enabled === true;
+        this._applyRightSlotLayout();
+    },
+
+    hideProductionArea() {
+        const productionArea = this.elements.productionArea;
+        const footer = this.elements.footer;
+        const buildingLabel = this.elements.buildingLabel;
+        const unitPanel = this.elements.unitPanel;
+        const keepRightSlotPanel = !!this._skirmishRightSlotPredeploy;
+        this._forceHqRightSlotOpen = false;
+
+        this.setContextRightSlotMode(false);
+
+        if (productionArea) productionArea.innerHTML = '';
+
+        if (!keepRightSlotPanel && unitPanel && this.elements.unitPanelOriginalParent) {
+            if (!this.elements.unitPanelOriginalParent.contains(unitPanel)) {
+                this.elements.unitPanelOriginalParent.insertBefore(
+                    unitPanel,
+                    this.elements.unitPanelOriginalNextSibling
+                );
+            }
+            unitPanel.classList.add('hidden');
+            unitPanel.style.display = 'none';
+        }
+
+        if (footer) footer.classList.remove('hud-show-production');
+        if (buildingLabel) buildingLabel.textContent = '';
+    },
+
+    // [嶺뚮ㅄ維싷쭗?C/D] HQ ??ルㅎ臾?????ル봾六???熬곣뫕???production area???熬곣뫁???
+    // worker??infantry ?곸궠??誘ㅒ?μ쪚????????琉우꽑 ??ル봾六???????諛댄뀰 ?띠럾???
     showHQProductionUI(productionArea, footer, buildingLabel) {
         if (!productionArea) return;
 
         const unitPanel = this.elements.unitPanel;
         if (!unitPanel) return;
+        const selectedType = String(game?.selectedBuilding?.type || '').trim();
+        const isSpawnFlag = selectedType === 'spawn_flag_player';
+        const forceRightSlot = this._forceHqRightSlotOpen === true;
 
-        // 유닛 패널을 production area로 이동
+        if (isSpawnFlag || forceRightSlot) {
+            this.setContextRightSlotMode(true);
+            productionArea.innerHTML = '';
+            if (footer) footer.classList.remove('hud-show-production');
+            if (buildingLabel) {
+                const name = isSpawnFlag ? 'SPAWN FLAG' : 'HQ';
+                buildingLabel.textContent = `${name} - UNIT PRODUCTION`;
+            }
+            return;
+        }
+
+        this.setContextRightSlotMode(false);
+
         productionArea.innerHTML = '';
         productionArea.appendChild(unitPanel);
+        unitPanel.classList.remove('hidden');
         unitPanel.style.display = 'flex';
 
-        // 상태 표시
         if (footer) footer.classList.add('hud-show-production');
-        if (buildingLabel) buildingLabel.textContent = '본부 - 유닛 생산';
+        if (buildingLabel) buildingLabel.textContent = 'HQ - UNIT PRODUCTION';
     },
 
-    // [NEW] 선택된 생산 건물 가져오기
+    // [NEW] ??ルㅎ臾????諛댄뀰 濾곌쑬?囹??띠럾??筌뤾쑴沅롧뼨?
     getSelectedProductionBuilding() {
         if (!this.selection || this.selection.kind !== 'building') return null;
         if (!game.selectedBuilding) return null;
 
         const b = game.selectedBuilding;
-        // canProduce 플래그가 있는 건물만 (보병막사, 전차기지)
+        // canProduce ????뗥윜諛멥늾? ???덈츎 濾곌쑬?囹븀춯?(?곌랜???얠춹?源껎뀬, ?熬곣뫕而㎫뼨轅명?)
         if (b.canProduce && b.productionTab && b.team === 'player') {
             return b;
         }
         return null;
     },
 
-    // [NEW] 생산 건물 UI 표시
+    // [NEW] ??諛댄뀰 濾곌쑬?囹?UI ??戮?뻣
     showProductionBuildingUI(building, productionArea, footer, buildingLabel) {
         if (!productionArea) return;
+        this.setContextRightSlotMode(false);
 
         const tab = building.productionTab; // 'infantry' or 'armored'
         const bData = CONFIG.constructable[building.type];
         const buildingName = bData ? bData.name : building.type;
 
-        // 해당 탭의 유닛 목록 가져오기
+        // ???????????ル봾六?嶺뚮ㅄ維뽨빳??띠럾??筌뤾쑴沅롧뼨?
         const units = CONFIG.units;
         const tabUnits = [];
 
@@ -980,7 +1471,7 @@ const HUD = {
             }
         }
 
-        // 기존 내용 지우고 생산 버튼 생성
+        // ?リ옇?????怨몃뮔 嶺뚯솘???⑤슦????諛댄뀰 ?뺢퀗?????諛댁뎽
         productionArea.innerHTML = '';
 
         const btnContainer = document.createElement('div');
@@ -1003,21 +1494,21 @@ const HUD = {
             const stockCount = game.playerStock[key] || 0;
             btn.innerHTML = `
                 <span class="font-bold text-xs" style="color: ${data.color}">${data.name}</span>
-                <span class="text-yellow-400 text-[10px]">${data.cost}💰</span>
-                <span class="text-gray-300 text-[10px]">${stockCount}대</span>
+                <span class="text-yellow-400 text-[10px]">SUP ${data.cost}</span>
+                <span class="text-gray-300 text-[10px]">STK ${stockCount}</span>
             `;
 
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (canAfford && inStock && !onCooldown) {
-                    // 건물에서 유닛 스폰
+                    // 濾곌쑬?囹???????ル봾六????덌폕
                     this.spawnFromBuilding(building, key);
                 } else if (onCooldown) {
-                    ui.showToast('쿨타임 중!');
+                    ui.showToast('?묅뫂???餓?');
                 } else if (!inStock) {
-                    ui.showToast('재고 없음!');
+                    ui.showToast('??????곸벉!');
                 } else {
-                    ui.showToast('자원 부족!');
+                    ui.showToast('?癒?뜚 ?봔鈺?');
                 }
             });
 
@@ -1026,76 +1517,77 @@ const HUD = {
 
         productionArea.appendChild(btnContainer);
 
-        // 상태 표시
+        // ??⑤객臾???戮?뻣
         if (footer) footer.classList.add('hud-show-production');
         if (buildingLabel) buildingLabel.textContent = buildingName;
     },
 
-    // [NEW] 건물에서 유닛 스폰
+    // [NEW] 濾곌쑬?囹???????ル봾六????덌폕
     spawnFromBuilding(building, unitKey) {
         const uData = CONFIG.units[unitKey];
         if (!uData) return;
 
-        // 재고 및 자원 확인
+        // Check stock and resources
         if ((game.playerStock[unitKey] || 0) <= 0) {
-            ui.showToast('재고 없음!');
+            ui.showToast('No stock.');
             return;
         }
         if (game.supply < uData.cost) {
-            ui.showToast('자원 부족!');
+            ui.showToast('Not enough supply.');
             return;
         }
         if ((game.cooldowns[unitKey] || 0) > 0) {
-            ui.showToast('쿨타임 중!');
+            ui.showToast('On cooldown.');
             return;
         }
 
-        // 자원 소모 및 재고 감소
+        // ????????嫄????????띠룆흮??
         game.supply -= uData.cost;
         game.playerStock[unitKey]--;
         game.cooldowns[unitKey] = uData.cooldown;
 
-        // 건물 옆에서 스폰 (건물 오른쪽 + 약간의 오프셋)
+        // 濾곌쑬?囹???怨룻뱺?????덌폕 (濾곌쑬?囹????섎꿰춯?+ ??袁⑺뜟?????덈뒆??
         const spawnX = building.x + building.width / 2 + 30;
         const spawnY = game.groundY;
 
         game.spawnUnitDirect(unitKey, spawnX, spawnY, 'player');
 
-        ui.showToast(`${uData.name} 생산!`);
+        ui.showToast(`${uData.name} produced.`);
     },
 
-    // [3.8] 작업자 선택 시 감시탑 건설 버튼 (유닛버튼 스타일로 통일)
+    // [3.8] ??얜??????ルㅎ臾????띠룆흮???濾곌쑬?삭땻??뺢퀗???(??ル봾六븀뵓怨뚯뫓???????怨쀬Ŧ ???逾?
     showBuildButtons(productionArea, footer, buildingLabel) {
         if (!productionArea) return;
+        this.setContextRightSlotMode(false);
 
         const buildings = CONFIG.constructable || {};
         const worker = this.getSelectedWorker();
 
-        // 기존 내용 지우고 건물 버튼 생성
+        // ?リ옇?????怨몃뮔 嶺뚯솘???⑤슦??濾곌쑬?囹??뺢퀗?????諛댁뎽
         productionArea.innerHTML = '';
 
         const btnContainer = document.createElement('div');
         btnContainer.className = 'flex gap-2 items-center overflow-x-auto hide-scrollbar';
         btnContainer.style.cssText = 'padding: 4px; height: 100%;';
 
-        // [3.8] watchtower만 표시
+        // [3.8] watchtower嶺???戮?뻣
         for (const key in buildings) {
             if (key !== 'watchtower') continue;
 
             const bData = buildings[key];
             const canAfford = game.supply >= bData.cost;
             const onCooldown = game.builderCooldown > 0;
-            const alreadyBuilt = game.watchtowerBuilt;  // [3.8] 1회 건설 제한 체크
+            const alreadyBuilt = game.watchtowerBuilt;  // [3.8] 1??濾곌쑬?삭땻????ル┰ 嶺뚳퐢?얍칰?
             const isDisabled = !canAfford || onCooldown || alreadyBuilt;
 
-            // [3.8] btn-unit 스타일로 통일 (유닛버튼과 동일한 구조)
+            // [3.8] btn-unit ?????怨쀬Ŧ ???逾?(??ル봾六븀뵓怨뚯뫓??ぢ????됰뎄????뚮벣??
             const btn = document.createElement('div');
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none flex flex-col items-center justify-center';
             if (isDisabled) {
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
             }
 
-            // 캔버스 아이콘 (기존 감시탑 디자인 - 기둥+벙커 스타일)
+            // 嶺??????熬곣뫗逾??(?リ옇????띠룆흮?????븐슦???- ?リ옇?←땟??뺢퀣?욥뜮??????
             const iconCvs = document.createElement('canvas');
             iconCvs.width = 60;
             iconCvs.height = 40;
@@ -1103,46 +1595,46 @@ const HUD = {
             const ctx = iconCvs.getContext('2d');
             ctx.save();
             ctx.translate(30, 38);
-            ctx.scale(0.16, 0.16);  // 스케일 조정
-            // 기존 watchtower 디자인 렌더링 (buildings.js 참조)
-            ctx.fillStyle = '#555';  // 기둥
+            ctx.scale(0.16, 0.16);  // ??????브퀗???
+            // ?リ옇???watchtower ??븐슦????????춯?(buildings.js 嶺뚣볦굣??
+            ctx.fillStyle = '#555';  // ?リ옇?←땟?
             ctx.fillRect(-25, -150, 50, 150);
-            ctx.fillStyle = '#444';  // 받침대
+            ctx.fillStyle = '#444';  // ?꾩룇猷뉓눧??
             ctx.fillRect(-45, -150, 90, 10);
-            ctx.fillStyle = '#111';  // 기관총
+            ctx.fillStyle = '#111';  // ?リ옇????
             ctx.fillRect(25, -185, 35, 6);
-            ctx.fillStyle = '#666';  // 벙커 본체
+            ctx.fillStyle = '#666';  // ?뺢퀣?욥뜮??곌랜梨루뙼?
             ctx.fillRect(-40, -210, 80, 60);
-            ctx.fillStyle = '#333';  // 오른쪽 방어벽
+            ctx.fillStyle = '#333';  // ???섎꿰춯??꾩렮維쀥젆源由?
             ctx.fillRect(20, -220, 20, 70);
-            ctx.fillStyle = '#444';  // 지붕
+            ctx.fillStyle = '#444';  // 嶺뚯솘???
             ctx.fillRect(-45, -220, 90, 10);
             ctx.restore();
             btn.appendChild(iconCvs);
 
-            // 이름 (언어 키 사용)
+            // ???藥?(?筌뤾쑬????????
             const nameSpan = document.createElement('span');
             nameSpan.className = 'font-bold text-[10px] z-10 absolute top-0 w-full text-center bg-black/30 text-white';
             nameSpan.innerText = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : bData.name;
             btn.appendChild(nameSpan);
 
-            // 비용 표시
+            // ???????戮?뻣
             const costSpan = document.createElement('span');
             costSpan.className = 'text-yellow-400 text-[10px] z-10 absolute bottom-1 right-1';
-            costSpan.innerText = bData.cost + '💰';
-            // [REQ] watchtower만 비용표시 숨김
+            costSpan.innerText = String(bData.cost);
+            // [REQ] watchtower嶺???????戮?뻣 ???
             if (key !== 'watchtower') {
                 btn.appendChild(costSpan);
             }
 
-            // [3.8] 이미 건설됨 오버레이
+            // [3.8] ???? 濾곌쑬?삭땻?????댁뮅???깅턄
             if (alreadyBuilt) {
                 const builtDiv = document.createElement('div');
                 builtDiv.className = 'absolute inset-0 bg-gray-800/70 flex items-center justify-center z-20';
-                builtDiv.innerHTML = '<span class="text-white text-[9px] font-bold">건설완료</span>';
+                builtDiv.innerHTML = '<span class="text-white text-[9px] font-bold">BUILT</span>';
                 btn.appendChild(builtDiv);
             }
-            // 쿨타임 오버레이
+            // ?臾낅쳜??????댁뮅???깅턄
             else if (onCooldown) {
                 const cdDiv = document.createElement('div');
                 cdDiv.className = 'cooldown-overlay';
@@ -1150,7 +1642,7 @@ const HUD = {
                 btn.appendChild(cdDiv);
             }
 
-            // 하단 컬러바
+            // ??濡ル펺 ??롫맩?롧뛾?
             const colorBar = document.createElement('div');
             colorBar.className = 'absolute bottom-0 w-full h-1 z-10';
             colorBar.style.backgroundColor = alreadyBuilt ? '#6b7280' : '#3b82f6';
@@ -1159,24 +1651,24 @@ const HUD = {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (alreadyBuilt) {
-                    ui.showToast('감시탑은 1회만 건설 가능합니다!');
+                    ui.showToast('揶쏅Ŋ??臾? 1???춸 椰꾨똻苑?揶쎛?館鍮??덈뼄!');
                 } else if (worker && canAfford && !onCooldown) {
                     game.enterBuildMode(key, worker);
                 } else if (onCooldown) {
-                    ui.showToast('건설 쿨타임 중!');
+                    ui.showToast('椰꾨똻苑??묅뫂???餓?');
                 } else if (!canAfford) {
-                    ui.showToast('자원 부족!');
+                    ui.showToast('?癒?뜚 ?봔鈺?');
                 }
             });
 
             btnContainer.appendChild(btn);
         }
 
-        // 취소 버튼 (건설 모드 중일 때만)
+        // ???쳛???뺢퀗???(濾곌쑬?삭땻?嶺뚮ㅄ維獄?繞벿살탳?????異?
         if (game.buildMode && game.buildMode.active) {
             const cancelBtn = document.createElement('button');
             cancelBtn.className = 'px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold';
-            cancelBtn.innerText = '취소';
+            cancelBtn.innerText = 'Cancel';
             cancelBtn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 game.cancelBuildMode();
@@ -1186,18 +1678,18 @@ const HUD = {
 
         productionArea.appendChild(btnContainer);
 
-        // 상태 표시 (언어 키 사용)
+        // ??⑤객臾???戮?뻣 (?筌뤾쑬????????
         if (footer) footer.classList.add('hud-show-production');
-        const workerName = (typeof Lang !== 'undefined') ? Lang.getText('unit_worker_name') : '작업자';
-        const towerName = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : '감시탑';
-        if (buildingLabel) buildingLabel.textContent = `${workerName} - ${towerName} 건설`;
+        const workerName = (typeof Lang !== 'undefined') ? Lang.getText('unit_worker_name') : 'Worker';
+        const towerName = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : 'Watchtower';
+        if (buildingLabel) buildingLabel.textContent = `${workerName} - ${towerName} Build`;
     },
 
     /**
      * Hide legacy UI elements (replaced by new HUD)
      */
     hideLegacyUI() {
-        // [3.8] Hide old minimap/toggle/ctrl/cmd buttons (설정 버튼은 유지)
+        // [3.8] Hide old minimap/toggle/ctrl/cmd buttons (???깆젧 ?뺢퀗???? ???)
         ['hud-minimap-container', 'hud-minimap-toggle', 'hud-ctrl-wrapper', 'unit-cmd-wrapper']
             .forEach(id => {
                 const el = document.getElementById(id);
@@ -1215,3 +1707,4 @@ const HUD = {
 
 // Export for global access
 window.HUD = HUD;
+
