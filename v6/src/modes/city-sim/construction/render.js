@@ -207,10 +207,10 @@
                 title = `${tileName} 선택됨`;
             }
 
-            const canEdit = selectionInfo.tile !== 'hq';
-            if (canEdit) sellLabel = '판매';
-            sellEnabled = canEdit;
-            moveEnabled = canEdit;
+            const canSell = selectionInfo.tile !== 'hq';
+            if (canSell) sellLabel = '판매';
+            sellEnabled = canSell;
+            moveEnabled = true;
             doneLabel = '해제';
             doneEnabled = true;
         }

@@ -3,7 +3,13 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RECLAIM">
     <!-- OpenGraph : DCInside thumbnail -->
     <meta property="og:type" content="website">
     <meta property="og:title" content="RECLAIM (수복)">
@@ -12,6 +18,30 @@
     <meta property="og:url" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/">
     <title>RECLAIM (수복)</title>
     <link rel="icon" href="data:,">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="png/RECLAIM.jpg">
+    <script>
+        (() => {
+            const root = document.documentElement;
+            const updateViewportVars = () => {
+                const vv = window.visualViewport || null;
+                const rawW = vv && Number.isFinite(vv.width) ? vv.width : window.innerWidth;
+                const rawH = vv && Number.isFinite(vv.height) ? vv.height : window.innerHeight;
+                const width = Math.max(1, Math.round(Number(rawW) || 0));
+                const height = Math.max(1, Math.round(Number(rawH) || 0));
+                root.style.setProperty('--app-width', `${width}px`);
+                root.style.setProperty('--app-height', `${height}px`);
+            };
+
+            updateViewportVars();
+            window.addEventListener('resize', updateViewportVars, { passive: true });
+            window.addEventListener('orientationchange', () => setTimeout(updateViewportVars, 120), { passive: true });
+            if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+                window.visualViewport.addEventListener('resize', updateViewportVars, { passive: true });
+                window.visualViewport.addEventListener('scroll', updateViewportVars, { passive: true });
+            }
+        })();
+    </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
     <link rel="stylesheet" href="style.css?v=20260216s15">
@@ -1625,6 +1655,33 @@
                 }, 120);
             };
 
+            const tryLockLandscape = async () => {
+                if (!screen || !screen.orientation || typeof screen.orientation.lock !== 'function') return;
+                try {
+                    await screen.orientation.lock('landscape');
+                } catch (_) { }
+            };
+
+            const tryEnterFullscreen = async () => {
+                const docEl = document.documentElement;
+                if (!docEl) return false;
+                const request = docEl.requestFullscreen
+                    || docEl.webkitRequestFullscreen
+                    || docEl.msRequestFullscreen;
+                if (typeof request !== 'function') return false;
+                try {
+                    const result = request.call(docEl);
+                    if (result && typeof result.then === 'function') {
+                        await result;
+                    }
+                    await tryLockLandscape();
+                    return true;
+                } catch (err) {
+                    console.warn('[Boot] Fullscreen request denied or failed:', err);
+                    return false;
+                }
+            };
+
             const warmupAudioByGesture = async () => {
                 if (typeof AudioSystem === 'undefined') return;
                 if (typeof AudioSystem.init === 'function') AudioSystem.init();
@@ -1653,6 +1710,7 @@
                     gateConsumed = true;
                     playBtn.disabled = true;
 
+                    await tryEnterFullscreen();
                     await warmupAudioByGesture();
 
                     gate.classList.add('hidden');
@@ -1683,7 +1741,22 @@
             }, { once: true });
         })();
     </script>
-<script type="module" src="./src/core/bootstrap.js"></script>
+    <script>
+        (() => {
+            if (!('serviceWorker' in navigator)) return;
+            const isSecureContextLike = location.protocol === 'https:'
+                || location.hostname === 'localhost'
+                || location.hostname === '127.0.0.1';
+            if (!isSecureContextLike) return;
+
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js').catch((err) => {
+                    console.warn('[PWA] service worker registration failed:', err);
+                });
+            }, { once: true });
+        })();
+    </script>
+    <script type="module" src="./src/core/bootstrap.js"></script>
 </body>
 
 </html>

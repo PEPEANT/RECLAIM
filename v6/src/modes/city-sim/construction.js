@@ -124,7 +124,7 @@
             name: '연병장',
             icon: '연병',
             category: 'build',
-            maxOwned: Number.POSITIVE_INFINITY,
+            maxOwned: 20,
             costMoney: 84
         },
         hq: {
@@ -457,6 +457,8 @@
     const spriteUrlCache = new Map();
     const buildCardPreviewCache = new Map();
     const inventoryIconCache = new Map();
+    const drillgroundMissileIconCache = new Map();
+    const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['icbm', 'icbm_enemy', 'emp', 'nuke', 'tactical_missile']);
     const CITY_OWN_SIGN_REFRESH_MS = 15000;
 
     function getBuildingSpriteSize() {
@@ -2392,6 +2394,128 @@
         cell.appendChild(slot);
     }
 
+    function isDrillgroundMissileIconUnit(unitKey) {
+        const key = normalizeUnitKey(unitKey);
+        return !!key && DRILLGROUND_MISSILE_ICON_KEYS.has(key);
+    }
+
+    function getDrillgroundMissilePalette(unitKey) {
+        const key = normalizeUnitKey(unitKey);
+        if (key === 'emp') {
+            return { body: '#dbeafe', nose: '#60a5fa', band: '#2563eb', fin: '#334155', glow: 'rgba(59,130,246,0.24)' };
+        }
+        if (key === 'tactical_missile') {
+            return { body: '#f3f4f6', nose: '#ef4444', band: '#f59e0b', fin: '#64748b', glow: 'rgba(239,68,68,0.20)' };
+        }
+        if (key === 'nuke') {
+            return { body: '#e5e7eb', nose: '#ef4444', band: '#111827', fin: '#475569', glow: 'rgba(248,113,113,0.20)' };
+        }
+        return { body: '#e2e8f0', nose: '#cbd5e1', band: '#facc15', fin: '#475569', glow: 'rgba(250,204,21,0.22)' };
+    }
+
+    function drawDrillgroundMissileIcon(unitKey) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key || !DRILLGROUND_MISSILE_ICON_KEYS.has(key)) return null;
+
+        if (drillgroundMissileIconCache.has(key)) {
+            const cached = drillgroundMissileIconCache.get(key);
+            return cached || null;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 48;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            drillgroundMissileIconCache.set(key, null);
+            return null;
+        }
+
+        const palette = getDrillgroundMissilePalette(key);
+        const isIcbmFamily = key === 'icbm' || key === 'icbm_enemy';
+        const bodyX = isIcbmFamily ? 10 : 12;
+        const bodyY = isIcbmFamily ? 17 : 19;
+        const bodyW = isIcbmFamily ? 38 : 34;
+        const bodyH = isIcbmFamily ? 12 : 10;
+
+        if (palette.glow) {
+            ctx.fillStyle = palette.glow;
+            ctx.beginPath();
+            ctx.ellipse(30, 28, 24, 11, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (isIcbmFamily) {
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(8, 32, 46, 3);
+            ctx.fillStyle = '#475569';
+            ctx.beginPath();
+            ctx.arc(16, 36, 3, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(46, 36, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        ctx.fillStyle = palette.body;
+        ctx.fillRect(bodyX, bodyY, bodyW, bodyH);
+
+        ctx.fillStyle = palette.nose;
+        ctx.beginPath();
+        ctx.moveTo(bodyX + bodyW, bodyY);
+        ctx.lineTo(bodyX + bodyW + 8, bodyY + (bodyH / 2));
+        ctx.lineTo(bodyX + bodyW, bodyY + bodyH);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = palette.band;
+        ctx.fillRect(bodyX + Math.round(bodyW * 0.55), bodyY, 5, bodyH);
+
+        ctx.fillStyle = palette.fin;
+        ctx.beginPath();
+        ctx.moveTo(bodyX + 6, bodyY);
+        ctx.lineTo(bodyX + 1, bodyY - 5);
+        ctx.lineTo(bodyX + 1, bodyY);
+        ctx.closePath();
+        ctx.fill();
+        ctx.beginPath();
+        ctx.moveTo(bodyX + 6, bodyY + bodyH);
+        ctx.lineTo(bodyX + 1, bodyY + bodyH + 5);
+        ctx.lineTo(bodyX + 1, bodyY + bodyH);
+        ctx.closePath();
+        ctx.fill();
+
+        if (key === 'emp') {
+            ctx.strokeStyle = '#1d4ed8';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(bodyX + 12, bodyY + 2);
+            ctx.lineTo(bodyX + 17, bodyY + 2);
+            ctx.lineTo(bodyX + 13, bodyY + 8);
+            ctx.lineTo(bodyX + 20, bodyY + 8);
+            ctx.stroke();
+        } else if (key === 'nuke') {
+            const cx = bodyX + 15;
+            const cy = bodyY + 5;
+            ctx.strokeStyle = '#111827';
+            ctx.lineWidth = 1.2;
+            ctx.beginPath();
+            ctx.arc(cx, cy, 3.2, 0, Math.PI * 2);
+            ctx.stroke();
+            for (let i = 0; i < 3; i++) {
+                const ang = (Math.PI * 2 * i) / 3;
+                ctx.beginPath();
+                ctx.moveTo(cx, cy);
+                ctx.lineTo(cx + Math.cos(ang) * 5.2, cy + Math.sin(ang) * 5.2);
+                ctx.stroke();
+            }
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        drillgroundMissileIconCache.set(key, dataUrl);
+        return dataUrl;
+    }
+
     function getDrillgroundUnitSizeClass(unitKey, unitDef) {
         const key = normalizeUnitKey(unitKey);
         if (!key) return 'city-drillground-unit-size-base';
@@ -2440,7 +2564,11 @@
         if (!unitKey) pad.classList.add('city-drillground-pad-empty');
         cell.appendChild(pad);
 
-        const iconUrl = unitKey ? drawInventoryUnitIcon(unitKey) : null;
+        const iconUrl = unitKey
+            ? (isDrillgroundMissileIconUnit(unitKey)
+                ? drawDrillgroundMissileIcon(unitKey)
+                : drawInventoryUnitIcon(unitKey))
+            : null;
         if (iconUrl) {
             const img = document.createElement('img');
             img.className = `city-drillground-unit city-drillground-unit-populated ${sizeClass}`;

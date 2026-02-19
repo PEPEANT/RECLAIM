@@ -240,10 +240,6 @@
             return { ok: false, reason: '이동할 건물을 찾을 수 없습니다.' };
         }
 
-        if (source.tile === 'hq') {
-            return { ok: false, reason: '사령부는 이동할 수 없습니다.' };
-        }
-
         if (!Number.isInteger(index) || index < 0 || index >= state.grid.length) {
             return { ok: false, reason: '유효하지 않은 타일입니다.' };
         }

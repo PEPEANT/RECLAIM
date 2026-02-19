@@ -3209,8 +3209,9 @@ const game = {
     // [핵심] 흔들림 없는 리사이즈 로직
     resize() {
         const wrapper = document.getElementById('game-wrapper');
-        const winW = window.innerWidth;
-        const winH = window.innerHeight;
+        const vv = window.visualViewport || null;
+        const winW = (vv && Number.isFinite(vv.width) && vv.width > 0) ? vv.width : window.innerWidth;
+        const winH = (vv && Number.isFinite(vv.height) && vv.height > 0) ? vv.height : window.innerHeight;
         const prevViewW = Camera.viewW(this);
 
         // 1. 배율 계산 (세로 높이를 720px에 맞춤)

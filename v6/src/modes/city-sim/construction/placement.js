@@ -1023,11 +1023,6 @@
             showToast('이동할 건물을 먼저 선택하세요.');
             return;
         }
-        if (selectionInfo.tile === 'hq') {
-            showToast('사령부는 이동할 수 없습니다.');
-            return;
-        }
-
         const hint = getMoveStartHint();
         CitySimState.setPlacement(game, {
             active: true,
