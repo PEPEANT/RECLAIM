@@ -289,6 +289,68 @@ const game = {
         );
     },
 
+    launchOperatorDroneFromCommand(droneKey) {
+        if (droneKey !== 'drone_suicide' && droneKey !== 'drone_at') return false;
+
+        const operators = this.getDeployableOperators ? this.getDeployableOperators() : [];
+        const allOperators = this.getSelectedOperators ? this.getSelectedOperators() : [];
+
+        if (allOperators.length === 0) {
+            if (typeof ChatPanel !== 'undefined') {
+                ChatPanel.push('[발진 불가] 드론병 선택 필요', 'WARN');
+            }
+            return false;
+        }
+
+        if (operators.length === 0) {
+            if (typeof ChatPanel !== 'undefined') {
+                ChatPanel.push('[발진 불가] 드론 충전 없음 또는 이미 드론 운용중', 'WARN');
+            }
+            return false;
+        }
+
+        operators.forEach(op => {
+            op.commandState = 'stop';
+            op.commandMode = 'stop';
+            op.attackTarget = null;
+        });
+
+        let spawned = 0;
+        operators.forEach(op => {
+            const drone = this.spawnDroneForOperator ? this.spawnDroneForOperator(op, droneKey) : null;
+            if (drone) spawned++;
+        });
+
+        if (this.holdTimer) {
+            clearInterval(this.holdTimer);
+            this.holdTimer = null;
+        }
+        this.holdKey = null;
+
+        if (typeof ChatPanel !== 'undefined' && spawned > 0) {
+            const label = droneKey === 'drone_suicide' ? '자폭드론' : '대전차드론';
+            ChatPanel.push(`[발진] ${label} ${spawned}기 즉시 발진`, 'ACTION');
+        }
+
+        if (spawned > 0 && typeof app !== 'undefined') {
+            app.markUiDirty();
+        }
+        return spawned > 0;
+    },
+
+    triggerIcbmSkillFromCommand(skillKey) {
+        if (!this.isIcbmSkillKey(skillKey)) return false;
+        if (!this._skirmishMode || typeof SkirmishMode === 'undefined' || !SkirmishMode.isActive || SkirmishMode.phase !== 'battle') {
+            if (typeof ChatPanel !== 'undefined') {
+                ChatPanel.push('ICBM 스킬은 전투 단계에서만 사용할 수 있습니다.', 'WARN');
+            }
+            return false;
+        }
+        if (typeof this.prepareTargeting !== 'function') return false;
+        this.prepareTargeting(skillKey);
+        return this.targetingType === skillKey;
+    },
+
     _hasMissileCommandInStats(stats) {
         if (!stats || typeof stats !== 'object') return false;
         if (stats.missileCommand === true || stats.canUseMissileCommand === true) return true;
@@ -2814,6 +2876,7 @@ const game = {
             'hud-minimap-container',
             'hud-minimap-toggle',
             'hud-ctrl-wrapper',
+            'hud-camera-btn',
             'hud-option-btn',
             'unit-panel-container',
             'hud-footer',
@@ -2826,6 +2889,7 @@ const game = {
             'scope-modal',
             'mission-objective-modal',
             'chat-panel',
+            'chat-hq-open-btn',
             'spawn-indicator',
             'skirmish-placement-ui',
             'skirmish-countdown',
@@ -3508,10 +3572,10 @@ const game = {
         document.getElementById('hud-minimap-container')?.classList.add('hidden');
         document.getElementById('hud-minimap-toggle')?.classList.add('hidden');
         document.getElementById('hud-ctrl-wrapper')?.classList.add('hidden');
+        document.getElementById('hud-camera-btn')?.classList.remove('hidden');
         document.getElementById('hud-option-btn').classList.remove('hidden');
         document.getElementById('unit-cmd-wrapper')?.classList.add('hidden');
         // [FIX] endGame에서 숨긴 UI 복구
-        document.getElementById('unit-panel-container')?.classList.remove('hidden');
         document.getElementById('hud-footer')?.classList.remove('hidden');
         if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
 
@@ -3565,8 +3629,8 @@ const game = {
                 console.error('[GameStart] GameMapSetup.apply failed:', e);
             }
         }
-        // [R 4.2] 시작 속도 무조건 0.5배속
-        this.setSpeed(0.5);
+        // [HUD/UX] 전투 시작 기본 속도는 1배속
+        this.setSpeed(1.0);
         this.engineFrame = 0;
 
         // [R 4.2] ChatPanel 초기화 및 표시
@@ -3629,6 +3693,8 @@ const game = {
     getPlayerSpawnX() {
         const hq = this.buildings.find((b) => b.type === 'hq_player');
         if (hq) return hq.x + 50;
+        const spawnFlag = this.buildings.find((b) => b && !b.dead && b.type === 'spawn_flag_player' && b.team === 'player');
+        if (spawnFlag) return spawnFlag.x + 40;
         // HQ가 없는 맵(예: 해안 상륙)은 좌측 맵 끝에서 생성
         return 44;
     },
@@ -3636,6 +3702,8 @@ const game = {
     getPlayerRetreatStopX() {
         const hq = this.buildings.find((b) => b.type === 'hq_player');
         if (hq) return hq.x + 100;
+        const spawnFlag = this.buildings.find((b) => b && !b.dead && b.type === 'spawn_flag_player' && b.team === 'player');
+        if (spawnFlag) return spawnFlag.x + 90;
         // HQ가 없으면 좌측 맵 끝 쪽으로 완전히 복귀
         return 34;
     },
@@ -4602,75 +4670,31 @@ const game = {
 
         // 국지전 배치 페이즈에서는 기존 유닛생성바 클릭을 "선택"으로 처리
         if (this._skirmishMode && typeof SkirmishMode !== 'undefined' && SkirmishMode.isActive) {
-            const allowDuringSkirmishBattle = (
-                SkirmishMode.phase === 'battle'
-                && (isOperatorDroneLaunch || isIcbmSkillLaunch)
-            );
             if (SkirmishMode.phase === 'placement') {
                 if (typeof SkirmishMode.selectUnitFromBar === 'function') {
                     SkirmishMode.selectUnitFromBar(this, key);
                 }
-            } else if (!allowDuringSkirmishBattle) {
+            } else {
+                const warnMsg = (isOperatorDroneLaunch || isIcbmSkillLaunch)
+                    ? '국지전 전투 중 드론/미사일은 명령바 스킬로만 사용 가능합니다.'
+                    : '국지전에서는 배치 단계에서만 유닛을 선택할 수 있습니다.';
                 if (typeof ChatPanel !== 'undefined') {
-                    ChatPanel.push('국지전에서는 배치 단계에서만 유닛을 선택할 수 있습니다.', 'WARN');
+                    ChatPanel.push(warnMsg, 'WARN');
                 }
             }
-
-            if (!allowDuringSkirmishBattle) {
-                if (this.holdTimer) {
-                    clearInterval(this.holdTimer);
-                    this.holdTimer = null;
-                }
-                this.holdKey = null;
-                return;
-            }
-        }
-
-        // [P0-2] 드론 탭 클릭 = 즉시 출격
-        // 드론병이 선택된 상태에서 드론 버튼 클릭 시 즉시 스폰
-        if (key === 'drone_suicide' || key === 'drone_at') {
-            const operators = this.getDeployableOperators ? this.getDeployableOperators() : [];
-            const allOperators = this.getSelectedOperators ? this.getSelectedOperators() : [];
-
-            // 드론병이 선택 안 된 경우
-            if (allOperators.length === 0) {
-                if (typeof ChatPanel !== 'undefined') {
-                    ChatPanel.push('[발진 불가] 드론병 선택 필요', 'WARN');
-                }
-                return;
-            }
-
-            // 드론병은 있지만 발진 가능한 드론병이 없는 경우
-            if (operators.length === 0) {
-                if (typeof ChatPanel !== 'undefined') {
-                    ChatPanel.push('[발진 불가] 드론 충전 없음 또는 이미 드론 운용중', 'WARN');
-                }
-                return;
-            }
-
-            // 발진 가능한 드론병들에게 드론 스폰
-            operators.forEach(op => {
-                op.commandState = 'stop';
-                op.commandMode = 'stop';
-                op.attackTarget = null;
-            });
-
-            let spawned = 0;
-            operators.forEach(op => {
-                const drone = this.spawnDroneForOperator ? this.spawnDroneForOperator(op, key) : null;
-                if (drone) spawned++;
-            });
 
             if (this.holdTimer) {
                 clearInterval(this.holdTimer);
                 this.holdTimer = null;
             }
             this.holdKey = null;
+            return;
+        }
 
-            if (typeof ChatPanel !== 'undefined' && spawned > 0) {
-                const label = key === 'drone_suicide' ? '자폭드론' : '대전차드론';
-                ChatPanel.push(`[발진] ${label} ${spawned}기 즉시 발진`, 'ACTION');
-            }
+        // [P0-2] 드론 탭 클릭 = 즉시 출격
+        // 드론병이 선택된 상태에서 드론 버튼 클릭 시 즉시 스폰
+        if (key === 'drone_suicide' || key === 'drone_at') {
+            this.launchOperatorDroneFromCommand(key);
             return;
         }
 

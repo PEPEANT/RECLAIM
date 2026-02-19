@@ -691,14 +691,10 @@
                 paletteEl.innerHTML = '';
             }
 
-            // 배치 페이즈에서도 기본 HUD/유닛생성바 노출 유지
-            const unitPanel = document.getElementById('unit-panel-container');
-            if (unitPanel) unitPanel.classList.remove('hidden');
-            const hudFooter = document.getElementById('hud-footer');
-            if (hudFooter) hudFooter.classList.remove('hidden');
             if (typeof HUD !== 'undefined' && HUD && typeof HUD.show === 'function') {
                 HUD.show();
             }
+            this._applyPredeployHudPolicy(true);
             this._syncPlacementHudOffset();
             this._updateReadyButtonState();
 
@@ -720,6 +716,35 @@
             readyBtn.disabled = !canReady;
         },
 
+        _applyPredeployHudPolicy(enabled) {
+            const predeploy = enabled === true;
+            const hudFooter = document.getElementById('hud-footer');
+            if (hudFooter) {
+                hudFooter.classList.remove('hidden');
+                if (predeploy) hudFooter.classList.remove('hud-show-production');
+            }
+
+            const cameraBtn = document.getElementById('hud-camera-btn');
+            if (cameraBtn) cameraBtn.classList.toggle('hidden', predeploy);
+
+            if (typeof HUD !== 'undefined' && HUD) {
+                if (typeof HUD.setSkirmishRightSlotMode === 'function') {
+                    HUD.setSkirmishRightSlotMode(predeploy);
+                }
+                if (typeof HUD.hideProductionArea === 'function') {
+                    HUD.hideProductionArea();
+                }
+                if (typeof HUD.updateCommandButtons === 'function') {
+                    HUD._lastCmdState = '';
+                    HUD.updateCommandButtons();
+                }
+            } else {
+                const unitPanel = document.getElementById('unit-panel-container');
+                if (unitPanel) unitPanel.classList.toggle('hidden', !predeploy);
+                if (hudFooter) hudFooter.classList.toggle('hud-skirmish-predeploy', predeploy);
+            }
+        },
+
         _hidePlacementUI() {
             const uiEl = document.getElementById('skirmish-placement-ui');
             if (uiEl) {
@@ -728,11 +753,7 @@
                 uiEl.style.removeProperty('--skirmish-hud-offset');
             }
             this._unbindPlacementResize();
-
-            const unitPanel = document.getElementById('unit-panel-container');
-            if (unitPanel) unitPanel.classList.remove('hidden');
-            const hudFooter = document.getElementById('hud-footer');
-            if (hudFooter) hudFooter.classList.remove('hidden');
+            this._applyPredeployHudPolicy(false);
         },
 
         _syncPlacementHudOffset() {
@@ -1179,6 +1200,7 @@
             if (!this.isActive) return;
             this._clearCountdownTimers();
             this.phase = 'countdown';
+            this._hidePlacementUI();
             const overlay = document.getElementById('skirmish-countdown');
             const numEl = document.getElementById('skirmish-countdown-num');
             if (!overlay || !numEl) {
@@ -1224,8 +1246,22 @@
             if (!this.isActive || this.phase === 'battle') return;
             this._clearCountdownTimers();
             this.phase = 'battle';
+            this._applyPredeployHudPolicy(false);
             const overlay = document.getElementById('skirmish-countdown');
             if (overlay) overlay.classList.add('hidden');
+
+            if (game && typeof game.cancelTargeting === 'function') {
+                game.cancelTargeting();
+            }
+            if (game) {
+                game.selectedBuilding = null;
+                if (typeof game.updateHUDSelection === 'function') {
+                    game.updateHUDSelection();
+                }
+            }
+            if (typeof HUD !== 'undefined' && HUD && typeof HUD.hideProductionArea === 'function') {
+                HUD.hideProductionArea();
+            }
 
             // Safety: ensure stage objective structures still exist before unfreeze.
             const mapW = (typeof CONFIG !== 'undefined' && Number.isFinite(Number(CONFIG.mapWidth)))

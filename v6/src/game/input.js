@@ -10,11 +10,52 @@
             };
 
             // [NEW] Check if click/touch is inside HUD area (input blocking)
-            const isInsideHUD = (clientY) => {
+            // Note: HUD footer can become fullscreen in desktop split mode,
+            // so Y-only checks cause false positives and block all canvas input.
+            const isInsideHUD = (clientX, clientY) => {
                 const hudFooter = document.getElementById('hud-footer');
                 if (!hudFooter || hudFooter.classList.contains('hidden')) return false;
-                const rect = hudFooter.getBoundingClientRect();
-                return clientY >= rect.top;
+
+                const isPointInside = (el) => {
+                    if (!el || el.classList.contains('hidden')) return false;
+                    const style = window.getComputedStyle(el);
+                    if (style.display === 'none' || style.visibility === 'hidden' || style.pointerEvents === 'none') {
+                        return false;
+                    }
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width <= 0 || rect.height <= 0) return false;
+                    return (
+                        clientX >= rect.left &&
+                        clientX <= rect.right &&
+                        clientY >= rect.top &&
+                        clientY <= rect.bottom
+                    );
+                };
+
+                // Explicit HUD interactive surfaces
+                const hudInteractiveIds = [
+                    'hud-left',
+                    'hud-right',
+                    'hud-production-area',
+                    'hud-camera-btn',
+                    'hud-option-btn',
+                    'hud-minimap-container',
+                    'hud-ctrl-wrapper',
+                    'unit-cmd-wrapper',
+                    'map-modal',
+                    'scope-modal',
+                    'mission-objective-modal'
+                ];
+                for (let i = 0; i < hudInteractiveIds.length; i++) {
+                    const el = document.getElementById(hudInteractiveIds[i]);
+                    if (isPointInside(el)) return true;
+                }
+
+                // Fallback for legacy/non-split footer layouts
+                const footerRect = hudFooter.getBoundingClientRect();
+                const footerLooksLikeBottomBar = footerRect.height > 0 && footerRect.top > 0;
+                if (footerLooksLikeBottomBar && clientY >= footerRect.top) return true;
+                return false;
             };
 
             // Screen-space bounds check: independent from zoom/world conversion.
@@ -58,7 +99,8 @@
                 // 선택 가능한 건물 타입들
                 const selectableTypes = [
                     'hq_player', 'hq_enemy', 'fortress_player', 'fortress_enemy',
-                    'watchtower'  // [3.8] 플레이어 건설 감시탑
+                    'watchtower',  // [3.8] 플레이어 건설 감시탑
+                    'spawn_flag_player'
                 ];
 
                 for (let b of this.buildings) {
@@ -95,7 +137,7 @@
             // ======== PC 마우스 이벤트 ========
             this.canvas.addEventListener('mousedown', e => {
                 // [NEW] Block if inside HUD area
-                if (isInsideHUD(e.clientY)) return;
+                if (isInsideHUD(e.clientX, e.clientY)) return;
 
                 const p = getScaledPos(e.clientX, e.clientY);
                 if (!isInsideCanvasClient(e.clientX, e.clientY)) return;
@@ -203,7 +245,7 @@
             this.canvas.addEventListener('contextmenu', e => {
                 e.preventDefault();
                 // [NEW] Block if inside HUD area
-                if (isInsideHUD(e.clientY)) return;
+                if (isInsideHUD(e.clientX, e.clientY)) return;
 
                 // [NEW] 건설 모드 취소
                 if (this.buildMode.active) {
@@ -231,7 +273,7 @@
 
                 // [NEW] Block if any touch is inside HUD area
                 for (let i = 0; i < e.touches.length; i++) {
-                    if (isInsideHUD(e.touches[i].clientY)) return;
+                    if (isInsideHUD(e.touches[i].clientX, e.touches[i].clientY)) return;
                 }
 
                 if (e.touches.length === 1) {

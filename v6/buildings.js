@@ -994,6 +994,40 @@ class Building extends Entity {
             this.drawHp(ctx);
             return;
         }
+        else if (this.type === 'spawn_flag_player') {
+            const time = Number(game.frame) || 0;
+            const w = this.width || 72;
+            const h = this.height || 96;
+            const halfW = w * 0.5;
+            const poleTop = -h * 0.95;
+            const wave = Math.sin(time * 0.08) * 3;
+
+            // Base stand
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(-halfW * 0.75, -8, halfW * 1.5, 8);
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(-halfW * 0.58, -h * 0.34, halfW * 1.16, h * 0.34);
+
+            // Pole
+            ctx.fillStyle = '#94a3b8';
+            ctx.fillRect(-2, poleTop, 4, h * 0.95);
+
+            // Flag cloth
+            ctx.fillStyle = '#0ea5e9';
+            ctx.beginPath();
+            ctx.moveTo(2, poleTop + 10);
+            ctx.lineTo(halfW * 0.88 + wave, poleTop + 20);
+            ctx.lineTo(halfW * 0.72 + wave * 0.7, poleTop + 42);
+            ctx.lineTo(2, poleTop + 32);
+            ctx.closePath();
+            ctx.fill();
+
+            // Emblem dot
+            ctx.fillStyle = '#f8fafc';
+            ctx.beginPath();
+            ctx.arc(halfW * 0.27, poleTop + 27, 4, 0, Math.PI * 2);
+            ctx.fill();
+        }
         else if (this.type === 'bunker') {
             const isCity = (typeof Maps !== 'undefined' && Maps.currentMap === 'city');
             const cityVariant = this.variant;

@@ -147,15 +147,6 @@ const ui = {
             return;
         }
 
-        // [P0-2] 드론병이 선택되면 드론 버튼 표시
-        let hasOperatorSelected = false;
-        if (typeof game !== 'undefined' && game.selectedUnits && game.selectedUnits.size > 0) {
-            game.selectedUnits.forEach(u => {
-                if (u && !u.dead && u.stats?.operator === true) {
-                    hasOperatorSelected = true;
-                }
-            });
-        }
         const icbmSkillKeys = new Set(['nuke', 'tactical_missile', 'emp']);
         const icbmSkillMode = (typeof game !== 'undefined' && typeof game.shouldShowIcbmSkills === 'function')
             ? game.shouldShowIcbmSkills()
@@ -170,12 +161,13 @@ const ui = {
 
             // [R 4.2] 생산바에서 숨김 처리된 유닛은 버튼 생성 스킵
             if (u.hideFromUnitBar === true) return;
+            // [R 4.3] 드론병 전용 발진 드론은 생성바에서 제거 (명령 스킬 전용)
+            if (u.droneLaunchOnly === true) return;
 
             // 버튼 DOM 생성
             const btn = document.createElement('div');
             btn.id = `btn-${key}`;
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none';
-            const isDroneOnly = (u.droneLaunchOnly === true);
             let isVisible = false;
             if (icbmSkillMode) {
                 isVisible = icbmSkillKeys.has(key);
@@ -183,7 +175,7 @@ const ui = {
                 isVisible = false;
             } else {
                 const unitCategory = this.getUnitCategoryForTab(key, u);
-                isVisible = isDroneOnly ? hasOperatorSelected : (!hasOperatorSelected && unitCategory === currentCategory);
+                isVisible = unitCategory === currentCategory;
             }
             btn.style.display = isVisible ? 'flex' : 'none';
 
@@ -465,19 +457,6 @@ const ui = {
     },
 
     updateUnitButtons(cat, stock, cooldowns, supply, queue) {
-        // [P0-2] 드론병이 선택되면 드론 버튼 표시
-        let hasOperatorSelected = false;
-        let deployableOperatorsCount = 0;
-        if (typeof game !== 'undefined' && game.selectedUnits && game.selectedUnits.size > 0) {
-            game.selectedUnits.forEach(u => {
-                if (u && !u.dead && u.stats?.operator === true) {
-                    hasOperatorSelected = true;
-                    if (u.droneChargesLeft > 0 && (!u.ownedDrone || u.ownedDrone.dead)) {
-                        deployableOperatorsCount++;
-                    }
-                }
-            });
-        }
         const icbmSkillKeys = new Set(['nuke', 'tactical_missile', 'emp']);
         const icbmSkillMode = (typeof game !== 'undefined' && typeof game.shouldShowIcbmSkills === 'function')
             ? game.shouldShowIcbmSkills()
@@ -504,7 +483,7 @@ const ui = {
         }
 
         const veteranRows = this._buildVeteranRows(veteranEntries, safeCooldowns, safeSupply);
-        const veteranTabActive = (!hasOperatorSelected && cat === 'veteran');
+        const veteranTabActive = (cat === 'veteran');
         if (veteranTabActive) {
             Object.keys(CONFIG.units).forEach((key) => {
                 const cache = this.elementCache[key];
@@ -538,10 +517,12 @@ const ui = {
                 this.lastValues[key].veteranCount = veteranCount;
             }
             const isDroneOnly = (u.droneLaunchOnly === true);
-            let currentCount = 0;
             if (isDroneOnly) {
-                currentCount = deployableOperatorsCount;
-            } else if (u.isSkill) {
+                if (cache.btn.style.display !== 'none') cache.btn.style.display = 'none';
+                return;
+            }
+            let currentCount = 0;
+            if (u.isSkill) {
                 currentCount = safeSkillCharges[u.chargeKey];
             } else {
                 currentCount = safeStock[key];
@@ -555,7 +536,7 @@ const ui = {
                 isVisible = false;
             } else {
                 const unitCategory = this.getUnitCategoryForTab(key, u);
-                isVisible = isDroneOnly ? hasOperatorSelected : (!hasOperatorSelected && unitCategory === cat);
+                isVisible = unitCategory === cat;
             }
             isVisible = isVisible && currentCount > 0;
 
@@ -611,9 +592,7 @@ const ui = {
 
             // 5. 버튼 활성/비활성 상태
             let isActive = true;
-            if (u.droneLaunchOnly) {
-                if (deployableOperatorsCount <= 0) isActive = false;
-            } else if (u.isSkill) {
+            if (u.isSkill) {
                 if (!icbmSkillMode) isActive = false;
                 if (currentCount <= 0) isActive = false;
                 if (currentCooldown > 0) isActive = false;
@@ -834,29 +813,15 @@ const ui = {
     },
 
     updateCategoryTab(currentCategory) {
-        // [P0-2] 드론병 선택 시 드론 탭 표시
-        let hasOperatorSelected = false;
-        let deployableOperatorsCount = 0;
-        if (typeof game !== 'undefined' && game.selectedUnits && game.selectedUnits.size > 0) {
-            game.selectedUnits.forEach(u => {
-                if (u && !u.dead && u.stats?.operator === true) {
-                    hasOperatorSelected = true;
-                    if (u.droneChargesLeft > 0 && (!u.ownedDrone || u.ownedDrone.dead)) {
-                        deployableOperatorsCount++;
-                    }
-                }
-            });
+        if (currentCategory === 'special' || currentCategory === 'veteran' || currentCategory === 'drone') {
+            currentCategory = 'infantry';
         }
-        if (currentCategory === 'special') currentCategory = 'armored';
         const g = (typeof game !== 'undefined') ? game : null;
         const normalizedCategory = (currentCategory === 'infantry'
             || currentCategory === 'armored'
-            || currentCategory === 'air'
-            || currentCategory === 'veteran')
+            || currentCategory === 'air')
             ? currentCategory
             : 'infantry';
-        const droneOnlyTab = document.getElementById('tab-drone-only');
-        const veteranTab = document.getElementById('tab-veteran');
         const normalTabs = ['infantry', 'armored', 'air']
             .map((id) => ({ id, el: document.getElementById(`tab-${id}`) }))
             .filter((entry) => !!entry.el);
@@ -872,45 +837,24 @@ const ui = {
             el.classList.remove('active');
         };
 
-        const veteranEntries = (g && typeof g.getVeteranSpawnEntries === 'function')
-            ? g.getVeteranSpawnEntries()
-            : [];
-        const hasVeteranUnits = Array.isArray(veteranEntries) && veteranEntries.length > 0;
+        // Keep only infantry/armored/air tabs visible.
+        normalTabs.forEach(({ el }) => showTab(el));
+        const droneOnlyTab = document.getElementById('tab-drone-only');
+        const veteranTab = document.getElementById('tab-veteran');
+        if (droneOnlyTab) hideTab(droneOnlyTab);
+        if (veteranTab) hideTab(veteranTab);
 
-        if (hasOperatorSelected) {
-            // 드론병 선택 시 드론 탭만 표시
-            normalTabs.forEach(({ el }) => hideTab(el));
-            hideTab(veteranTab);
-            if (droneOnlyTab) {
-                if (deployableOperatorsCount > 0) {
-                    showTab(droneOnlyTab);
-                    droneOnlyTab.classList.add('active');
-                } else {
-                    hideTab(droneOnlyTab);
-                }
-            }
-        } else {
-            // 일반 상태: 기존 유닛 탭은 항상 표시, 베테랑 탭은 보유 시 표시
-            normalTabs.forEach(({ el }) => showTab(el));
-            if (droneOnlyTab) hideTab(droneOnlyTab);
-            if (hasVeteranUnits) showTab(veteranTab);
-            else hideTab(veteranTab);
-
-            const availableTabs = ['infantry', 'armored', 'air'];
-            if (hasVeteranUnits) availableTabs.push('veteran');
-
-            let nextCategory = normalizedCategory;
-            if (!availableTabs.includes(nextCategory)) {
-                nextCategory = availableTabs[0] || 'infantry';
-            }
-            if (g && g.currentCategory !== nextCategory) {
-                g.currentCategory = nextCategory;
-            }
-
-            const tab = document.getElementById(`tab-${nextCategory}`);
-            if (tab && !tab.classList.contains('hidden')) tab.classList.add('active');
-            currentCategory = nextCategory;
+        const availableTabs = ['infantry', 'armored', 'air'];
+        let nextCategory = normalizedCategory;
+        if (!availableTabs.includes(nextCategory)) {
+            nextCategory = availableTabs[0];
         }
+        if (g && g.currentCategory !== nextCategory) {
+            g.currentCategory = nextCategory;
+        }
+        const tab = document.getElementById(`tab-${nextCategory}`);
+        if (tab && !tab.classList.contains('hidden')) tab.classList.add('active');
+        currentCategory = nextCategory;
 
         // 카테고리가 바뀌면 즉시 버튼 갱신 트리거
         this.updateUnitButtons(

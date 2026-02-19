@@ -17,6 +17,7 @@ const ChatPanel = {
     _list: null,
     _toggleBtn: null,
     _clearBtn: null,
+    _hqBtn: null,
 
     /**
      * 초기화: DOM 요소 캐싱 및 이벤트 바인딩
@@ -28,6 +29,7 @@ const ChatPanel = {
         this._list = document.getElementById('chat-list');
         this._toggleBtn = document.getElementById('chat-toggle-btn');
         this._clearBtn = document.getElementById('chat-clear-btn');
+        this._hqBtn = document.getElementById('chat-hq-open-btn');
 
         if (!this._panel) {
             console.warn('[ChatPanel] #chat-panel not found');
@@ -43,6 +45,18 @@ const ChatPanel = {
             // 축소 상태의 채팅 버튼 이벤트 (열기)
             if (this._toggleBtn) {
                 this._toggleBtn.addEventListener('click', () => this.setOpen(true));
+            }
+
+            if (this._hqBtn) {
+                this._hqBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (typeof HUD !== 'undefined' && HUD && typeof HUD.openQuickHQProduction === 'function') {
+                        const opened = HUD.openQuickHQProduction();
+                        if (opened === false && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+                            ui.showToast('No player base found.');
+                        }
+                    }
+                });
             }
             this._bound = true;
         }
@@ -130,6 +144,7 @@ const ChatPanel = {
      */
     show() {
         if (this._panel) this._panel.classList.remove('hidden');
+        if (this._hqBtn) this._hqBtn.classList.remove('hidden');
     },
 
     /**
@@ -137,6 +152,7 @@ const ChatPanel = {
      */
     hide() {
         if (this._panel) this._panel.classList.add('hidden');
+        if (this._hqBtn) this._hqBtn.classList.add('hidden');
     },
 
     /**

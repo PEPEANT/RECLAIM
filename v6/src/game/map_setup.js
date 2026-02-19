@@ -27,10 +27,23 @@
             const hasBunkers = skirmishBattle
                 ? false
                 : ((typeof Maps !== 'undefined') ? Maps.getRule('bunkers') : true);
+            const campaignTab = String(game._campaignBattleTab || '').trim().toLowerCase();
+            const isOccupationBattle = campaignTab === 'occupation';
 
             // ?꾧뎔 HQ
             if (hasPlayerHQ) {
                 game.buildings.push(new Building('hq_player', rearX, game.groundY, 'player'));
+            }
+            // [C] 점령전 + HQ 미존재 맵: 임시 생산 거점(Spawn Flag) 제공
+            if (isOccupationBattle && !hasPlayerHQ) {
+                const hasSpawnFlag = game.buildings.some((b) => b && !b.dead && b.type === 'spawn_flag_player');
+                if (!hasSpawnFlag) {
+                    const mapW = Math.max(1000, Number(CONFIG.mapWidth) || 6000);
+                    const flagX = Math.max(120, Math.min(mapW - 140, rearX + 36));
+                    const flag = new Building('spawn_flag_player', flagX, game.groundY, 'player');
+                    flag.hideHp = true;
+                    game.buildings.push(flag);
+                }
             }
 
             // Player-side forward defenses
