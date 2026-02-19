@@ -101,6 +101,11 @@
         return layer;
     }
 
+    function isDrillgroundTile(tile) {
+        const key = String(tile || '').trim();
+        return key === 'drillground' || key === 'drillground_gray';
+    }
+
     function normalizeDrillgroundSlots(rawSlots, total, grid) {
         const next = {};
         if (!rawSlots || typeof rawSlots !== 'object' || Array.isArray(rawSlots)) return next;
@@ -111,10 +116,33 @@
         Object.keys(rawSlots).forEach((rawIndex) => {
             const index = Number(rawIndex);
             if (!Number.isInteger(index) || index < 0 || index >= safeTotal) return;
-            if (hasGrid && grid[index] !== 'drillground') return;
+            if (hasGrid && !isDrillgroundTile(grid[index])) return;
             const unitKey = String(rawSlots[rawIndex] || '').trim();
             if (!unitKey) return;
             next[index] = unitKey;
+        });
+
+        return next;
+    }
+
+    function normalizeDrillgroundInfantryCounts(rawCounts, total, grid, drillgroundSlots) {
+        const next = {};
+        if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) return next;
+
+        const safeTotal = Math.max(0, Math.floor(Number(total) || 0));
+        const hasGrid = Array.isArray(grid) && grid.length === safeTotal;
+        const slots = (drillgroundSlots && typeof drillgroundSlots === 'object' && !Array.isArray(drillgroundSlots))
+            ? drillgroundSlots
+            : {};
+
+        Object.keys(rawCounts).forEach((rawIndex) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= safeTotal) return;
+            if (hasGrid && !isDrillgroundTile(grid[index])) return;
+            const unitKey = String(slots[index] || '').trim();
+            if (!unitKey) return;
+            const count = Math.max(1, Math.min(4, Math.floor(Number(rawCounts[rawIndex]) || 1)));
+            next[index] = count;
         });
 
         return next;
@@ -286,6 +314,12 @@
         applyPerimeterGround(ground, cols, rows, 'grass', 1);
         const baseGrid = Array.isArray(options.grid) ? options.grid.slice() : [];
         const drillgroundSlots = normalizeDrillgroundSlots(options.drillgroundSlots, total, baseGrid);
+        const drillgroundInfantryCounts = normalizeDrillgroundInfantryCounts(
+            options.drillgroundInfantryCounts,
+            total,
+            baseGrid,
+            drillgroundSlots
+        );
         const productionCooldowns = normalizeProductionCooldowns(options.productionCooldowns, total, baseGrid);
         const incomeSlots = normalizeIncomeSlots(options.incomeSlots, total, baseGrid);
         const level = clampLevel(toNumber(options?.hud?.level, MIN_CITY_LEVEL));
@@ -325,6 +359,7 @@
             grid: baseGrid,
             ground,
             drillgroundSlots,
+            drillgroundInfantryCounts,
             productionCooldowns,
             incomeSlots,
             taxAuto: normalizeTaxAuto(options.taxAuto),
@@ -405,6 +440,12 @@
             game.citySim.drillgroundSlots,
             total,
             game.citySim.grid
+        );
+        game.citySim.drillgroundInfantryCounts = normalizeDrillgroundInfantryCounts(
+            game.citySim.drillgroundInfantryCounts,
+            total,
+            game.citySim.grid,
+            game.citySim.drillgroundSlots
         );
         game.citySim.productionCooldowns = normalizeProductionCooldowns(
             game.citySim.productionCooldowns,
@@ -565,8 +606,11 @@
             if (index < 0 || index >= state.grid.length) return;
             const prev = state.grid[index] ?? null;
             state.grid[index] = tile;
-            if (tile !== 'drillground' && state.drillgroundSlots && typeof state.drillgroundSlots === 'object') {
+            if (!isDrillgroundTile(tile) && state.drillgroundSlots && typeof state.drillgroundSlots === 'object') {
                 delete state.drillgroundSlots[index];
+            }
+            if (!isDrillgroundTile(tile) && state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object') {
+                delete state.drillgroundInfantryCounts[index];
             }
             if (prev !== tile && state.productionCooldowns && typeof state.productionCooldowns === 'object') {
                 delete state.productionCooldowns[index];
@@ -591,8 +635,11 @@
                 state.drillgroundSlots = {};
             }
             const nextKey = String(unitKey || '').trim();
-            if (!nextKey || state.grid[index] !== 'drillground') {
+            if (!nextKey || !isDrillgroundTile(state.grid[index])) {
                 delete state.drillgroundSlots[index];
+                if (state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object') {
+                    delete state.drillgroundInfantryCounts[index];
+                }
                 return;
             }
             state.drillgroundSlots[index] = nextKey;
@@ -604,6 +651,9 @@
             if (!state.drillgroundSlots || typeof state.drillgroundSlots !== 'object') return;
             if (!Number.isInteger(index) || index < 0 || index >= state.grid.length) return;
             delete state.drillgroundSlots[index];
+            if (state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object') {
+                delete state.drillgroundInfantryCounts[index];
+            }
         });
     }
 

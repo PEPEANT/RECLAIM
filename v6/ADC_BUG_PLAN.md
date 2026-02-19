@@ -293,3 +293,19 @@ ode -c game.js passed
 - Notes:
   - Removed legacy ICBM payload entries from unit placement/production bar visibility logic.
   - Added image-icon path for HUD command buttons and mapped tactical/EMP/nuke icons to ICBM skills.
+
+## 2026-02-19 Work Log Update (H-01)
+- Step: ICBM stock mismatch + confidential missile storage guard
+- Result: patched (part 1)
+- Files:
+  - `game.js`
+  - `src/modes/city-sim/construction.js`
+  - `src/modes/campaign/skirmish.js`
+- Validation:
+  - `node --check game.js` passed
+  - `node --check src/modes/city-sim/construction.js` passed
+  - `node --check src/modes/campaign/skirmish.js` passed
+- Notes:
+  - Added drillground assignment eligibility filter to block skill payload units from drillground slots.
+  - Skirmish storage collector now reads normalized state and ignores stale non-drillground slot indices.
+  - Battle stock sync now recovers invalid skill payload entries from drillground back into city storage counts.

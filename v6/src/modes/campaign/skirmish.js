@@ -391,6 +391,12 @@
         _collectStorageUnitCounts(game) {
             const out = {};
             if (!game || !game.citySim || typeof game.citySim !== 'object') return out;
+            const cityState = (typeof CitySimState !== 'undefined'
+                && CitySimState
+                && typeof CitySimState.ensure === 'function')
+                ? CitySimState.ensure(game)
+                : game.citySim;
+            if (!cityState || typeof cityState !== 'object') return out;
 
             const addCount = (unitId, amount) => {
                 const key = String(unitId || '').trim();
@@ -401,8 +407,8 @@
                 out[key] = Math.max(0, Math.floor(Number(out[key]) || 0)) + qty;
             };
 
-            const cityUnits = (game.citySim && typeof game.citySim.units === 'object')
-                ? game.citySim.units
+            const cityUnits = (cityState && typeof cityState.units === 'object')
+                ? cityState.units
                 : null;
             if (cityUnits) {
                 Object.keys(cityUnits).forEach((key) => {
@@ -411,14 +417,32 @@
             }
 
             // 연병장 배치 유닛도 국지전 배치 예산에 포함한다.
-            const drillgroundSlots = (game.citySim && typeof game.citySim.drillgroundSlots === 'object')
-                ? game.citySim.drillgroundSlots
+            const drillgroundSlots = (cityState && typeof cityState.drillgroundSlots === 'object')
+                ? cityState.drillgroundSlots
+                : null;
+            const drillgroundInfantryCounts = (cityState && typeof cityState.drillgroundInfantryCounts === 'object')
+                ? cityState.drillgroundInfantryCounts
+                : null;
+            const grid = (cityState && Array.isArray(cityState.grid))
+                ? cityState.grid
                 : null;
             if (drillgroundSlots) {
                 Object.keys(drillgroundSlots).forEach((slotKey) => {
+                    const index = Number(slotKey);
+                    if (grid && Number.isInteger(index) && index >= 0 && index < grid.length) {
+                        const tile = String(grid[index] || '').trim();
+                        if (tile !== 'drillground' && tile !== 'drillground_gray') return;
+                    }
                     const unitId = String(drillgroundSlots[slotKey] || '').trim();
                     if (!unitId) return;
-                    addCount(unitId, 1);
+                    const unitDef = (typeof CONFIG !== 'undefined' && CONFIG?.units)
+                        ? CONFIG.units[unitId]
+                        : null;
+                    const isInfantry = String(unitDef?.category || '').trim().toLowerCase() === 'infantry';
+                    const count = isInfantry
+                        ? Math.max(1, Math.min(4, Math.floor(Number(drillgroundInfantryCounts?.[slotKey]) || 1)))
+                        : 1;
+                    addCount(unitId, count);
                 });
             }
 

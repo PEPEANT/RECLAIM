@@ -207,6 +207,12 @@
         const deps = getDeps();
         const CitySimState = global.CitySimState;
         const CitySimEconomy = global.CitySimEconomy;
+        const isDrillgroundTile = (typeof deps.isDrillgroundTile === 'function')
+            ? deps.isDrillgroundTile
+            : ((tile) => {
+                const key = String(tile || '').trim();
+                return key === 'drillground' || key === 'drillground_gray';
+            });
 
         if (!CitySimState || typeof CitySimState.ensure !== 'function') {
             return { ok: false, reason: '상태 시스템을 불러오지 못했습니다.' };
@@ -223,6 +229,8 @@
         const isFootprintTile = deps.isFootprintTile;
         const getFootprintAtAnchor = deps.getFootprintAtAnchor;
         const getFootprintRequirementMessage = deps.getFootprintRequirementMessage;
+        const getDrillgroundUnitAt = deps.getDrillgroundUnitAt;
+        const canPlaceDrillgroundUnitAtAnchor = deps.canPlaceDrillgroundUnitAtAnchor;
         const formatNumber = deps.formatNumber;
         const MOVE_COST_MONEY = Math.max(0, Math.floor(Number(deps.MOVE_COST_MONEY) || 0));
 
@@ -286,6 +294,43 @@
 
         if (isFootprintTile(currentTile) && index !== source.index) {
             return { ok: false, reason: '다른 오브젝트와 겹칠 수 없습니다.' };
+        }
+
+        if (
+            isDrillgroundTile(source.tile)
+            && typeof getDrillgroundUnitAt === 'function'
+            && typeof canPlaceDrillgroundUnitAtAnchor === 'function'
+        ) {
+            const drillgroundUnitKey = getDrillgroundUnitAt(state, source.index);
+            if (drillgroundUnitKey) {
+                const simulatedGrid = Array.isArray(state.grid) ? state.grid.slice() : [];
+                simulatedGrid[source.index] = null;
+                simulatedGrid[index] = source.tile;
+
+                const simulatedSlots = {};
+                if (state.drillgroundSlots && typeof state.drillgroundSlots === 'object') {
+                    Object.keys(state.drillgroundSlots).forEach((rawIndex) => {
+                        simulatedSlots[rawIndex] = state.drillgroundSlots[rawIndex];
+                    });
+                }
+                delete simulatedSlots[source.index];
+
+                const simulatedState = Object.assign({}, state, {
+                    grid: simulatedGrid,
+                    drillgroundSlots: simulatedSlots
+                });
+                const drillgroundMoveCheck = canPlaceDrillgroundUnitAtAnchor(
+                    simulatedState,
+                    index,
+                    drillgroundUnitKey
+                );
+                if (!drillgroundMoveCheck || drillgroundMoveCheck.ok !== true) {
+                    return {
+                        ok: false,
+                        reason: String(drillgroundMoveCheck?.reason || '해당 위치에는 연병장 유닛을 이동할 수 없습니다.')
+                    };
+                }
+            }
         }
 
         if (MOVE_COST_MONEY > 0) {

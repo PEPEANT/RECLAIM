@@ -124,7 +124,15 @@
             name: '연병장',
             icon: '연병',
             category: 'build',
-            maxOwned: 20,
+            maxOwned: 50,
+            costMoney: 84
+        },
+        drillground_gray: {
+            id: 'drillground_gray',
+            name: '연병장(회색)',
+            icon: '회연',
+            category: 'build',
+            maxOwned: 50,
             costMoney: 84
         },
         hq: {
@@ -289,7 +297,7 @@
 
     const TOOLS_BY_TAB = {
         base: ['decor', 'shop_store', 'apartment_large', 'house', 'tax_office'],
-        industry: ['drillground', 'oilrig', 'barracks', 'factory', 'powerplant', 'airport'],
+        industry: ['drillground', 'drillground_gray', 'oilrig', 'barracks', 'factory', 'powerplant', 'airport'],
         decor: ['tree', 'park', 'park_plaza', 'monument'],
         infra: ['road', 'eraser'],
         tile: ['ground_dirt', 'ground_grass', 'ground_asphalt', 'ground_concrete']
@@ -408,6 +416,14 @@
     };
     const FACTORY_RESEARCH_KEYS = ['aa_tank', 'spg', 'icbm', 'chinook', 'bomber'];
     const FACTORY_RESEARCH_KEY_SET = new Set(FACTORY_RESEARCH_KEYS);
+    const DRILLGROUND_TILE_PRIMARY = 'drillground';
+    const DRILLGROUND_TILE_ALT = 'drillground_gray';
+    const DRILLGROUND_TILE_SET = new Set([DRILLGROUND_TILE_PRIMARY, DRILLGROUND_TILE_ALT]);
+
+    function isDrillgroundTile(tile) {
+        const key = String(tile || '').trim();
+        return !!key && DRILLGROUND_TILE_SET.has(key);
+    }
 
     const TILE_META = {
         road: { icon: '', className: 'tile-road' },
@@ -418,6 +434,7 @@
         shop_store: { icon: '가게', className: 'tile-shop-store' },
         tax_office: { icon: '세무', className: 'tile-tax-office' },
         drillground: { icon: '연병', className: 'tile-drillground' },
+        drillground_gray: { icon: '연병', className: 'tile-drillground-gray' },
         barracks: { icon: '병영', className: 'tile-barracks' },
         airport: { icon: '공항', className: 'tile-airport' },
         airport_tr: { icon: '공항', className: 'tile-airport' },
@@ -457,6 +474,8 @@
     const spriteUrlCache = new Map();
     const buildCardPreviewCache = new Map();
     const inventoryIconCache = new Map();
+    const inventoryProfileIconCache = new Map();
+    const drillgroundUnitIconCache = new Map();
     const drillgroundMissileIconCache = new Map();
     const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['emp', 'nuke', 'tactical_missile']);
     const CITY_OWN_SIGN_REFRESH_MS = 15000;
@@ -1233,6 +1252,13 @@
         if (!state || !Number.isInteger(index) || index < 0) {
             return { index, tile };
         }
+        if (isDrillgroundTile(tile)) {
+            const anchorIndex = getDrillgroundSlotOwnerAnchorIndex(state, index);
+            if (Number.isInteger(anchorIndex)) {
+                return { index: anchorIndex, tile };
+            }
+            return { index, tile };
+        }
         if (!isFootprintTile(tile)) {
             return { index, tile };
         }
@@ -1317,19 +1343,341 @@
         return key || null;
     }
 
-    function getDrillgroundUnitAt(state, index) {
-        if (!state || !Number.isInteger(index) || index < 0 || index >= state.grid.length) return null;
-        const unitKey = normalizeUnitKey(state.drillgroundSlots?.[index]);
-        return unitKey;
+    function isDrillgroundAssignableUnit(unitKey, unitDef) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key || !unitDef) return false;
+        if (key === 'icbm_enemy') return false;
+        if (unitDef.disabled === true) return false;
+        if (unitDef.hideFromUnitBar === true) return false;
+        if (unitDef.isSkill === true) return false;
+        if (unitDef.isBuilder === true) return false;
+        if (unitDef.droneLaunchOnly === true) return false;
+
+        const unitType = String(unitDef.type || '').trim().toLowerCase();
+        const unitCategory = String(unitDef.category || '').trim().toLowerCase();
+        if (unitType === 'civilian' || unitCategory === 'civilian') return false;
+
+        return true;
     }
 
-    function returnUnitToInventory(game, unitKey) {
+    function isDrillgroundCell(state, index) {
+        if (!state || !Array.isArray(state.grid)) return false;
+        if (!Number.isInteger(index) || index < 0 || index >= state.grid.length) return false;
+        return isDrillgroundTile(state.grid[index]);
+    }
+
+    function getDrillgroundTileAt(state, index) {
+        if (!isDrillgroundCell(state, index)) return '';
+        return String(state.grid[index] || '').trim();
+    }
+
+    function isSameDrillgroundType(state, leftIndex, rightIndex) {
+        const leftTile = getDrillgroundTileAt(state, leftIndex);
+        const rightTile = getDrillgroundTileAt(state, rightIndex);
+        return !!leftTile && leftTile === rightTile;
+    }
+
+    function getGridColumnCount(state) {
+        const cols = Math.floor(Number(state?.cols) || 0);
+        if (cols > 0) return cols;
+        const size = Array.isArray(state?.grid) ? state.grid.length : 0;
+        return Math.max(1, size);
+    }
+
+    function isHorizontalAdjacentIndex(state, leftIndex, rightIndex) {
+        if (!Number.isInteger(leftIndex) || !Number.isInteger(rightIndex)) return false;
+        if (rightIndex !== leftIndex + 1) return false;
+        const cols = getGridColumnCount(state);
+        if (cols <= 0) return false;
+        return Math.floor(leftIndex / cols) === Math.floor(rightIndex / cols);
+    }
+
+    function getDrillgroundRightCompanionIndex(state, anchorIndex) {
+        const companionIndex = Number(anchorIndex) + 1;
+        if (!isHorizontalAdjacentIndex(state, Number(anchorIndex), companionIndex)) return null;
+        if (!isDrillgroundCell(state, companionIndex)) return null;
+        if (!isSameDrillgroundType(state, Number(anchorIndex), companionIndex)) return null;
+        return companionIndex;
+    }
+
+    function hasHorizontalDrillgroundNeighbor(state, index) {
+        if (!isDrillgroundCell(state, index)) return false;
+        const leftIndex = index - 1;
+        const rightIndex = index + 1;
+        const hasLeft = (
+            isHorizontalAdjacentIndex(state, leftIndex, index)
+            && isSameDrillgroundType(state, leftIndex, index)
+        );
+        const hasRight = (
+            isHorizontalAdjacentIndex(state, index, rightIndex)
+            && isSameDrillgroundType(state, index, rightIndex)
+        );
+        return hasLeft || hasRight;
+    }
+
+    function getDrillgroundMergeFlags(state, index) {
+        if (!isDrillgroundCell(state, index)) {
+            return { mergeLeft: false, mergeRight: false, mergeUp: false, mergeDown: false };
+        }
+
+        const colCount = Math.max(1, Math.floor(Number(state?.cols) || 0));
+        const leftIndex = index - 1;
+        const rightIndex = index + 1;
+        const upIndex = index - colCount;
+        const downIndex = index + colCount;
+        const mergeLeft = (
+            isHorizontalAdjacentIndex(state, leftIndex, index)
+            && isSameDrillgroundType(state, leftIndex, index)
+        );
+        const mergeRight = (
+            isHorizontalAdjacentIndex(state, index, rightIndex)
+            && isSameDrillgroundType(state, index, rightIndex)
+        );
+        const mergeUp = isSameDrillgroundType(state, upIndex, index);
+        const mergeDown = isSameDrillgroundType(state, index, downIndex);
+
+        return { mergeLeft, mergeRight, mergeUp, mergeDown };
+    }
+
+    function getDrillgroundStoredUnitAt(state, index) {
+        if (!state || !Number.isInteger(index) || index < 0 || index >= state.grid.length) return null;
+        return normalizeUnitKey(state.drillgroundSlots?.[index]);
+    }
+
+    const DRILLGROUND_INFANTRY_MAX_STACK = 4;
+
+    function isInfantryUnit(unitDefInput) {
+        const category = String(unitDefInput?.category || '').trim().toLowerCase();
+        return category === 'infantry';
+    }
+
+    function clampDrillgroundInfantryCount(value) {
+        const raw = Math.max(1, Math.floor(Number(value) || 1));
+        return Math.min(DRILLGROUND_INFANTRY_MAX_STACK, raw);
+    }
+
+    function getDrillgroundInfantryCountAt(state, index, unitKeyInput, unitDefInput) {
+        const unitKey = normalizeUnitKey(unitKeyInput);
+        const unitDef = unitDefInput || getUnitDefByKey(unitKey);
+        if (!isInfantryUnit(unitDef)) return 1;
+        const raw = state?.drillgroundInfantryCounts?.[index];
+        return clampDrillgroundInfantryCount(raw);
+    }
+
+    function getDrillgroundUnitFootprintSlots(unitKey, unitDefInput) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key) return 1;
+        const unitDef = unitDefInput || getUnitDefByKey(key);
+        if (!unitDef) return 1;
+        const category = String(unitDef.category || '').trim().toLowerCase();
+        if (category === 'infantry') return 1;
+        // Wheeled light vehicles stay single-slot in drillground layout.
+        if (key === 'humvee' || key === 'apc' || key === 'aa_tank') return 1;
+        return 2;
+    }
+
+    function buildDrillgroundOccupancy(state) {
+        const anchors = new Map();
+        const ownerByIndex = new Map();
+        if (!state || !Array.isArray(state.grid) || state.grid.length <= 0) {
+            return { anchors, ownerByIndex };
+        }
+
+        const slots = (state.drillgroundSlots && typeof state.drillgroundSlots === 'object')
+            ? state.drillgroundSlots
+            : {};
+        const indices = Object.keys(slots)
+            .map((raw) => Number(raw))
+            .filter((idx) => Number.isInteger(idx) && isDrillgroundCell(state, idx))
+            .sort((a, b) => a - b);
+
+        indices.forEach((index) => {
+            if (ownerByIndex.has(index)) return;
+
+            const unitKey = getDrillgroundStoredUnitAt(state, index);
+            if (!unitKey) return;
+            const unitDef = getUnitDefByKey(unitKey);
+            if (!isDrillgroundAssignableUnit(unitKey, unitDef)) return;
+            const infantryCount = getDrillgroundInfantryCountAt(state, index, unitKey, unitDef);
+
+            const span = getDrillgroundUnitFootprintSlots(unitKey, unitDef);
+            if (span >= 2) {
+                const companionIndex = getDrillgroundRightCompanionIndex(state, index);
+                const companionStoredUnitKey = Number.isInteger(companionIndex)
+                    ? getDrillgroundStoredUnitAt(state, companionIndex)
+                    : null;
+                const companionStoredUnitDef = companionStoredUnitKey
+                    ? getUnitDefByKey(companionStoredUnitKey)
+                    : null;
+                const companionHasOwnUnit = !!(
+                    companionStoredUnitKey
+                    && isDrillgroundAssignableUnit(companionStoredUnitKey, companionStoredUnitDef)
+                );
+
+                if (Number.isInteger(companionIndex) && !ownerByIndex.has(companionIndex) && !companionHasOwnUnit) {
+                    anchors.set(index, {
+                        unitKey,
+                        unitDef,
+                        span: 2,
+                        companionIndex,
+                        infantryCount: 1
+                    });
+                    ownerByIndex.set(index, index);
+                    ownerByIndex.set(companionIndex, index);
+                    return;
+                }
+            }
+
+            anchors.set(index, {
+                unitKey,
+                unitDef,
+                span: 1,
+                companionIndex: null,
+                infantryCount
+            });
+            ownerByIndex.set(index, index);
+        });
+
+        return { anchors, ownerByIndex };
+    }
+
+    function getDrillgroundSlotOwnerAnchorIndex(state, index, occupancyInput) {
+        if (!isDrillgroundCell(state, index)) return null;
+        const occupancy = occupancyInput || buildDrillgroundOccupancy(state);
+        const anchor = occupancy.ownerByIndex.get(index);
+        return Number.isInteger(anchor) ? anchor : null;
+    }
+
+    function getDrillgroundEntryAt(state, index, occupancyInput) {
+        const occupancy = occupancyInput || buildDrillgroundOccupancy(state);
+        const anchorIndex = getDrillgroundSlotOwnerAnchorIndex(state, index, occupancy);
+        if (!Number.isInteger(anchorIndex)) return null;
+        const anchorEntry = occupancy.anchors.get(anchorIndex);
+        if (!anchorEntry) return null;
+        return {
+            anchorIndex,
+            unitKey: anchorEntry.unitKey,
+            unitDef: anchorEntry.unitDef,
+            span: anchorEntry.span,
+            companionIndex: anchorEntry.companionIndex,
+            infantryCount: clampDrillgroundInfantryCount(anchorEntry.infantryCount),
+            isAnchor: anchorIndex === index
+        };
+    }
+
+    function getDrillgroundPlacementAnchorIndex(state, index, occupancyInput) {
+        if (!isDrillgroundCell(state, index)) return null;
+        const anchor = getDrillgroundSlotOwnerAnchorIndex(state, index, occupancyInput);
+        return Number.isInteger(anchor) ? anchor : index;
+    }
+
+    function getDrillgroundUnitAt(state, index) {
+        const entry = getDrillgroundEntryAt(state, index);
+        return entry ? entry.unitKey : null;
+    }
+
+    function canPlaceDrillgroundUnitAtAnchor(state, anchorIndex, unitKey, unitDefInput, occupancyInput) {
+        if (!isDrillgroundCell(state, anchorIndex)) {
+            return { ok: false, reason: '연병장이 선택되지 않았습니다.' };
+        }
+        if (!hasHorizontalDrillgroundNeighbor(state, anchorIndex)) {
+            return { ok: false, reason: '유닛 배치는 가로로 붙은 연병장 구역에서만 가능합니다.' };
+        }
+
+        const key = normalizeUnitKey(unitKey);
+        const unitDef = unitDefInput || getUnitDefByKey(key);
+        if (!key || !unitDef || !isDrillgroundAssignableUnit(key, unitDef)) {
+            return { ok: false, reason: '연병장에 배치할 수 없는 유닛입니다.' };
+        }
+
+        const occupancy = occupancyInput || buildDrillgroundOccupancy(state);
+        const span = getDrillgroundUnitFootprintSlots(key, unitDef);
+        const ownerAtAnchor = occupancy.ownerByIndex.get(anchorIndex);
+        if (Number.isInteger(ownerAtAnchor) && ownerAtAnchor !== anchorIndex) {
+            return { ok: false, reason: '유닛 점유 칸에는 배치할 수 없습니다.' };
+        }
+
+        if (span >= 2) {
+            const companionIndex = getDrillgroundRightCompanionIndex(state, anchorIndex);
+            if (!Number.isInteger(companionIndex)) {
+                return { ok: false, reason: '해당 유닛은 가로로 붙은 연병장 2칸이 필요합니다.' };
+            }
+            const ownerAtCompanion = occupancy.ownerByIndex.get(companionIndex);
+            if (Number.isInteger(ownerAtCompanion) && ownerAtCompanion !== anchorIndex) {
+                return { ok: false, reason: '가로 연병장 2칸이 비어 있어야 배치할 수 있습니다.' };
+            }
+            return { ok: true, span: 2, companionIndex };
+        }
+
+        return { ok: true, span: 1, companionIndex: null };
+    }
+
+    function setDrillgroundUnitAtAnchor(game, anchorIndex, unitKey, unitDefInput, options) {
+        const CitySimStateRef = (typeof CitySimState !== 'undefined') ? CitySimState : null;
+        if (!CitySimStateRef || typeof CitySimStateRef.mutate !== 'function') return false;
+
+        const key = normalizeUnitKey(unitKey);
+        const opts = (options && typeof options === 'object') ? options : {};
+        let applied = false;
+        CitySimStateRef.mutate(game, (state) => {
+            if (!isDrillgroundCell(state, anchorIndex)) return;
+            if (!state.drillgroundSlots || typeof state.drillgroundSlots !== 'object') {
+                state.drillgroundSlots = {};
+            }
+            if (!state.drillgroundInfantryCounts || typeof state.drillgroundInfantryCounts !== 'object') {
+                state.drillgroundInfantryCounts = {};
+            }
+
+            const occupancy = buildDrillgroundOccupancy(state);
+            const currentEntry = occupancy.anchors.get(anchorIndex) || null;
+            const currentCompanionIndex = (currentEntry && currentEntry.span >= 2)
+                ? currentEntry.companionIndex
+                : null;
+
+            if (!key) {
+                delete state.drillgroundSlots[anchorIndex];
+                delete state.drillgroundInfantryCounts[anchorIndex];
+                if (Number.isInteger(currentCompanionIndex)) {
+                    delete state.drillgroundSlots[currentCompanionIndex];
+                    delete state.drillgroundInfantryCounts[currentCompanionIndex];
+                }
+                applied = true;
+                return;
+            }
+
+            const unitDef = unitDefInput || getUnitDefByKey(key);
+            if (!isDrillgroundAssignableUnit(key, unitDef)) return;
+            const placeCheck = canPlaceDrillgroundUnitAtAnchor(state, anchorIndex, key, unitDef, occupancy);
+            if (!placeCheck.ok) return;
+
+            delete state.drillgroundSlots[anchorIndex];
+            delete state.drillgroundInfantryCounts[anchorIndex];
+            if (Number.isInteger(currentCompanionIndex)) {
+                delete state.drillgroundSlots[currentCompanionIndex];
+                delete state.drillgroundInfantryCounts[currentCompanionIndex];
+            }
+            state.drillgroundSlots[anchorIndex] = key;
+            if (isInfantryUnit(unitDef)) {
+                state.drillgroundInfantryCounts[anchorIndex] = clampDrillgroundInfantryCount(opts.infantryCount);
+            }
+            if (placeCheck.span >= 2 && Number.isInteger(placeCheck.companionIndex)) {
+                delete state.drillgroundSlots[placeCheck.companionIndex];
+                delete state.drillgroundInfantryCounts[placeCheck.companionIndex];
+            }
+            applied = true;
+        });
+
+        return applied;
+    }
+
+    function returnUnitToInventory(game, unitKey, count = 1) {
         const key = normalizeUnitKey(unitKey);
         if (!key) return;
+        const amount = Math.max(1, Math.floor(Number(count) || 1));
         CitySimState.mutate(game, (draft) => {
             if (!draft.units || typeof draft.units !== 'object') draft.units = {};
             const current = Math.max(0, Math.floor(Number(draft.units[key]) || 0));
-            draft.units[key] = current + 1;
+            draft.units[key] = current + amount;
         });
     }
 
@@ -1360,13 +1708,19 @@
     }
 
     function releaseDrillgroundUnit(game, index) {
-        const unitKey = CitySimState.getDrillgroundUnit(game, index);
+        const state = CitySimState.ensure(game);
+        const occupancy = buildDrillgroundOccupancy(state);
+        const anchorIndex = getDrillgroundPlacementAnchorIndex(state, index, occupancy);
+        if (!Number.isInteger(anchorIndex)) return null;
+        const entry = getDrillgroundEntryAt(state, anchorIndex, occupancy);
+        const unitKey = entry ? entry.unitKey : null;
         if (!unitKey) {
-            CitySimState.clearDrillgroundUnit(game, index);
+            setDrillgroundUnitAtAnchor(game, anchorIndex, null);
             return null;
         }
-        returnUnitToInventory(game, unitKey);
-        CitySimState.clearDrillgroundUnit(game, index);
+        const returnCount = isInfantryUnit(entry?.unitDef) ? clampDrillgroundInfantryCount(entry?.infantryCount) : 1;
+        returnUnitToInventory(game, unitKey, returnCount);
+        setDrillgroundUnitAtAnchor(game, anchorIndex, null);
         return unitKey;
     }
 
@@ -1375,7 +1729,7 @@
         if (!Number.isInteger(index) || index < 0 || index >= state.grid.length) {
             return { ok: false, reason: '연병장 위치가 유효하지 않습니다.' };
         }
-        if (state.grid[index] !== 'drillground') {
+        if (!isDrillgroundTile(state.grid[index])) {
             return { ok: false, reason: '연병장이 선택되지 않았습니다.' };
         }
 
@@ -1388,32 +1742,136 @@
         if (!unitDef) {
             return { ok: false, reason: '유닛 정보를 찾을 수 없습니다.' };
         }
+        if (!isDrillgroundAssignableUnit(key, unitDef)) {
+            return { ok: false, reason: '연병장에 배치할 수 없는 유닛입니다.' };
+        }
 
-        const currentUnitKey = getDrillgroundUnitAt(state, index);
+        const span = getDrillgroundUnitFootprintSlots(key, unitDef);
+        const occupancy = buildDrillgroundOccupancy(state);
+        const candidateAnchors = [];
+        const pushCandidate = (candidateIndex) => {
+            if (!Number.isInteger(candidateIndex)) return;
+            if (!isDrillgroundCell(state, candidateIndex)) return;
+            if (candidateAnchors.includes(candidateIndex)) return;
+            candidateAnchors.push(candidateIndex);
+        };
+
+        pushCandidate(getDrillgroundPlacementAnchorIndex(state, index, occupancy));
+        if (span >= 2) {
+            const leftCandidate = index - 1;
+            if (isHorizontalAdjacentIndex(state, leftCandidate, index)) {
+                pushCandidate(leftCandidate);
+            }
+        }
+
+        if (candidateAnchors.length <= 0) {
+            return { ok: false, reason: '연병장이 선택되지 않았습니다.' };
+        }
+
+        let anchorIndex = null;
+        let placeCheck = null;
+        for (let i = 0; i < candidateAnchors.length; i++) {
+            const candidateIndex = candidateAnchors[i];
+            const check = canPlaceDrillgroundUnitAtAnchor(state, candidateIndex, key, unitDef, occupancy);
+            if (check.ok) {
+                anchorIndex = candidateIndex;
+                placeCheck = check;
+                break;
+            }
+            if (!placeCheck) placeCheck = check;
+        }
+        if (!Number.isInteger(anchorIndex) || !placeCheck || !placeCheck.ok) {
+            return { ok: false, reason: placeCheck?.reason || '유닛을 배치할 수 없습니다.' };
+        }
+
+        const currentEntry = getDrillgroundEntryAt(state, anchorIndex, occupancy);
+        const currentUnitKey = currentEntry ? currentEntry.unitKey : null;
+        const incomingIsInfantry = isInfantryUnit(unitDef);
+        const currentInfantryCount = (
+            incomingIsInfantry
+            && currentEntry
+            && currentUnitKey === key
+            && isInfantryUnit(currentEntry.unitDef)
+        )
+            ? clampDrillgroundInfantryCount(currentEntry.infantryCount)
+            : 0;
         if (currentUnitKey === key) {
-            return { ok: true, changed: false, unitKey: key, unitDef };
+            if (incomingIsInfantry) {
+                if (currentInfantryCount >= DRILLGROUND_INFANTRY_MAX_STACK) {
+                    return { ok: false, reason: `보병은 연병장 1칸당 최대 ${DRILLGROUND_INFANTRY_MAX_STACK}기까지 배치할 수 있습니다.` };
+                }
+                if (!consumeUnitFromInventory(game, key)) {
+                    return { ok: false, reason: '보관함 수량이 부족합니다.' };
+                }
+                const nextInfantryCount = currentInfantryCount + 1;
+                const appliedStack = setDrillgroundUnitAtAnchor(
+                    game,
+                    anchorIndex,
+                    key,
+                    unitDef,
+                    { infantryCount: nextInfantryCount }
+                );
+                if (!appliedStack) {
+                    returnUnitToInventory(game, key);
+                    return { ok: false, reason: '연병장 배치에 실패했습니다.' };
+                }
+                return {
+                    ok: true,
+                    changed: true,
+                    stacked: true,
+                    unitKey: key,
+                    unitDef,
+                    anchorIndex,
+                    infantryCount: nextInfantryCount
+                };
+            }
+            return { ok: true, changed: false, unitKey: key, unitDef, anchorIndex };
         }
 
         if (!consumeUnitFromInventory(game, key)) {
             return { ok: false, reason: '보관함 수량이 부족합니다.' };
         }
 
-        if (currentUnitKey) {
-            returnUnitToInventory(game, currentUnitKey);
+        const applied = setDrillgroundUnitAtAnchor(
+            game,
+            anchorIndex,
+            key,
+            unitDef,
+            { infantryCount: 1 }
+        );
+        if (!applied) {
+            returnUnitToInventory(game, key);
+            return { ok: false, reason: '연병장 배치에 실패했습니다.' };
         }
-        CitySimState.setDrillgroundUnit(game, index, key);
+        if (currentUnitKey) {
+            const returnCount = (
+                currentEntry && isInfantryUnit(currentEntry.unitDef)
+            )
+                ? clampDrillgroundInfantryCount(currentEntry.infantryCount)
+                : 1;
+            returnUnitToInventory(game, currentUnitKey, returnCount);
+        }
 
-        return { ok: true, changed: true, unitKey: key, unitDef };
+        return {
+            ok: true,
+            changed: true,
+            unitKey: key,
+            unitDef,
+            anchorIndex,
+            infantryCount: 1
+        };
     }
 
-    function getDrillgroundSelectableEntries(game, currentUnitKey) {
+    function getDrillgroundSelectableEntries(game, currentUnitKey, currentUnitCount = 1) {
         const currentKey = normalizeUnitKey(currentUnitKey);
+        const currentCount = Math.max(1, Math.floor(Number(currentUnitCount) || 1));
         const entries = [];
 
         INVENTORY_TABS.forEach((tab) => {
             getInventoryUnitDefsByTab(tab.id).forEach(({ key, unit }) => {
+                if (!isDrillgroundAssignableUnit(key, unit)) return;
                 const owned = getInventoryUnitCount(game, key, unit);
-                const available = owned + (currentKey === key ? 1 : 0);
+                const available = owned + (currentKey === key ? currentCount : 0);
                 entries.push({
                     key,
                     unit,
@@ -1429,7 +1887,7 @@
 
     function isDrillgroundUnitTarget(target) {
         if (!target || typeof target.closest !== 'function') return false;
-        return !!target.closest('.city-drillground-unit, .city-drillground-unit-fallback.city-drillground-unit-populated');
+        return !!target.closest('.city-drillground-unit, .city-drillground-infantry-squad, .city-drillground-unit-fallback.city-drillground-unit-populated');
     }
 
     function isProductionClaimTarget(target) {
@@ -1473,34 +1931,54 @@
     function openDrillgroundUnitProfile(game, index) {
         const state = CitySimState.ensure(game);
         if (!Number.isInteger(index) || index < 0 || index >= state.grid.length) return;
-        if (state.grid[index] !== 'drillground') return;
+        if (!isDrillgroundTile(state.grid[index])) return;
 
-        const unitKey = getDrillgroundUnitAt(state, index);
-        if (!unitKey) {
+        const occupancy = buildDrillgroundOccupancy(state);
+        const anchorIndex = getDrillgroundPlacementAnchorIndex(state, index, occupancy);
+        const entry = Number.isInteger(anchorIndex)
+            ? getDrillgroundEntryAt(state, anchorIndex, occupancy)
+            : null;
+        if (!entry || !entry.unitKey) {
             showToast('연병장에 배치된 유닛이 없습니다.');
             return;
         }
 
-        const unitDef = getUnitDefByKey(unitKey);
+        const unitKey = entry.unitKey;
+        const unitDef = entry.unitDef || getUnitDefByKey(unitKey);
         if (!unitDef) {
             showToast('유닛 정보를 찾을 수 없습니다.');
             return;
         }
 
         openCityUnitProfilePanel(game, unitKey, unitDef, {
-            fixedCount: 1,
+            fixedCount: isInfantryUnit(unitDef)
+                ? clampDrillgroundInfantryCount(entry?.infantryCount)
+                : 1,
             source: 'drillground'
         });
     }
 
     function openDrillgroundUnitPicker(game, selectionInfo) {
         if (!game || !selectionInfo) return;
-        if (selectionInfo.tile !== 'drillground') return;
+        if (!isDrillgroundTile(selectionInfo.tile)) return;
         if (typeof game.openCityActionModal !== 'function') return;
         closeFloatingPanelsForUnitAction(game);
 
-        const currentUnitKey = CitySimState.getDrillgroundUnit(game, selectionInfo.index);
-        const entries = getDrillgroundSelectableEntries(game, currentUnitKey);
+        const state = CitySimState.ensure(game);
+        const occupancy = buildDrillgroundOccupancy(state);
+        const anchorIndex = getDrillgroundPlacementAnchorIndex(state, selectionInfo.index, occupancy);
+        if (!Number.isInteger(anchorIndex)) {
+            showToast('연병장이 선택되지 않았습니다.');
+            return;
+        }
+        const currentEntry = getDrillgroundEntryAt(state, anchorIndex, occupancy);
+        const currentUnitKey = currentEntry ? currentEntry.unitKey : null;
+        const currentUnitCount = (
+            currentEntry && isInfantryUnit(currentEntry.unitDef)
+        )
+            ? clampDrillgroundInfantryCount(currentEntry.infantryCount)
+            : 1;
+        const entries = getDrillgroundSelectableEntries(game, currentUnitKey, currentUnitCount);
         if (entries.length === 0) {
             showToast('배치 가능한 유닛 목록을 불러올 수 없습니다.');
             return;
@@ -1537,13 +2015,51 @@
 
         const msgEl = document.getElementById('city-action-msg');
         if (!msgEl) return;
+
+        const refreshPickerButtons = () => {
+            const latestState = CitySimState.ensure(game);
+            const latestOccupancy = buildDrillgroundOccupancy(latestState);
+            const latestAnchorIndex = getDrillgroundPlacementAnchorIndex(latestState, selectionInfo.index, latestOccupancy);
+            if (!Number.isInteger(latestAnchorIndex)) return;
+            const latestEntry = getDrillgroundEntryAt(latestState, latestAnchorIndex, latestOccupancy);
+            const latestCurrentUnitKey = latestEntry ? latestEntry.unitKey : null;
+            const latestCurrentCount = (
+                latestEntry && isInfantryUnit(latestEntry.unitDef)
+            )
+                ? clampDrillgroundInfantryCount(latestEntry.infantryCount)
+                : 1;
+            const latestEntries = getDrillgroundSelectableEntries(game, latestCurrentUnitKey, latestCurrentCount);
+            const entryMap = new Map(latestEntries.map((entry) => [entry.key, entry]));
+
+            msgEl.querySelectorAll('[data-city-drillground-unit]').forEach((itemEl) => {
+                const itemKey = normalizeUnitKey(itemEl.getAttribute('data-city-drillground-unit'));
+                if (!itemKey) return;
+                const entry = entryMap.get(itemKey) || null;
+                const disabled = !entry || (entry.canAssign !== true && entry.isCurrent !== true);
+                itemEl.classList.toggle('is-current', !!entry?.isCurrent);
+                itemEl.classList.toggle('is-disabled', disabled);
+                if (disabled) itemEl.setAttribute('disabled', 'disabled');
+                else itemEl.removeAttribute('disabled');
+
+                const metaEl = itemEl.querySelector('.city-action-unitbar-meta');
+                if (metaEl) {
+                    metaEl.textContent = `가용 ${formatNumber(Math.max(0, Math.floor(Number(entry?.available) || 0)))}`;
+                }
+                const badgeEl = itemEl.querySelector('.city-action-unitbar-badge');
+                if (badgeEl) {
+                    badgeEl.textContent = entry?.isCurrent ? '배치중' : ((entry?.canAssign === true) ? '배치' : '부족');
+                }
+            });
+        };
+
+        refreshPickerButtons();
         msgEl.querySelectorAll('[data-city-drillground-unit]').forEach((btn) => {
             btn.addEventListener('click', () => {
                 const unitKey = normalizeUnitKey(btn.getAttribute('data-city-drillground-unit'));
                 if (!unitKey) return;
 
                 const latestSelection = getSelectedTileInfo(game);
-                if (!latestSelection || latestSelection.index !== selectionInfo.index || latestSelection.tile !== 'drillground') {
+                if (!latestSelection || latestSelection.index !== selectionInfo.index || !isDrillgroundTile(latestSelection.tile)) {
                     showToast('선택된 연병장이 없습니다.');
                     return;
                 }
@@ -1558,12 +2074,28 @@
                 renderGrid(game);
                 renderContextBar(game);
                 refreshCityUnitPanels(game);
-                if (typeof game.closeCityActionModal === 'function') {
+                const resultInfantryCount = isInfantryUnit(result.unitDef)
+                    ? clampDrillgroundInfantryCount(result.infantryCount)
+                    : 1;
+                const keepPickerOpen = (
+                    isInfantryUnit(result.unitDef)
+                    && resultInfantryCount < DRILLGROUND_INFANTRY_MAX_STACK
+                );
+                if (keepPickerOpen) {
+                    refreshPickerButtons();
+                } else if (typeof game.closeCityActionModal === 'function') {
                     game.closeCityActionModal();
                 }
 
                 if (result.changed) {
-                    showToast(`${getInventoryDisplayName(result.unitKey, result.unitDef)} 1기 배치 완료`);
+                    const span = getDrillgroundUnitFootprintSlots(result.unitKey, result.unitDef);
+                    const spanSuffix = span >= 2 ? ' (2칸)' : '';
+                    if (result.stacked === true && isInfantryUnit(result.unitDef)) {
+                        const stackedCount = clampDrillgroundInfantryCount(result.infantryCount);
+                        showToast(`${getInventoryDisplayName(result.unitKey, result.unitDef)} 배치 ${formatNumber(stackedCount)} / ${DRILLGROUND_INFANTRY_MAX_STACK}`);
+                    } else {
+                        showToast(`${getInventoryDisplayName(result.unitKey, result.unitDef)} 1기 배치 완료${spanSuffix}`);
+                    }
                 } else {
                     showToast('이미 해당 유닛이 배치되어 있습니다.');
                 }
@@ -2516,6 +3048,240 @@
         return dataUrl;
     }
 
+    function normalizeDrillgroundIconCanvas(canvas, options) {
+        if (!canvas) return canvas;
+        const opts = options || {};
+        const alphaCutoff = Math.max(0, Math.min(255, Math.floor(Number(opts.alphaCutoff) || 26)));
+        const padding = Math.max(0, Math.floor(Number(opts.padding) || 2));
+        const verticalBias = Number.isFinite(Number(opts.verticalBias)) ? Number(opts.verticalBias) : 0;
+        const trimBottomSoftLine = opts.trimBottomSoftLine === true;
+        const width = Math.max(1, Math.floor(Number(canvas.width) || 0));
+        const height = Math.max(1, Math.floor(Number(canvas.height) || 0));
+        const srcCtx = canvas.getContext('2d');
+        if (!srcCtx) return canvas;
+
+        let imageData;
+        try {
+            imageData = srcCtx.getImageData(0, 0, width, height);
+        } catch (_) {
+            return canvas;
+        }
+        const data = imageData.data;
+        let minX = width;
+        let minY = height;
+        let maxX = -1;
+        let maxY = -1;
+        const rowCount = new Array(height).fill(0);
+        const rowAlpha = new Array(height).fill(0);
+
+        for (let y = 0; y < height; y++) {
+            const rowBase = y * width * 4;
+            for (let x = 0; x < width; x++) {
+                const alpha = data[rowBase + (x * 4) + 3];
+                if (alpha < alphaCutoff) continue;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+                rowCount[y] += 1;
+                rowAlpha[y] += alpha;
+            }
+        }
+
+        if (maxX < minX || maxY < minY) {
+            return canvas;
+        }
+
+        if (trimBottomSoftLine) {
+            while (maxY > minY) {
+                const cnt = rowCount[maxY];
+                if (cnt <= 0) {
+                    maxY -= 1;
+                    continue;
+                }
+                const spanW = Math.max(1, maxX - minX + 1);
+                const coverage = cnt / spanW;
+                const avgAlpha = rowAlpha[maxY] / cnt;
+                if (coverage >= 0.82 && avgAlpha <= 150) {
+                    maxY -= 1;
+                    continue;
+                }
+                break;
+            }
+        }
+
+        const boxW = Math.max(1, maxX - minX + 1);
+        const boxH = Math.max(1, maxY - minY + 1);
+        const maxDrawW = Math.max(1, width - (padding * 2));
+        const maxDrawH = Math.max(1, height - (padding * 2));
+        let drawScale = 1;
+        if (boxW > maxDrawW || boxH > maxDrawH) {
+            drawScale = Math.min(maxDrawW / boxW, maxDrawH / boxH);
+        }
+
+        const drawW = boxW * drawScale;
+        const drawH = boxH * drawScale;
+        const drawX = (width - drawW) * 0.5;
+        const desiredY = ((height - drawH) * 0.5) + verticalBias;
+        const minYLimit = padding;
+        const maxYLimit = Math.max(minYLimit, height - drawH - padding);
+        const drawY = Math.max(minYLimit, Math.min(maxYLimit, desiredY));
+
+        const normalized = document.createElement('canvas');
+        normalized.width = width;
+        normalized.height = height;
+        const outCtx = normalized.getContext('2d');
+        if (!outCtx) return canvas;
+        outCtx.clearRect(0, 0, width, height);
+        outCtx.drawImage(canvas, minX, minY, boxW, boxH, drawX, drawY, drawW, drawH);
+        return normalized;
+    }
+
+    function drawDrillgroundUnitIcon(unitKey) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key) return null;
+        if (isDrillgroundMissileIconUnit(key)) {
+            return drawDrillgroundMissileIcon(key);
+        }
+
+        if (drillgroundUnitIconCache.has(key)) {
+            const cached = drillgroundUnitIconCache.get(key);
+            return cached || null;
+        }
+
+        const unitDef = getUnitDefByKey(key);
+        if (!unitDef) {
+            drillgroundUnitIconCache.set(key, null);
+            return null;
+        }
+
+        if (typeof Unit === 'undefined') {
+            const fallbackUrl = drawInventoryUnitIcon(key);
+            drillgroundUnitIconCache.set(key, fallbackUrl || null);
+            return fallbackUrl || null;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 144;
+        canvas.height = 96;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            drillgroundUnitIconCache.set(key, null);
+            return null;
+        }
+
+        let drew = false;
+        let unitType = '';
+        let unitCategory = '';
+        let verticalBias = -1;
+        try {
+            ctx.save();
+
+            const width = Math.max(0, Number(unitDef.width) || 0);
+            const height = Math.max(0, Number(unitDef.height) || 0);
+            const type = String(unitDef.type || '').trim().toLowerCase();
+            const category = String(unitDef.category || '').trim().toLowerCase();
+            unitType = type;
+            unitCategory = category;
+
+            let scale = 0.94;
+            let offsetY = -3;
+            if (category === 'infantry') {
+                scale = 1.34;
+                offsetY = -2;
+                verticalBias = -1;
+            } else if (type === 'air') {
+                if (key === 'blackhawk') {
+                    scale = 0.62;
+                    offsetY = -10;
+                } else if (key === 'chinook') {
+                    scale = 0.64;
+                    offsetY = -10;
+                } else if (key === 'bomber' || key === 'fighter') {
+                    scale = 0.7;
+                    offsetY = -11;
+                } else if (key === 'apache') {
+                    scale = 0.72;
+                    offsetY = -12;
+                } else if (width >= 120) {
+                    scale = 0.68;
+                    offsetY = -11;
+                } else {
+                    scale = 0.74;
+                    offsetY = -10;
+                }
+                verticalBias = -3;
+            } else if (type === 'mech' || category === 'armored') {
+                if (key === 'icbm') {
+                    scale = 0.6;
+                    offsetY = -4;
+                } else if (width >= 120) {
+                    scale = 0.5;
+                    offsetY = -3;
+                } else if (key === 'humvee' || key === 'apc' || key === 'aa_tank') {
+                    scale = 0.78;
+                    offsetY = -3;
+                } else if (width >= 72 || height >= 42 || key === 'mbt' || key === 'spg') {
+                    scale = 0.54;
+                    offsetY = -3;
+                } else {
+                    scale = 0.54;
+                    offsetY = -2;
+                }
+                if (key === 'humvee') {
+                    offsetY -= 2;
+                    verticalBias = -8;
+                } else if (key === 'apc' || key === 'aa_tank') {
+                    offsetY -= 1;
+                    verticalBias = -6;
+                } else {
+                    verticalBias = -4;
+                }
+            } else if (width >= 55 || height >= 34) {
+                scale = 0.86;
+                offsetY = -5;
+                verticalBias = -2;
+            }
+
+            ctx.translate(72, 82 + offsetY);
+            ctx.scale(scale, scale);
+
+            const dummy = new Unit(key, 0, 0, 'player');
+            dummy.hideHp = true;
+            dummy.disableFeetSnap = true;
+            applyInventoryIconRenderTweaks(dummy);
+            if (dummy.stats?.type === 'air') dummy.y = 0;
+            dummy.draw(ctx);
+
+            ctx.restore();
+            drew = true;
+        } catch (_) {
+            try {
+                ctx.restore();
+            } catch (_) { }
+        }
+
+        if (!drew) {
+            const fallbackUrl = drawInventoryUnitIcon(key);
+            drillgroundUnitIconCache.set(key, fallbackUrl || null);
+            return fallbackUrl || null;
+        }
+
+        const normalizedCanvas = normalizeDrillgroundIconCanvas(canvas, {
+            alphaCutoff: (
+                unitType === 'air'
+                    ? 4
+                    : ((unitCategory === 'armored' || unitType === 'mech') ? 22 : 20)
+            ),
+            padding: 2,
+            verticalBias,
+            trimBottomSoftLine: false
+        });
+        const dataUrl = (normalizedCanvas || canvas).toDataURL('image/png');
+        drillgroundUnitIconCache.set(key, dataUrl);
+        return dataUrl;
+    }
+
     function getDrillgroundUnitSizeClass(unitKey, unitDef) {
         const key = normalizeUnitKey(unitKey);
         if (!key) return 'city-drillground-unit-size-base';
@@ -2556,22 +3322,56 @@
         const preview = opts.preview === true;
         const unitKey = normalizeUnitKey(opts.unitKey);
         const unitDef = unitKey ? getUnitDefByKey(unitKey) : null;
+        const span = Math.max(1, Math.floor(Number(opts.span) || getDrillgroundUnitFootprintSlots(unitKey, unitDef)));
+        const isAnchor = opts.isAnchor !== false;
+        const isCompanion = opts.isCompanion === true;
+        const mergeLeft = opts.mergeLeft === true;
+        const mergeRight = opts.mergeRight === true;
+        const mergeUp = opts.mergeUp === true;
+        const mergeDown = opts.mergeDown === true;
+        const infantryCount = clampDrillgroundInfantryCount(opts.infantryCount);
+        const infantryStacked = !!unitKey && isInfantryUnit(unitDef) && infantryCount > 1;
         const sizeClass = getDrillgroundUnitSizeClass(unitKey, unitDef);
 
         const pad = document.createElement('span');
         pad.className = 'city-drillground-pad';
         if (preview) pad.classList.add('city-drillground-pad-preview');
         if (!unitKey) pad.classList.add('city-drillground-pad-empty');
+        if (!preview && mergeRight) pad.classList.add('city-drillground-pad-joined-left');
+        if (!preview && mergeLeft) pad.classList.add('city-drillground-pad-joined-right');
+        if (!preview && mergeUp) pad.classList.add('city-drillground-pad-joined-top');
+        if (!preview && mergeDown) pad.classList.add('city-drillground-pad-joined-bottom');
         cell.appendChild(pad);
 
-        const iconUrl = unitKey
-            ? (isDrillgroundMissileIconUnit(unitKey)
-                ? drawDrillgroundMissileIcon(unitKey)
-                : drawInventoryUnitIcon(unitKey))
-            : null;
+        if (isCompanion && span >= 2) return;
+
+        const iconUrl = unitKey ? drawDrillgroundUnitIcon(unitKey) : null;
         if (iconUrl) {
+            if (infantryStacked) {
+                const squad = document.createElement('span');
+                squad.className = 'city-drillground-infantry-squad city-drillground-unit-populated';
+                if (preview) squad.classList.add('city-drillground-unit-preview');
+                squad.dataset.cityDrillgroundUnit = '1';
+                squad.dataset.stackCount = String(infantryCount);
+                for (let i = 0; i < infantryCount; i++) {
+                    const squadImg = document.createElement('img');
+                    squadImg.className = 'city-drillground-infantry-squad-unit';
+                    squadImg.src = iconUrl;
+                    squadImg.alt = getInventoryDisplayName(unitKey, unitDef || undefined);
+                    squadImg.decoding = 'async';
+                    squad.appendChild(squadImg);
+                }
+                cell.appendChild(squad);
+                return;
+            }
             const img = document.createElement('img');
             img.className = `city-drillground-unit city-drillground-unit-populated ${sizeClass}`;
+            if (isInfantryUnit(unitDef)) img.classList.add('city-drillground-unit-infantry');
+            if (span >= 2) img.classList.add('city-drillground-unit-span-2');
+            if (unitKey) {
+                const unitKeyClass = `city-drillground-unit-key-${String(unitKey).toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
+                img.classList.add(unitKeyClass);
+            }
             if (preview) img.classList.add('city-drillground-unit-preview');
             img.dataset.cityDrillgroundUnit = '1';
             img.src = iconUrl;
@@ -2707,17 +3507,18 @@
             return canvas.toDataURL('image/png');
         }
 
-        if (tool === 'drillground') {
-            ctx.fillStyle = '#0f172a';
+        if (tool === 'drillground' || tool === 'drillground_gray') {
+            const isGray = tool === 'drillground_gray';
+            ctx.fillStyle = isGray ? '#36404d' : '#0f172a';
             ctx.fillRect(0, 0, w, h);
-            ctx.strokeStyle = '#60a5fa';
+            ctx.strokeStyle = isGray ? '#cbd5e1' : '#60a5fa';
             ctx.lineWidth = 2;
             ctx.strokeRect(10, 10, w - 20, h - 20);
-            ctx.strokeStyle = '#93c5fd';
+            ctx.strokeStyle = isGray ? '#dbe3ef' : '#93c5fd';
             ctx.beginPath();
             ctx.arc(w / 2, h / 2, 10, 0, Math.PI * 2);
             ctx.stroke();
-            ctx.fillStyle = '#38bdf8';
+            ctx.fillStyle = isGray ? '#e2e8f0' : '#38bdf8';
             ctx.fillRect((w / 2) - 2, (h / 2) - 2, 4, 4);
             return canvas.toDataURL('image/png');
         }
@@ -2946,7 +3747,7 @@
         const opts = options || {};
         const preview = opts.preview === true;
 
-        if (tile === 'drillground') {
+        if (isDrillgroundTile(tile)) {
             appendDrillgroundVisual(cell, opts);
             return;
         }
@@ -3034,6 +3835,7 @@
             : new Map();
         const selectedIndex = Number(state.selection?.index);
         const selectedTile = state.selection?.tile ?? null;
+        const drillgroundOccupancy = buildDrillgroundOccupancy(state);
         const now = Date.now();
         let hasLiveProductionCooldown = false;
         let previewFootprintIndexSet = null;
@@ -3082,7 +3884,18 @@
             const ground = normalizeGroundType(groundLayer[index]);
             const groundTransitionMask = ground === 'grass' ? 0 : getGroundTransitionMaskAt(state, index, groundLayer, ground);
             const roadMask = tile === 'road' ? getRoadMaskAt(state, index) : 0;
-            const drillgroundUnitKey = tile === 'drillground' ? (getDrillgroundUnitAt(state, index) || '') : '';
+            const drillgroundEntry = (isDrillgroundTile(tile))
+                ? getDrillgroundEntryAt(state, index, drillgroundOccupancy)
+                : null;
+            const drillgroundUnitKey = drillgroundEntry ? drillgroundEntry.unitKey : '';
+            const drillgroundUnitSpan = drillgroundEntry ? drillgroundEntry.span : 0;
+            const drillgroundInfantryCount = drillgroundEntry ? clampDrillgroundInfantryCount(drillgroundEntry.infantryCount) : 1;
+            const drillgroundAnchorIndex = drillgroundEntry ? drillgroundEntry.anchorIndex : -1;
+            const drillgroundIsAnchor = drillgroundEntry ? drillgroundEntry.isAnchor === true : false;
+            const drillgroundIsCompanion = !!(drillgroundEntry && drillgroundEntry.span >= 2 && drillgroundEntry.isAnchor !== true);
+            const drillgroundMerge = (isDrillgroundTile(tile))
+                ? getDrillgroundMergeFlags(state, index)
+                : { mergeLeft: false, mergeRight: false, mergeUp: false, mergeDown: false };
             const productionQueue = (tile && getProductionCatalog(tile))
                 ? getProductionQueueAt(state, index)
                 : null;
@@ -3170,6 +3983,15 @@
                 groundTransitionMask,
                 tile || '',
                 drillgroundUnitKey,
+                drillgroundUnitSpan,
+                drillgroundInfantryCount,
+                drillgroundAnchorIndex,
+                drillgroundIsAnchor ? 1 : 0,
+                drillgroundIsCompanion ? 1 : 0,
+                drillgroundMerge.mergeLeft ? 1 : 0,
+                drillgroundMerge.mergeRight ? 1 : 0,
+                drillgroundMerge.mergeUp ? 1 : 0,
+                drillgroundMerge.mergeDown ? 1 : 0,
                 productionQueue ? 1 : 0,
                 productionReady ? 1 : 0,
                 productionUnitKey,
@@ -3194,6 +4016,10 @@
 
             const classes = ['city-cell', `ground-${ground}`];
             if (meta?.className) classes.push(meta.className);
+            if (isDrillgroundTile(tile) && drillgroundMerge.mergeRight) classes.push('city-drillground-merged-left');
+            if (isDrillgroundTile(tile) && drillgroundMerge.mergeLeft) classes.push('city-drillground-merged-right');
+            if (isDrillgroundTile(tile) && drillgroundIsAnchor) classes.push('city-drillground-anchor');
+            if (isDrillgroundTile(tile) && drillgroundIsCompanion) classes.push('city-drillground-companion');
             if (productionQueue) classes.push('city-cell-production-active');
             if (productionReady) classes.push('city-cell-production-ready');
             if (incomeStored > 0) classes.push('city-cell-income-ready');
@@ -3213,8 +4039,19 @@
             }
 
             if (isObjectTool(tile) && tile !== 'road') {
-                appendObjectTileVisual(cell, tile, tile === 'drillground'
-                    ? { unitKey: drillgroundUnitKey }
+                appendObjectTileVisual(cell, tile, isDrillgroundTile(tile)
+                    ? {
+                        unitKey: drillgroundUnitKey,
+                        span: drillgroundUnitSpan,
+                        infantryCount: drillgroundInfantryCount,
+                        anchorIndex: drillgroundAnchorIndex,
+                        isAnchor: drillgroundIsAnchor,
+                        isCompanion: drillgroundIsCompanion,
+                        mergeLeft: drillgroundMerge.mergeLeft,
+                        mergeRight: drillgroundMerge.mergeRight,
+                        mergeUp: drillgroundMerge.mergeUp,
+                        mergeDown: drillgroundMerge.mergeDown
+                    }
                     : undefined);
             }
             if (productionQueue) {
@@ -3698,7 +4535,11 @@
             `</div>`;
 
         game.openCityActionModal(title, bodyHtml, {
-            allowHtml: true
+            allowHtml: true,
+            layout: 'bar',
+            detail: '',
+            modalClass: 'city-action-modal-veteran-rename',
+            panelClass: 'city-action-panel-veteran-rename'
         });
 
         const msgEl = document.getElementById('city-action-msg');
@@ -3777,20 +4618,18 @@
     function collectHonorMedalTargets(game) {
         const state = CitySimState.ensure(game);
         const targets = [];
-
-        const drillSlots = state.drillgroundSlots && typeof state.drillgroundSlots === 'object'
-            ? state.drillgroundSlots
-            : {};
-        Object.keys(drillSlots)
-            .map((raw) => Number(raw))
-            .filter((idx) => Number.isInteger(idx) && idx >= 0 && idx < state.grid.length)
+        const occupancy = buildDrillgroundOccupancy(state);
+        Array.from(occupancy.anchors.keys())
             .sort((a, b) => a - b)
             .forEach((index) => {
-                const unitKey = normalizeUnitKey(drillSlots[index]);
-                if (!unitKey) return;
-                const unitDef = getUnitDefByKey(unitKey);
-                if (!isPromotableVeteranUnit(unitKey, unitDef)) return;
+                const entry = occupancy.anchors.get(index);
+                const unitKey = normalizeUnitKey(entry?.unitKey);
+                const unitDef = entry?.unitDef || getUnitDefByKey(unitKey);
+                if (!unitKey || !isPromotableVeteranUnit(unitKey, unitDef)) return;
                 const displayName = getInventoryDisplayName(unitKey, unitDef || undefined);
+                const entryCount = isInfantryUnit(unitDef)
+                    ? clampDrillgroundInfantryCount(entry?.infantryCount)
+                    : 1;
                 targets.push({
                     id: `drillground:${index}`,
                     source: 'drillground',
@@ -3799,7 +4638,7 @@
                     unitKey,
                     unit: unitDef,
                     displayName,
-                    count: 1
+                    count: entryCount
                 });
             });
 
@@ -3871,6 +4710,7 @@
         }
 
         let consumedUnit = false;
+        let drillgroundRollback = null;
         if (target.source === 'inventory') {
             consumedUnit = consumeUnitFromInventory(game, unitKey);
             if (!consumedUnit) {
@@ -3879,11 +4719,28 @@
         } else if (target.source === 'drillground') {
             const index = Number(target.index);
             const state = CitySimState.ensure(game);
-            const current = Number.isInteger(index) ? getDrillgroundUnitAt(state, index) : null;
-            if (!current || current !== unitKey) {
+            const occupancy = buildDrillgroundOccupancy(state);
+            const anchorIndex = Number.isInteger(index)
+                ? getDrillgroundPlacementAnchorIndex(state, index, occupancy)
+                : null;
+            const entry = Number.isInteger(anchorIndex)
+                ? getDrillgroundEntryAt(state, anchorIndex, occupancy)
+                : null;
+            const current = entry ? entry.unitKey : null;
+            if (!current || current !== unitKey || !Number.isInteger(anchorIndex)) {
                 return { ok: false, reason: '연병장 배치 유닛이 변경되었습니다.' };
             }
-            CitySimState.clearDrillgroundUnit(game, index);
+            const stackCount = isInfantryUnit(entry?.unitDef)
+                ? clampDrillgroundInfantryCount(entry?.infantryCount)
+                : 1;
+            if (isInfantryUnit(entry?.unitDef) && stackCount > 1) {
+                const nextCount = stackCount - 1;
+                setDrillgroundUnitAtAnchor(game, anchorIndex, unitKey, unitDef, { infantryCount: nextCount });
+                drillgroundRollback = { anchorIndex, unitKey, unitDef, infantryCount: stackCount };
+            } else {
+                setDrillgroundUnitAtAnchor(game, anchorIndex, null);
+                drillgroundRollback = { anchorIndex, unitKey, unitDef, infantryCount: 1 };
+            }
             consumedUnit = true;
         } else {
             return { ok: false, reason: '알 수 없는 지급 대상입니다.' };
@@ -3893,7 +4750,15 @@
             if (target.source === 'inventory') {
                 returnUnitToInventory(game, unitKey);
             } else if (target.source === 'drillground' && Number.isInteger(Number(target.index))) {
-                CitySimState.setDrillgroundUnit(game, Number(target.index), unitKey);
+                if (Number.isInteger(drillgroundRollback?.anchorIndex)) {
+                    setDrillgroundUnitAtAnchor(
+                        game,
+                        drillgroundRollback.anchorIndex,
+                        drillgroundRollback.unitKey,
+                        drillgroundRollback.unitDef,
+                        { infantryCount: drillgroundRollback.infantryCount }
+                    );
+                }
             }
             return { ok: false, reason: '명예훈장 차감에 실패했습니다.' };
         }
@@ -3913,7 +4778,15 @@
             if (target.source === 'inventory') {
                 returnUnitToInventory(game, unitKey);
             } else if (target.source === 'drillground' && Number.isInteger(Number(target.index))) {
-                CitySimState.setDrillgroundUnit(game, Number(target.index), unitKey);
+                if (Number.isInteger(drillgroundRollback?.anchorIndex)) {
+                    setDrillgroundUnitAtAnchor(
+                        game,
+                        drillgroundRollback.anchorIndex,
+                        drillgroundRollback.unitKey,
+                        drillgroundRollback.unitDef,
+                        { infantryCount: drillgroundRollback.infantryCount }
+                    );
+                }
             }
             CitySimState.mutate(game, (draft) => {
                 if (!draft.hud || typeof draft.hud !== 'object') draft.hud = {};
@@ -3989,31 +4862,99 @@
 
         closeFloatingPanelsForUnitAction(game);
 
-        const cardsHtml = targets.map((entry) => {
+        const sourceWeight = (entry) => {
+            if (!entry || typeof entry !== 'object') return 99;
+            if (entry.source === 'drillground') return 0;
+            if (entry.source === 'inventory') return 1;
+            return 9;
+        };
+
+        const honorTabs = INVENTORY_TABS
+            .filter((tab) => tab && ['infantry', 'armored', 'air', 'special'].includes(String(tab.id || '').trim()))
+            .map((tab) => ({ id: String(tab.id), label: String(tab.label || tab.id) }));
+
+        const groupedTargets = new Map();
+        honorTabs.forEach((tab) => groupedTargets.set(tab.id, []));
+        targets.forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            const tabId = getUnitCategoryForInventoryTab(entry.unitKey, entry.unit);
+            if (!groupedTargets.has(tabId)) return;
+            groupedTargets.get(tabId).push(entry);
+        });
+        honorTabs.forEach((tab) => {
+            const list = groupedTargets.get(tab.id) || [];
+            list.sort((a, b) => {
+                const weightDiff = sourceWeight(a) - sourceWeight(b);
+                if (weightDiff !== 0) return weightDiff;
+                return String(a.displayName || '').localeCompare(String(b.displayName || ''), 'ko');
+            });
+        });
+
+        const tabSummaries = honorTabs.map((tab) => {
+            const entries = groupedTargets.get(tab.id) || [];
+            const totalCount = entries.reduce((sum, entry) => sum + Math.max(1, Math.floor(Number(entry.count) || 1)), 0);
+            return {
+                id: tab.id,
+                label: tab.label,
+                entries,
+                totalCount
+            };
+        });
+
+        const firstTab = (tabSummaries.find((tab) => tab.entries.length > 0) || tabSummaries[0] || {}).id || '';
+        if (!firstTab) {
+            showToast('지급 가능한 유닛이 없습니다.');
+            return;
+        }
+
+        const tabsHtml = tabSummaries.map((tab) => (
+            `<button type="button" class="btn-category flex-1 py-2 text-xs md:text-sm${tab.id === firstTab ? ' active' : ''}" data-city-honor-tab="${escapeHtml(tab.id)}">` +
+            `<span>${escapeHtml(tab.label)}</span>` +
+            `<span class="city-inventory-tab-count">${formatNumber(tab.totalCount)}</span>` +
+            `</button>`
+        )).join('');
+
+        const renderTargetCardHtml = (entry) => {
             const iconUrl = drawInventoryUnitIcon(entry.unitKey);
+            const sourceLabel = entry.source === 'drillground'
+                ? '연병장'
+                : '보관함';
             const badgeText = entry.source === 'inventory'
                 ? `보유 ${formatNumber(entry.count)}`
-                : '1기';
+                : `배치 ${formatNumber(Math.max(1, Math.floor(Number(entry.count) || 1)))}기`;
+            const colorBar = String(entry.unit?.color || (entry.source === 'drillground' ? '#38bdf8' : '#facc15'));
             return (
-                `<button type="button" class="btn-unit city-action-unitbar-item city-honor-medal-target" data-city-honor-target="${escapeHtml(entry.id)}" title="${escapeHtml(entry.displayName)}">` +
+                `<button type="button" class="btn-unit city-honor-medal-card city-honor-medal-target" data-city-honor-target="${escapeHtml(entry.id)}" title="${escapeHtml(entry.displayName)}">` +
                 (
                     iconUrl
-                        ? `<img class="city-action-unitbar-icon" src="${iconUrl}" alt="${escapeHtml(entry.displayName)}">`
-                        : `<span class="city-action-unitbar-icon-fallback">${escapeHtml(entry.displayName.slice(0, 2))}</span>`
+                        ? `<img class="city-honor-medal-card-icon" src="${iconUrl}" alt="${escapeHtml(entry.displayName)}">`
+                        : `<span class="city-honor-medal-card-fallback">${escapeHtml(entry.displayName.slice(0, 2))}</span>`
                 ) +
-                `<span class="city-action-unitbar-name">${escapeHtml(entry.displayName)}</span>` +
-                `<span class="city-action-unitbar-meta">LV1 · ${escapeHtml(entry.sourceLabel)}</span>` +
-                `<span class="city-action-unitbar-badge">${badgeText}</span>` +
+                `<span class="city-honor-medal-card-name">${escapeHtml(entry.displayName)}</span>` +
+                `<span class="city-honor-medal-card-meta">${sourceLabel}</span>` +
+                `<span class="city-honor-medal-card-badge">${badgeText}</span>` +
+                `<span class="city-honor-medal-card-bar" style="background-color:${escapeHtml(colorBar)}"></span>` +
                 `</button>`
+            );
+        };
+
+        const panelsHtml = tabSummaries.map((tab) => {
+            const cardsHtml = tab.entries.map((entry) => renderTargetCardHtml(entry)).join('');
+            const bodyHtml = cardsHtml || `<div class="city-honor-medal-empty">해당 분류에 지급 가능한 유닛이 없습니다.</div>`;
+            return (
+                `<div class="city-honor-medal-tab-panel${tab.id === firstTab ? ' is-active' : ''}" data-city-honor-panel="${escapeHtml(tab.id)}">` +
+                bodyHtml +
+                `</div>`
             );
         }).join('');
 
         game.openCityActionModal(
             '명예훈장 지급',
             (
-                `<div class="city-honor-medal-wrap">` +
+                `<div class="city-honor-medal-wrap city-honor-medal-picker">` +
                 `<div class="city-honor-medal-head">보유 명예훈장 ${formatNumber(medalCount)}개 · 지급할 유닛 1기를 선택하세요.</div>` +
-                `<div class="city-action-unitbar-wrap"><div class="city-action-unitbar city-honor-medal-list">${cardsHtml}</div></div>` +
+                `<div class="city-inventory-tabs city-honor-medal-tabs" data-city-honor-tabs>${tabsHtml}</div>` +
+                `<div class="city-honor-medal-tab-body">${panelsHtml}</div>` +
                 `<div class="city-honor-medal-actions">` +
                 `<button type="button" class="city-honor-medal-apply-btn" data-city-honor-apply disabled>지급</button>` +
                 `</div>` +
@@ -4022,7 +4963,9 @@
             {
                 allowHtml: true,
                 layout: 'bar',
-                detail: ''
+                detail: '',
+                modalClass: 'city-action-modal-honor-picker',
+                panelClass: 'city-action-panel-honor-picker'
             }
         );
 
@@ -4030,10 +4973,37 @@
         if (!msgEl) return;
 
         const targetMap = new Map(targets.map((entry) => [entry.id, entry]));
+        const tabButtons = Array.from(msgEl.querySelectorAll('[data-city-honor-tab]'));
+        const tabPanels = Array.from(msgEl.querySelectorAll('[data-city-honor-panel]'));
         const cards = Array.from(msgEl.querySelectorAll('[data-city-honor-target]'));
         const applyBtn = msgEl.querySelector('[data-city-honor-apply]');
+        let activeTab = firstTab;
         let selectedId = '';
         let applying = false;
+
+        const setActiveTab = (nextTabId) => {
+            const tabId = String(nextTabId || '').trim();
+            if (!tabId) return;
+            activeTab = tabId;
+            tabButtons.forEach((btn) => {
+                const btnTab = String(btn.getAttribute('data-city-honor-tab') || '').trim();
+                btn.classList.toggle('active', btnTab === activeTab);
+            });
+            tabPanels.forEach((panel) => {
+                const panelTab = String(panel.getAttribute('data-city-honor-panel') || '').trim();
+                panel.classList.toggle('is-active', panelTab === activeTab);
+            });
+            const hasSelectionInActiveTab = cards.some((card) => {
+                const cardId = String(card.getAttribute('data-city-honor-target') || '').trim();
+                const parentPanel = card.closest('[data-city-honor-panel]');
+                const panelTab = String(parentPanel?.getAttribute('data-city-honor-panel') || '').trim();
+                return !!selectedId && cardId === selectedId && panelTab === activeTab;
+            });
+            if (!hasSelectionInActiveTab) {
+                selectedId = '';
+            }
+            syncSelectionUi();
+        };
 
         const syncSelectionUi = () => {
             cards.forEach((card) => {
@@ -4044,6 +5014,14 @@
                 applyBtn.disabled = applying || !selectedId;
             }
         };
+
+        tabButtons.forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const tabId = String(btn.getAttribute('data-city-honor-tab') || '').trim();
+                if (!tabId) return;
+                setActiveTab(tabId);
+            });
+        });
 
         const commitApply = () => {
             if (applying) return;
@@ -4089,6 +5067,11 @@
         cards.forEach((card) => {
             card.addEventListener('click', () => {
                 const cardId = String(card.getAttribute('data-city-honor-target') || '');
+                const parentPanel = card.closest('[data-city-honor-panel]');
+                const panelTab = String(parentPanel?.getAttribute('data-city-honor-panel') || '').trim();
+                if (panelTab && panelTab !== activeTab) {
+                    setActiveTab(panelTab);
+                }
                 const alreadySelected = !!selectedId && selectedId === cardId;
                 selectedId = cardId;
                 syncSelectionUi();
@@ -4097,7 +5080,7 @@
                 }
             });
         });
-        syncSelectionUi();
+        setActiveTab(firstTab);
 
         if (!applyBtn) return;
         applyBtn.addEventListener('click', commitApply);
@@ -4158,7 +5141,7 @@
         game.openCityActionModal(
             `${itemDef.name} 지급 대상 선택`,
             (
-                `<div class="city-honor-medal-wrap">` +
+                `<div class="city-honor-medal-wrap city-veteran-target-picker">` +
                 `<div class="city-honor-medal-head">보유 ${escapeHtml(itemDef.name)} ${formatNumber(count)}개 · 지급할 베테랑을 선택하세요.</div>` +
                 `<div class="city-action-unitbar-wrap"><div class="city-action-unitbar city-honor-medal-list">${cardsHtml}</div></div>` +
                 `<div class="city-honor-medal-actions">` +
@@ -4167,7 +5150,11 @@
                 `</div>`
             ),
             {
-                allowHtml: true
+                allowHtml: true,
+                layout: 'bar',
+                detail: '',
+                modalClass: 'city-action-modal-veteran-picker',
+                panelClass: 'city-action-panel-veteran-picker'
             }
         );
 
@@ -4291,6 +5278,86 @@
         return '보병';
     }
 
+    const PROFILE_SKILL_COMMAND_META = {
+        icbm_tactical: { langKey: 'cmd_icbm_tactical', fallback: '전술미사일', iconClass: 'fa-solid fa-bullseye' },
+        icbm_emp: { langKey: 'cmd_icbm_emp', fallback: 'EMP', iconClass: 'fa-solid fa-bolt-lightning' },
+        icbm_nuke: { langKey: 'cmd_icbm_nuke', fallback: '핵미사일', iconClass: 'fa-solid fa-radiation' },
+        drone_suicide: { langKey: 'cmd_drone_suicide', fallback: '자폭드론', iconClass: 'fa-solid fa-skull-crossbones' },
+        drone_at: { langKey: 'cmd_drone_at', fallback: '대전차드론', iconClass: 'fa-solid fa-shield-halved' },
+        smoke: { langKey: 'cmd_smoke', fallback: '연막', iconClass: 'fa-solid fa-smog' },
+        missile: { langKey: 'cmd_missile', fallback: '미사일', iconClass: 'fa-solid fa-rocket' },
+        recon: { langKey: 'cmd_recon', fallback: '정찰', iconClass: 'fa-solid fa-binoculars' },
+        news: { langKey: 'cmd_news', fallback: '방송송출', iconClass: 'fa-solid fa-tower-broadcast' },
+        drop: { langKey: 'cmd_drop', fallback: '하차', iconClass: 'fa-solid fa-arrow-down' }
+    };
+
+    function getLocalizedText(langKey, fallback) {
+        if (typeof Lang !== 'undefined' && Lang && typeof Lang.getText === 'function') {
+            const text = String(Lang.getText(langKey) || '').trim();
+            if (text && text !== langKey) return text;
+        }
+        return String(fallback || '');
+    }
+
+    function getUnitProfileSkillCommandKeys(unitKey, unitDef) {
+        const key = String(unitKey || '').trim();
+        const keys = [];
+        const push = (cmdKey) => {
+            if (!cmdKey || keys.includes(cmdKey)) return;
+            keys.push(cmdKey);
+        };
+
+        if (key === 'icbm' || key === 'icbm_enemy') {
+            push('icbm_tactical');
+            push('icbm_emp');
+            push('icbm_nuke');
+            return keys.slice(0, 3);
+        }
+
+        if (unitDef?.operator === true || key === 'drone_operator') {
+            push('drone_suicide');
+            push('drone_at');
+        }
+        if (key === 'special_forces') {
+            push('smoke');
+        }
+        if (unitDef?.missileCommand === true || unitDef?.hasMissile === true || key === 'fighter' || key === 'engineer') {
+            push('missile');
+        }
+        if (key === 'recon') {
+            push('recon');
+        }
+        if (unitDef?.isCameraman === true || key === 'cameraman') {
+            push('news');
+        }
+        if (key === 'blackhawk' || key === 'chinook' || key === 'apc' || key === 'humvee') {
+            push('drop');
+        }
+
+        return keys.slice(0, 3);
+    }
+
+    function getUnitProfileSkillSlots(unitKey, unitDef) {
+        const commandKeys = getUnitProfileSkillCommandKeys(unitKey, unitDef);
+        const slots = commandKeys.map((cmdKey, index) => {
+            const meta = PROFILE_SKILL_COMMAND_META[cmdKey] || null;
+            return {
+                index: index + 1,
+                name: meta ? getLocalizedText(meta.langKey, meta.fallback) : '-',
+                iconClass: meta?.iconClass || 'fa-solid fa-bolt'
+            };
+        });
+
+        while (slots.length < 3) {
+            slots.push({
+                index: slots.length + 1,
+                name: '-',
+                iconClass: 'fa-solid fa-minus'
+            });
+        }
+        return slots;
+    }
+
     function getUnitPreviewGunType(unitKey) {
         if (unitKey === 'special_forces') return 'special';
         if (unitKey === 'special_ops') return 'special_ops';
@@ -4361,7 +5428,7 @@
         }
 
         const role = String(unit.role || '유닛');
-        const iconUrl = drawInventoryUnitIcon(unitKey);
+        const iconUrl = drawInventoryUnitProfileIcon(unitKey);
         const fixedCount = Number.isFinite(Number(opts.fixedCount))
             ? Math.max(0, Math.floor(Number(opts.fixedCount)))
             : null;
@@ -4418,9 +5485,23 @@
                 `</div>`
             )
             : '';
+        const skillSlots = getUnitProfileSkillSlots(unitKey, unit);
+        const skillTreeHtml =
+            `<div class="city-unit-profile-skilltree">` +
+            `<div class="city-unit-profile-skilltree-title">스킬 트리</div>` +
+            `<div class="city-unit-profile-skilltree-grid">` +
+            skillSlots.map((slot) => (
+                `<div class="city-unit-profile-skillslot">` +
+                `<span class="city-unit-profile-skillslot-icon" aria-hidden="true"><i class="${slot.iconClass}"></i></span>` +
+                `<span class="city-unit-profile-skillslot-index">${slot.index}</span>` +
+                `<span class="city-unit-profile-skillslot-name">${escapeHtml(slot.name)}</span>` +
+                `</div>`
+            )).join('') +
+            `</div>` +
+            `</div>`;
 
         const bodyHtml =
-            `<div class="city-unit-profile-tabrow"><span class="city-unit-profile-tab active">${escapeHtml(displayName)}</span></div>` +
+            `<div class="city-unit-profile-shell">` +
             `<div class="city-unit-profile">` +
             `<div class="city-unit-profile-left">` +
             `<div class="city-unit-profile-card">` +
@@ -4429,16 +5510,22 @@
                 : `<div class="city-unit-profile-icon-fallback">${escapeHtml(displayName.slice(0, 2))}</div>`) +
             `<div class="city-unit-profile-badge">${escapeHtml(leftBadge)}</div>` +
             `<button type="button" class="city-unit-profile-shot-btn" data-city-unit-preview-shot>사격음 재생</button>` +
-            `</div>` +
-            `</div>` +
-            `<div class="city-unit-profile-right">` +
+            `<div class="city-unit-profile-summary">` +
             `<div class="city-unit-profile-name">${escapeHtml(displayName)}</div>` +
             (isVeteranProfile
                 ? `<div class="city-unit-profile-veteran-name">기본명: ${escapeHtml(baseDisplayName)}</div>`
                 : '') +
-            veteranEditHtml +
             `<div class="city-unit-profile-role">${escapeHtml(role)}</div>` +
             `<p class="city-unit-profile-desc">${escapeHtml(displayDesc)}</p>` +
+            `</div>` +
+            `</div>` +
+            `</div>` +
+            `<div class="city-unit-profile-right">` +
+            `<div class="city-unit-profile-skill-group">` +
+            skillTreeHtml +
+            `</div>` +
+            `<div class="city-unit-profile-info-group">` +
+            `<div class="city-unit-profile-info-title">정보</div>` +
             `<div class="city-unit-profile-stats">` +
             `<div class="city-unit-profile-stat"><span>총기</span><strong>${escapeHtml(getUnitWeaponLabel(unitKey, unit))}</strong></div>` +
             `<div class="city-unit-profile-stat"><span>공격력</span><strong>${escapeHtml(getUnitAttackLabel(unit))}</strong></div>` +
@@ -4450,13 +5537,20 @@
             `<div class="city-unit-profile-stat"><span>보급 비용</span><strong>${formatNumber(unit.cost || 0)}</strong></div>` +
             `</div>` +
             `</div>` +
+            veteranEditHtml +
+            `</div>` +
+            `</div>` +
             `</div>`;
 
         game.openCityActionModal(
-            `${displayName} 프로필`,
+            `유닛 프로필`,
             bodyHtml,
             {
-                allowHtml: true
+                allowHtml: true,
+                layout: 'bar',
+                detail: '',
+                modalClass: 'city-action-modal-unit-profile',
+                panelClass: 'city-action-panel-unit-profile'
             }
         );
 
@@ -4555,6 +5649,12 @@
         }
     }
 
+    function applyInventoryIconRenderTweaks(dummy) {
+        if (!dummy || typeof dummy !== 'object') return;
+        // Keep cannon/turret behind hull for compact icon readability.
+        dummy.iconRenderBackTurret = true;
+    }
+
     function drawInventoryUnitIcon(key) {
         if (inventoryIconCache.has(key)) {
             const cached = inventoryIconCache.get(key);
@@ -4616,6 +5716,7 @@
                 const dummy = new Unit(key, 0, 0, 'player');
                 dummy.hideHp = true;
                 dummy.disableFeetSnap = true;
+                applyInventoryIconRenderTweaks(dummy);
                 if (dummy.stats.type === 'air') dummy.y = 0;
                 dummy.draw(ctx);
                 ctx.restore();
@@ -4638,6 +5739,98 @@
 
         const dataUrl = canvas.toDataURL('image/png');
         inventoryIconCache.set(key, dataUrl);
+        return dataUrl;
+    }
+
+    function drawInventoryUnitProfileIcon(key) {
+        const normalizedKey = String(key || '').trim();
+        if (!normalizedKey) return drawInventoryUnitIcon(key);
+        if (inventoryProfileIconCache.has(normalizedKey)) {
+            const cached = inventoryProfileIconCache.get(normalizedKey);
+            if (cached) return cached;
+        }
+        if (typeof CONFIG === 'undefined' || !CONFIG?.units?.[normalizedKey]) {
+            inventoryProfileIconCache.set(normalizedKey, null);
+            return drawInventoryUnitIcon(normalizedKey);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 176;
+        canvas.height = 120;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            inventoryProfileIconCache.set(normalizedKey, null);
+            return drawInventoryUnitIcon(normalizedKey);
+        }
+
+        const unitDef = CONFIG.units[normalizedKey];
+        let drew = false;
+        if (typeof Unit !== 'undefined') {
+            try {
+                ctx.save();
+                const canvasCenterX = canvas.width * 0.5;
+                const canvasBottomY = canvas.height - 14;
+
+                let scale = 1.02;
+                let offsetY = -2;
+                if (normalizedKey === 'blackhawk' || normalizedKey === 'chinook') {
+                    scale = 0.58;
+                    offsetY = -25;
+                } else if (normalizedKey === 'bomber') {
+                    scale = 0.54;
+                    offsetY = -20;
+                } else if (normalizedKey === 'apache' || normalizedKey === 'fighter') {
+                    scale = 0.66;
+                    offsetY = -22;
+                } else if (normalizedKey === 'humvee') {
+                    scale = 0.86;
+                    offsetY = -12;
+                } else if (normalizedKey === 'emp' || normalizedKey === 'nuke' || normalizedKey === 'tactical_missile') {
+                    scale = 0.84;
+                    offsetY = -12;
+                } else if ((Number(unitDef.width) || 0) > 72) {
+                    scale = 0.62;
+                    offsetY = -8;
+                } else if ((Number(unitDef.width) || 0) > 54) {
+                    scale = 0.72;
+                    offsetY = -7;
+                } else if ((Number(unitDef.width) || 0) > 40) {
+                    scale = 0.82;
+                    offsetY = -6;
+                } else if (unitDef.type === 'air') {
+                    scale = 0.74;
+                    offsetY = -18;
+                }
+
+                ctx.translate(canvasCenterX, canvasBottomY + offsetY);
+                ctx.scale(scale, scale);
+
+                const dummy = new Unit(normalizedKey, 0, 0, 'player');
+                dummy.hideHp = true;
+                dummy.disableFeetSnap = true;
+                applyInventoryIconRenderTweaks(dummy);
+                if (dummy.stats?.type === 'air') dummy.y = 0;
+                dummy.draw(ctx);
+                ctx.restore();
+                drew = true;
+            } catch (_) {
+                try {
+                    ctx.restore();
+                } catch (_) { }
+            }
+        }
+
+        if (!drew) {
+            const w = Math.max(20, Math.min(138, Math.round((Number(unitDef.width) || 30) * 1.2)));
+            const h = Math.max(10, Math.min(64, Math.round((Number(unitDef.height) || 16) * 1.15)));
+            ctx.fillStyle = unitDef.color || '#38bdf8';
+            ctx.globalAlpha = 0.9;
+            ctx.fillRect((canvas.width - w) / 2, canvas.height - h - 20, w, h);
+            ctx.globalAlpha = 1;
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        inventoryProfileIconCache.set(normalizedKey, dataUrl);
         return dataUrl;
     }
 
@@ -4982,7 +6175,12 @@
         getProductionCatalog,
         getProductionQueueAt,
         ensureProductionCountdownTicker,
+        isDrillgroundTile,
         getDrillgroundUnitAt,
+        getDrillgroundUnitFootprintSlots,
+        getDrillgroundPlacementAnchorIndex,
+        canPlaceDrillgroundUnitAtAnchor,
+        setDrillgroundUnitAtAnchor,
         isDrillgroundUnitTarget,
         isProductionClaimTarget,
         isIncomeClaimTarget,

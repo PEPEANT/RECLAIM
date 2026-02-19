@@ -1411,17 +1411,22 @@
         <section id="hud-right" class="hud-panel hud-right">
             <div id="hud-command-grid">
                 <div class="hud-cmd-group hud-cmd-group-action">
-                    <button id="hud-cmd-skill1" class="hud-cmd-btn" data-hud-cmd="skill1">
+                    <button id="hud-cmd-skill1" class="hud-cmd-btn hud-cmd-skill" data-hud-cmd="skill1">
                         <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
                         <span data-lang="cmd_skill1">SKILL 1</span>
                     </button>
 
-                    <button id="hud-cmd-skill2" class="hud-cmd-btn" data-hud-cmd="skill2">
-                        <span class="cmd-icon"><i class="fa-solid fa-star"></i></span>
+                    <button id="hud-cmd-skill2" class="hud-cmd-btn hud-cmd-skill" data-hud-cmd="skill2">
+                        <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
                         <span data-lang="cmd_skill2">SKILL 2</span>
                     </button>
 
-                    <button id="hud-cmd-interact" class="hud-cmd-btn" data-hud-cmd="interact">
+                    <button id="hud-cmd-skill3" class="hud-cmd-btn hud-cmd-skill" data-hud-cmd="skill3">
+                        <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
+                        <span data-lang="cmd_skill3">SKILL 3</span>
+                    </button>
+
+                    <button id="hud-cmd-interact" class="hud-cmd-btn hud-cmd-interact" data-hud-cmd="interact">
                         <span class="cmd-icon"><i class="fa-solid fa-hand-pointer"></i></span>
                         <span data-lang="cmd_interact">INTERACT</span>
                     </button>
@@ -1537,6 +1542,10 @@
     <script src="src/modes/city-sim/auth.js?v=20260216a5"></script>
     <script src="src/modes/city-sim/economy.js?v=20260216e5"></script>
     <script src="src/modes/city-sim/building.js"></script>
+    <script src="src/modes/city-sim/drillground-bubbles/config.js?v=20260219b2"></script>
+    <script src="src/modes/city-sim/drillground-bubbles/runtime.js?v=20260219b2"></script>
+    <script src="src/modes/city-sim/drillground-bubbles/render.js?v=20260219b2"></script>
+    <script src="src/modes/city-sim/drillground-bubbles/index.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/construction.js?v=20260216cs3"></script>
     <script src="src/modes/city-sim/construction/validation.js?v=20260214cs1"></script>
     <script src="src/modes/city-sim/construction/progress.js"></script>

@@ -230,6 +230,7 @@ const ui = {
                 const dummy = new Unit(key, 0, 0, 'player');
                 dummy.hideHp = true;
                 dummy.disableFeetSnap = true;
+                dummy.iconRenderBackTurret = true;
                 if (dummy.stats.type === 'air') dummy.y = 0;
                 dummy.draw(ctx);
                 ctx.restore();
@@ -362,7 +363,8 @@ const ui = {
         if (event && typeof event.preventDefault === 'function') event.preventDefault();
         if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
 
-        this.closeOptions();
+        // Keep options open behind the confirmation so the retreat action button
+        // does not appear to disappear immediately.
         const openDialog = () => this.showExitConfirmation('retreat');
         if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
             window.requestAnimationFrame(openDialog);
@@ -698,6 +700,7 @@ const ui = {
             const dummy = new Unit(unitKey, 0, 0, 'player');
             dummy.hideHp = true;
             dummy.disableFeetSnap = true;
+            dummy.iconRenderBackTurret = true;
             if (dummy.stats?.type === 'air') dummy.y = 0;
             dummy.draw(ctx);
             ctx.restore();

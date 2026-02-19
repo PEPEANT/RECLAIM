@@ -2688,6 +2688,19 @@ class Unit extends Entity {
             ctx.fillStyle = teamColor;
             ctx.fillRect(-20, 9, 40, 2);
 
+            const iconBackTurret = this.iconRenderBackTurret === true;
+            const drawMbtMainGun = () => {
+                ctx.fillStyle = bodyDark;
+                ctx.fillRect(10, -8, 60, 4);
+                ctx.fillStyle = bodyLight;
+                ctx.fillRect(35, -9, 8, 6);
+                ctx.fillStyle = black;
+                ctx.fillRect(70, -8, 2, 4);
+            };
+            if (iconBackTurret) {
+                drawMbtMainGun();
+            }
+
             // Turret
             ctx.fillStyle = bodyMain;
             ctx.beginPath();
@@ -2701,13 +2714,9 @@ class Unit extends Entity {
             ctx.fill();
             ctx.stroke();
 
-            // Gun
-            ctx.fillStyle = bodyDark;
-            ctx.fillRect(10, -8, 60, 4);
-            ctx.fillStyle = bodyLight;
-            ctx.fillRect(35, -9, 8, 6);
-            ctx.fillStyle = black;
-            ctx.fillRect(70, -8, 2, 4);
+            if (!iconBackTurret) {
+                drawMbtMainGun();
+            }
 
             // Optics
             ctx.fillStyle = glass;
@@ -2780,6 +2789,20 @@ class Unit extends Entity {
             ctx.stroke();
 
             ctx.translate(-10, 0);
+            const iconBackTurret = this.iconRenderBackTurret === true;
+            const drawSpgMainGun = () => {
+                ctx.save();
+                ctx.rotate(-Math.PI / 12);
+                ctx.fillStyle = bodyDark;
+                ctx.fillRect(15, -8, 80, 5);
+                ctx.fillStyle = black;
+                ctx.fillRect(90, -9, 8, 7);
+                ctx.restore();
+            };
+            if (iconBackTurret) {
+                drawSpgMainGun();
+            }
+
             ctx.fillStyle = bodyMain;
             ctx.beginPath();
             ctx.moveTo(20, 0);
@@ -2793,13 +2816,9 @@ class Unit extends Entity {
             ctx.fillStyle = teamColor;
             ctx.fillRect(-25, -6, 10, 3);
 
-            ctx.save();
-            ctx.rotate(-Math.PI / 12);
-            ctx.fillStyle = bodyDark;
-            ctx.fillRect(15, -8, 80, 5);
-            ctx.fillStyle = black;
-            ctx.fillRect(90, -9, 8, 7);
-            ctx.restore();
+            if (!iconBackTurret) {
+                drawSpgMainGun();
+            }
 
             ctx.restore();
         }
@@ -3230,6 +3249,22 @@ class Unit extends Entity {
             ctx.fillStyle = teamColor;
             ctx.fillRect(-38, 4, 70, 2);
 
+            const iconBackTurret = this.iconRenderBackTurret === true;
+            const drawAaLauncher = () => {
+                ctx.save();
+                ctx.translate(5, -5);
+                ctx.rotate(-Math.PI / 4);
+                ctx.fillStyle = bodyDark;
+                ctx.fillRect(0, -4, 15, 8);
+                ctx.fillStyle = black;
+                ctx.fillRect(15, -3, 25, 2);
+                ctx.fillRect(15, 1, 25, 2);
+                ctx.restore();
+            };
+            if (iconBackTurret) {
+                drawAaLauncher();
+            }
+
             ctx.fillStyle = bodyMain;
             ctx.beginPath();
             ctx.moveTo(10, 0);
@@ -3245,15 +3280,9 @@ class Unit extends Entity {
             ctx.fillRect(-28, -25, 12, 15);
             ctx.strokeRect(-28, -25, 12, 15);
 
-            ctx.save();
-            ctx.translate(5, -5);
-            ctx.rotate(-Math.PI / 4);
-            ctx.fillStyle = bodyDark;
-            ctx.fillRect(0, -4, 15, 8);
-            ctx.fillStyle = black;
-            ctx.fillRect(15, -3, 25, 2);
-            ctx.fillRect(15, 1, 25, 2);
-            ctx.restore();
+            if (!iconBackTurret) {
+                drawAaLauncher();
+            }
 
             ctx.restore();
         }

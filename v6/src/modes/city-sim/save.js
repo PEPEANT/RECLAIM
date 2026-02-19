@@ -272,6 +272,11 @@
         return out;
     }
 
+    function isDrillgroundTile(tile) {
+        const key = String(tile || '').trim();
+        return key === 'drillground' || key === 'drillground_gray';
+    }
+
     function serializeResearchUnlocks(rawUnlocks) {
         return sanitizeResearchUnlocks(rawUnlocks);
     }
@@ -286,7 +291,7 @@
         Object.keys(rawSlots).forEach((rawIndex) => {
             const index = Number(rawIndex);
             if (!Number.isInteger(index) || index < 0 || index >= size) return;
-            if (hasGrid && grid[index] !== 'drillground') return;
+            if (hasGrid && !isDrillgroundTile(grid[index])) return;
 
             const unitKey = String(rawSlots[rawIndex] || '').trim();
             if (!unitKey) return;
@@ -306,10 +311,67 @@
         Object.keys(rawSlots).forEach((rawIndex) => {
             const index = Number(rawIndex);
             if (!Number.isInteger(index) || index < 0 || index >= size) return;
-            if (grid[index] !== 'drillground') return;
+            if (!isDrillgroundTile(grid[index])) return;
             const unitKey = String(rawSlots[rawIndex] || '').trim();
             if (!unitKey) return;
             next[index] = unitKey;
+        });
+
+        return next;
+    }
+
+    function sanitizeDrillgroundInfantryCounts(rawCounts, expectedSize, grid, drillgroundSlots, allowedUnitKeys) {
+        const next = {};
+        if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) return next;
+        if (!Array.isArray(grid)) return next;
+
+        const size = Math.max(0, Math.floor(Number(expectedSize) || 0));
+        if (grid.length !== size) return next;
+        const slots = (drillgroundSlots && typeof drillgroundSlots === 'object' && !Array.isArray(drillgroundSlots))
+            ? drillgroundSlots
+            : {};
+
+        Object.keys(rawCounts).forEach((rawIndex) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= size) return;
+            if (!isDrillgroundTile(grid[index])) return;
+            const unitKey = String(slots[index] || '').trim();
+            if (!unitKey) return;
+            if (allowedUnitKeys && !allowedUnitKeys.has(unitKey)) return;
+            const unitDef = (typeof CONFIG !== 'undefined' && CONFIG?.units)
+                ? CONFIG.units[unitKey]
+                : null;
+            const isInfantry = String(unitDef?.category || '').trim().toLowerCase() === 'infantry';
+            if (!isInfantry) return;
+            next[index] = Math.max(1, Math.min(4, Math.floor(parseNumber(rawCounts[rawIndex], 1))));
+        });
+
+        return next;
+    }
+
+    function serializeDrillgroundInfantryCounts(rawCounts, grid, drillgroundSlots, allowedUnitKeys) {
+        const next = {};
+        if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) return next;
+        if (!Array.isArray(grid)) return next;
+
+        const size = grid.length;
+        const slots = (drillgroundSlots && typeof drillgroundSlots === 'object' && !Array.isArray(drillgroundSlots))
+            ? drillgroundSlots
+            : {};
+
+        Object.keys(rawCounts).forEach((rawIndex) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= size) return;
+            if (!isDrillgroundTile(grid[index])) return;
+            const unitKey = String(slots[index] || '').trim();
+            if (!unitKey) return;
+            if (allowedUnitKeys && !allowedUnitKeys.has(unitKey)) return;
+            const unitDef = (typeof CONFIG !== 'undefined' && CONFIG?.units)
+                ? CONFIG.units[unitKey]
+                : null;
+            const isInfantry = String(unitDef?.category || '').trim().toLowerCase() === 'infantry';
+            if (!isInfantry) return;
+            next[index] = Math.max(1, Math.min(4, Math.floor(parseNumber(rawCounts[rawIndex], 1))));
         });
 
         return next;
@@ -483,6 +545,7 @@
             grid: seededGrid,
             ground: Array.isArray(defaultState.ground) ? defaultState.ground.slice() : [],
             drillgroundSlots: {},
+            drillgroundInfantryCounts: {},
             productionCooldowns: {},
             incomeSlots: {},
             taxAuto: sanitizeTaxAuto(defaultState.taxAuto),
@@ -592,6 +655,7 @@
                 ? defaults.ground.slice()
                 : new Array(Math.max(1, defaults.cols * defaults.rows)).fill('grass'),
             drillgroundSlots: {},
+            drillgroundInfantryCounts: {},
             productionCooldowns: {},
             incomeSlots: {},
             taxAuto: isCompatible
@@ -628,6 +692,13 @@
                 expectedSize,
                 allowedUnitKeys,
                 next.grid
+            );
+            next.drillgroundInfantryCounts = sanitizeDrillgroundInfantryCounts(
+                loaded?.drillgroundInfantryCounts,
+                expectedSize,
+                next.grid,
+                next.drillgroundSlots,
+                allowedUnitKeys
             );
             next.productionCooldowns = sanitizeProductionCooldowns(
                 loaded?.productionCooldowns,
@@ -703,6 +774,12 @@
                 return 'grass';
             }) : [],
             drillgroundSlots: serializeDrillgroundSlots(state.drillgroundSlots, state.grid),
+            drillgroundInfantryCounts: serializeDrillgroundInfantryCounts(
+                state.drillgroundInfantryCounts,
+                state.grid,
+                state.drillgroundSlots,
+                allowedUnitKeys
+            ),
             productionCooldowns: serializeProductionCooldowns(state.productionCooldowns, state.grid),
             incomeSlots: serializeIncomeSlots(state.incomeSlots, state.grid),
             taxAuto: sanitizeTaxAuto(state.taxAuto),

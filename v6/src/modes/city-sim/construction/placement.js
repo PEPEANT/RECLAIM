@@ -62,6 +62,15 @@
         }
     }
 
+    function isDrillgroundTile(tile, depsInput) {
+        const deps = depsInput || getDeps();
+        if (typeof deps.isDrillgroundTile === 'function') {
+            return deps.isDrillgroundTile(tile);
+        }
+        const key = String(tile || '').trim();
+        return key === 'drillground' || key === 'drillground_gray';
+    }
+
     function getMoveStartHint() {
         const deps = getDeps();
         const formatNumber = (typeof deps.formatNumber === 'function')
@@ -523,9 +532,44 @@
             && typeof deps.getProductionQueueAt === 'function')
             ? deps.getProductionQueueAt(state, sourceIndex)
             : null;
-        const sourceDrillgroundUnit = (sourceTile === 'drillground' && typeof deps.getDrillgroundUnitAt === 'function')
+        const sourceDrillgroundUnit = (isDrillgroundTile(sourceTile, deps) && typeof deps.getDrillgroundUnitAt === 'function')
             ? deps.getDrillgroundUnitAt(state, sourceIndex)
             : null;
+
+        if (
+            isDrillgroundTile(sourceTile, deps)
+            && sourceDrillgroundUnit
+            && typeof deps.canPlaceDrillgroundUnitAtAnchor === 'function'
+        ) {
+            const simulatedGrid = Array.isArray(state.grid) ? state.grid.slice() : [];
+            simulatedGrid[sourceIndex] = null;
+            simulatedGrid[targetIndex] = sourceTile;
+
+            const simulatedSlots = {};
+            if (state.drillgroundSlots && typeof state.drillgroundSlots === 'object') {
+                Object.keys(state.drillgroundSlots).forEach((rawIndex) => {
+                    simulatedSlots[rawIndex] = state.drillgroundSlots[rawIndex];
+                });
+            }
+            delete simulatedSlots[sourceIndex];
+
+            const simulatedState = Object.assign({}, state, {
+                grid: simulatedGrid,
+                drillgroundSlots: simulatedSlots
+            });
+            const drillgroundMoveCheck = deps.canPlaceDrillgroundUnitAtAnchor(
+                simulatedState,
+                targetIndex,
+                sourceDrillgroundUnit
+            );
+            if (!drillgroundMoveCheck || drillgroundMoveCheck.ok !== true) {
+                const message = String(drillgroundMoveCheck?.reason || '해당 위치에는 연병장 유닛을 이동할 수 없습니다.');
+                setBuildHint(message);
+                showToast(message);
+                renderGrid(game);
+                return false;
+            }
+        }
 
         if (typeof deps.isFootprintTool === 'function' && deps.isFootprintTool(sourceTile)) {
             const sourceFootprint = (typeof deps.getFootprintAtAnchor === 'function')
@@ -562,8 +606,26 @@
         } else {
             CitySimState.setGridTile(game, sourceIndex, null);
             CitySimState.setGridTile(game, targetIndex, sourceTile);
-            if (sourceTile === 'drillground' && sourceDrillgroundUnit) {
-                CitySimState.setDrillgroundUnit(game, targetIndex, sourceDrillgroundUnit);
+            if (isDrillgroundTile(sourceTile, deps) && sourceDrillgroundUnit) {
+                if (typeof deps.setDrillgroundUnitAtAnchor === 'function') {
+                    const applied = deps.setDrillgroundUnitAtAnchor(game, targetIndex, sourceDrillgroundUnit);
+                    if (!applied) {
+                        CitySimState.setGridTile(game, targetIndex, null);
+                        CitySimState.setGridTile(game, sourceIndex, sourceTile);
+                        if (typeof deps.setDrillgroundUnitAtAnchor === 'function') {
+                            deps.setDrillgroundUnitAtAnchor(game, sourceIndex, sourceDrillgroundUnit);
+                        } else {
+                            CitySimState.setDrillgroundUnit(game, sourceIndex, sourceDrillgroundUnit);
+                        }
+                        const message = '연병장 유닛 이동에 실패했습니다. 위치를 다시 확인하세요.';
+                        setBuildHint(message);
+                        showToast(message);
+                        renderGrid(game);
+                        return false;
+                    }
+                } else {
+                    CitySimState.setDrillgroundUnit(game, targetIndex, sourceDrillgroundUnit);
+                }
             }
         }
 
@@ -674,7 +736,7 @@
             });
         } else if (tool === 'eraser') {
             const currentTile = state.grid[index] ?? null;
-            if (currentTile === 'drillground') {
+            if (isDrillgroundTile(currentTile, deps)) {
                 if (typeof deps.releaseDrillgroundUnit === 'function') {
                     deps.releaseDrillgroundUnit(game, index);
                     shouldRefreshUnits = true;
@@ -812,7 +874,7 @@
         renderContextBar(game);
 
         if (target
-            && selectedTile === 'drillground'
+            && isDrillgroundTile(selectedTile, deps)
             && typeof deps.isDrillgroundUnitTarget === 'function'
             && deps.isDrillgroundUnitTarget(target)
             && typeof deps.openDrillgroundUnitProfile === 'function') {
@@ -848,7 +910,29 @@
             return;
         }
 
-        if (selectionInfo.tile === 'drillground') {
+        if (isDrillgroundTile(selectionInfo.tile, deps)) {
+            const currentUnitKey = (typeof deps.getDrillgroundUnitAt === 'function')
+                ? deps.getDrillgroundUnitAt(state, selectionInfo.index)
+                : null;
+            if (currentUnitKey) {
+                if (typeof deps.releaseDrillgroundUnit === 'function') {
+                    const releasedUnitKey = deps.releaseDrillgroundUnit(game, selectionInfo.index);
+                    if (releasedUnitKey) {
+                        if (typeof deps.persist === 'function') {
+                            deps.persist(game);
+                        }
+                        renderGrid(game);
+                        renderContextBar(game);
+                        if (typeof deps.refreshCityUnitPanels === 'function') {
+                            deps.refreshCityUnitPanels(game);
+                        }
+                        showToast('연병장 배치를 해제했습니다.');
+                        return;
+                    }
+                }
+                showToast('해제할 배치 유닛이 없습니다.');
+                return;
+            }
             if (typeof deps.openDrillgroundUnitPicker === 'function') {
                 deps.openDrillgroundUnitPicker(game, selectionInfo);
             }
@@ -935,7 +1019,7 @@
         let demolitionTargets = [];
         let shouldRefreshUnits = false;
 
-        if (tile === 'drillground') {
+        if (isDrillgroundTile(tile, deps)) {
             if (typeof deps.releaseDrillgroundUnit === 'function') {
                 deps.releaseDrillgroundUnit(game, index);
                 shouldRefreshUnits = true;

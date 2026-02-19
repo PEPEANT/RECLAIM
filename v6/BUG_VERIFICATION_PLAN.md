@@ -403,3 +403,34 @@ ode -c game.js passed.
   - node -c hud.js passed.
 - Outcome:
   - 배치칸에는 미사일 아이콘이 나타나지 않고, ICBM 3스킬 명령키에서만 미사일 그림이 노출됨.
+
+## 2026-02-19 Intake Update (H-01)
+- Status: pending
+- Priority: P0
+- Scope: ICBM stock mismatch between city/storage and battle modes.
+- Symptom:
+  - Skirmish predeploy shows ICBM stock while city/storage appears empty.
+  - Occupation can show similar mismatch.
+- Initial hypothesis:
+  - Stale or invalid drillground slot entries are counted in battle stock path.
+  - Drillground assignment path can leak non-assignable unit types (skill payload keys).
+
+## 2026-02-19 Progress Update (H-01 Fix Part 1)
+- Status: fixed
+- Scope: Drillground assignment eligibility hardening + storage count sync guard
+- Files:
+  - `src/modes/city-sim/construction.js`
+  - `src/modes/campaign/skirmish.js`
+  - `game.js`
+- Changes:
+  - Added strict drillground-assignable unit guard to block skill/civilian/builder/drone-only/hidden/disabled units.
+  - Filtered drillground selection entries with the same guard (prevents EMP/NUKE/TACTICAL payload units from showing as assignable).
+  - Skirmish storage collection now uses normalized city state and ignores non-drillground grid indices.
+  - Battle stock sync path recovers invalid skill payload drillground slots back to city units and removes invalid slots.
+- Validation:
+  - `node --check game.js` passed.
+  - `node --check src/modes/city-sim/construction.js` passed.
+  - `node --check src/modes/campaign/skirmish.js` passed.
+- Outcome:
+  - ICBM stock mismatch caused by invalid drillground paths is reduced.
+  - Confidential missile rewards (`emp`, `nuke`, `tactical_missile`) are preserved in storage and no longer treated as drillground-assignable units.

@@ -92,6 +92,12 @@
         const sellBtn = getButtonAt(actionButtons, 1);
         const moveBtn = getButtonAt(actionButtons, 2);
         const doneBtn = getButtonAt(actionButtons, 3);
+        const isDrillgroundTile = (typeof deps.isDrillgroundTile === 'function')
+            ? deps.isDrillgroundTile
+            : ((tile) => {
+                const key = String(tile || '').trim();
+                return key === 'drillground' || key === 'drillground_gray';
+            });
 
         const state = CitySimState.ensure(game);
         const placement = state.placement || {};
@@ -159,10 +165,15 @@
                 ? global.CitySimEconomy.getIncomeStatus(game, selectionInfo.index, selectionInfo.tile)
                 : null;
 
-            if (selectionInfo.tile === 'drillground') {
-                primaryLabel = '배치';
+            if (isDrillgroundTile(selectionInfo.tile)) {
+                const drillgroundUnitKey = (typeof deps.getDrillgroundUnitAt === 'function')
+                    ? deps.getDrillgroundUnitAt(state, selectionInfo.index)
+                    : null;
+                primaryLabel = drillgroundUnitKey ? '배치취소' : '배치';
                 primaryEnabled = true;
-                title = `${tileName} 선택됨 · 유닛 관리`;
+                title = drillgroundUnitKey
+                    ? `${tileName} 선택됨 · 배치 유닛 해제`
+                    : `${tileName} 선택됨 · 유닛 관리`;
             } else if (catalog) {
                 const actionLabel = selectionInfo.tile === 'powerplant' ? '연구' : '생산';
                 primaryLabel = queueReady ? '수령' : actionLabel;

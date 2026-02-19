@@ -236,6 +236,7 @@ const UnitDex = {
         const dummy = new Unit(key, 0, 0, 'player');
         dummy.hideHp = true;
         dummy.disableFeetSnap = true;
+        dummy.iconRenderBackTurret = true;
         if (dummy.stats.type === 'air') dummy.y = 0;
 
         dummy.draw(ctx);

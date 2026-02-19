@@ -26,6 +26,7 @@ const HUD = {
     _contextRightSlotUnitPanel: false,
     _forceHqRightSlotOpen: false,
     _icbmCommandIconCache: {},
+    _unitCommandIconCache: {},
 
     // DOM References (cached)
     elements: {
@@ -256,7 +257,7 @@ const HUD = {
         return document.querySelector(`[data-hud-cmd="${role}"]`);
     },
 
-    setHudCommandButtonVisual(btn, iconClass, label, iconImageUrl = '') {
+    setHudCommandButtonVisual(btn, iconClass, label, iconImageUrl = '', iconImageClass = '') {
         if (!btn) return;
         const iconNode = btn.querySelector('.cmd-icon');
         const labelNode = btn.querySelector('span:last-child');
@@ -264,7 +265,9 @@ const HUD = {
             if (iconImageUrl) {
                 iconNode.innerHTML = '';
                 const img = document.createElement('img');
-                img.className = 'cmd-icon-img';
+                img.className = String(iconImageClass || '').trim()
+                    ? `cmd-icon-img ${String(iconImageClass || '').trim()}`
+                    : 'cmd-icon-img';
                 img.src = iconImageUrl;
                 img.alt = '';
                 img.setAttribute('aria-hidden', 'true');
@@ -386,6 +389,81 @@ const HUD = {
         return dataUrl;
     },
 
+    getUnitCommandIcon(unitKey) {
+        const key = String(unitKey || '').trim();
+        if (!key) return '';
+        if (!this._unitCommandIconCache || typeof this._unitCommandIconCache !== 'object') {
+            this._unitCommandIconCache = {};
+        }
+        if (Object.prototype.hasOwnProperty.call(this._unitCommandIconCache, key)) {
+            return this._unitCommandIconCache[key] || '';
+        }
+        if (typeof document === 'undefined' || typeof CONFIG === 'undefined' || !CONFIG?.units?.[key]) {
+            this._unitCommandIconCache[key] = '';
+            return '';
+        }
+
+        const unitDef = CONFIG.units[key];
+        const canvas = document.createElement('canvas');
+        canvas.width = 64;
+        canvas.height = 48;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            this._unitCommandIconCache[key] = '';
+            return '';
+        }
+
+        let drew = false;
+        if (typeof Unit !== 'undefined') {
+            try {
+                ctx.save();
+
+                const centerX = 32;
+                const bottomY = 42;
+                let scale = 0.82;
+                let offsetY = -2;
+
+                if (key === 'drone_suicide') {
+                    scale = 1.02;
+                    offsetY = -4;
+                } else if (key === 'drone_at') {
+                    scale = 0.96;
+                    offsetY = -4;
+                } else if (unitDef.type === 'air') {
+                    scale = 0.72;
+                    offsetY = -8;
+                }
+
+                ctx.translate(centerX, bottomY + offsetY);
+                ctx.scale(scale, scale);
+
+                const dummy = new Unit(key, 0, 0, 'player');
+                dummy.hideHp = true;
+                dummy.disableFeetSnap = true;
+                dummy.iconRenderBackTurret = true;
+                if (dummy.stats?.type === 'air') dummy.y = 0;
+                dummy.draw(ctx);
+                ctx.restore();
+                drew = true;
+            } catch (_) {
+                try { ctx.restore(); } catch (_) { }
+            }
+        }
+
+        if (!drew) {
+            const w = Math.max(12, Math.min(50, Math.round((Number(unitDef.width) || 24) * 1.2)));
+            const h = Math.max(8, Math.min(26, Math.round((Number(unitDef.height) || 12) * 1.1)));
+            ctx.fillStyle = unitDef.color || '#38bdf8';
+            ctx.globalAlpha = 0.95;
+            ctx.fillRect((64 - w) / 2, (48 - h) / 2, w, h);
+            ctx.globalAlpha = 1;
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
+        this._unitCommandIconCache[key] = dataUrl;
+        return dataUrl;
+    },
+
     setHudButtonEnabled(btn, enabled) {
         if (!btn) return;
         btn.disabled = !enabled;
@@ -447,9 +525,21 @@ const HUD = {
             case 'eject':
                 return { key: 'cmd_eject', fallback: 'EJECT', icon: 'fa-solid fa-right-from-bracket' };
             case 'drone_suicide':
-                return { key: 'cmd_drone_suicide', fallback: 'SUICIDE DRONE', icon: 'fa-solid fa-skull-crossbones' };
+                return {
+                    key: 'cmd_drone_suicide',
+                    fallback: 'SUICIDE DRONE',
+                    icon: 'fa-solid fa-skull-crossbones',
+                    iconImageUnitKey: 'drone_suicide',
+                    iconImageClass: 'cmd-icon-img-drone'
+                };
             case 'drone_at':
-                return { key: 'cmd_drone_at', fallback: 'AT DRONE', icon: 'fa-solid fa-shield-halved' };
+                return {
+                    key: 'cmd_drone_at',
+                    fallback: 'AT DRONE',
+                    icon: 'fa-solid fa-shield-halved',
+                    iconImageUnitKey: 'drone_at',
+                    iconImageClass: 'cmd-icon-img-drone'
+                };
             case 'icbm_tactical':
                 return {
                     key: 'cmd_icbm_tactical',
@@ -484,7 +574,9 @@ const HUD = {
             case 'skill1':
                 return { key: 'cmd_skill1', fallback: 'SKILL 1', icon: 'fa-solid fa-bolt' };
             case 'skill2':
-                return { key: 'cmd_skill2', fallback: 'SKILL 2', icon: 'fa-solid fa-star' };
+                return { key: 'cmd_skill2', fallback: 'SKILL 2', icon: 'fa-solid fa-bolt' };
+            case 'skill3':
+                return { key: 'cmd_skill3', fallback: 'SKILL 3', icon: 'fa-solid fa-bolt' };
             case 'interact':
                 return { key: 'cmd_interact', fallback: 'INTERACT', icon: 'fa-solid fa-hand-pointer' };
             case 'more':
@@ -641,6 +733,7 @@ const HUD = {
             stance: 'stance',
             skill1: null,
             skill2: null,
+            skill3: null,
             interact: null
         };
 
@@ -658,20 +751,23 @@ const HUD = {
 
         if (ctx.skirmishBattle && ctx.hasSelectedIcbm) {
             map.skill1 = pick(['icbm_tactical', 'icbm_emp', 'icbm_nuke']);
-            map.skill2 = pick(['icbm_emp', 'icbm_tactical', 'icbm_nuke']);
-            map.interact = pick(['icbm_nuke', 'drop', 'eject', 'news', 'recon']);
+            map.skill2 = pick(['icbm_emp', 'icbm_nuke', 'icbm_tactical']);
+            map.skill3 = pick(['icbm_nuke', 'icbm_tactical', 'icbm_emp']);
+            map.interact = pick(['drop', 'eject', 'news', 'recon']);
             return map;
         }
 
         if (ctx.hasOperatorSelection) {
             map.skill1 = pick(['drone_suicide', 'drone_at']);
             map.skill2 = pick(['drone_at', 'drone_suicide']);
+            map.skill3 = pick(['smoke', 'missile', 'recon', 'news']);
             map.interact = pick(['drop', 'eject', 'news', 'recon']);
             return map;
         }
 
         map.skill1 = pick(['missile', 'smoke', 'recon', 'news']);
         map.skill2 = pick(['smoke', 'missile', 'news', 'recon']);
+        map.skill3 = pick(['recon', 'news', 'missile', 'smoke']);
         map.interact = pick(['drop', 'eject', 'news', 'recon', 'missile', 'smoke']);
 
         return map;
@@ -680,6 +776,7 @@ const HUD = {
     renderMappedRoleButton(role, mappedCmd, ctx) {
         const btn = this.getHudCommandButton(role);
         if (!btn) return;
+        const isSkillRole = role === 'skill1' || role === 'skill2' || role === 'skill3';
 
         if (!mappedCmd) {
             const fallbackMeta = this.getRoleDefaultMeta(role);
@@ -695,14 +792,20 @@ const HUD = {
         }
 
         const meta = this.getMappedCommandMeta(mappedCmd);
-        const iconImageUrl = meta.iconImageKey
-            ? this.getIcbmPayloadCommandIcon(meta.iconImageKey)
-            : '';
+        const iconImageUrl = isSkillRole
+            ? ''
+            : (
+                meta.iconImageKey
+                    ? this.getIcbmPayloadCommandIcon(meta.iconImageKey)
+                    : (meta.iconImageUnitKey ? this.getUnitCommandIcon(meta.iconImageUnitKey) : '')
+            );
+        const iconClass = isSkillRole ? 'fa-solid fa-bolt' : meta.icon;
         this.setHudCommandButtonVisual(
             btn,
-            meta.icon,
+            iconClass,
             this.getLangText(meta.key, meta.fallback),
-            iconImageUrl
+            iconImageUrl,
+            isSkillRole ? '' : (meta.iconImageClass || '')
         );
         this.setHudButtonEnabled(btn, this.isMappedCommandAvailable(mappedCmd, ctx));
 
@@ -976,6 +1079,7 @@ const HUD = {
             `stance:${stance}`,
             `s1:${roleMap.skill1 || '-'}`,
             `s2:${roleMap.skill2 || '-'}`,
+            `s3:${roleMap.skill3 || '-'}`,
             `i:${roleMap.interact || '-'}`
         ].join('|');
 
@@ -1005,6 +1109,7 @@ const HUD = {
 
         this.renderMappedRoleButton('skill1', roleMap.skill1, ctx);
         this.renderMappedRoleButton('skill2', roleMap.skill2, ctx);
+        this.renderMappedRoleButton('skill3', roleMap.skill3, ctx);
         this.renderMappedRoleButton('interact', roleMap.interact, ctx);
     },
     /**

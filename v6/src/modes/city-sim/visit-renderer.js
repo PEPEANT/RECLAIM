@@ -19,8 +19,10 @@
     };
     const spriteUrlCache = new Map();
     const inventoryIconCache = new Map();
+    const drillgroundUnitIconCache = new Map();
     const drillgroundMissileIconCache = new Map();
     const DRILLGROUND_MISSILE_ICON_KEYS = new Set(['emp', 'nuke', 'tactical_missile']);
+    const DRILLGROUND_TILE_SET = new Set(['drillground', 'drillground_gray']);
     const AIRPORT_TILE_RE = /^airport_r\d+c\d+$/;
     const PARK_PLAZA_TILE_SET = new Set(['park_plaza', 'park_plaza_tr', 'park_plaza_bl', 'park_plaza_br']);
     let _visitView = { x: 0, y: 0, scale: 1 };
@@ -68,6 +70,7 @@
         shop_store: '가게',
         tax_office: '세무소',
         drillground: '연병',
+        drillground_gray: '연병',
         barracks: '병영',
         airport: '공항',
         airport_tr: '공항',
@@ -214,6 +217,11 @@
 
     function normalizeUnitKey(value) {
         return String(value || '').trim();
+    }
+
+    function isDrillgroundTile(tile) {
+        const key = String(tile || '').trim();
+        return !!key && DRILLGROUND_TILE_SET.has(key);
     }
 
     function getUnitDefByKey(unitKey) {
@@ -420,6 +428,12 @@
         });
     }
 
+    function applyInventoryIconRenderTweaks(dummy) {
+        if (!dummy || typeof dummy !== 'object') return;
+        // Keep cannon/turret behind hull for compact icon readability.
+        dummy.iconRenderBackTurret = true;
+    }
+
     function drawInventoryUnitIcon(unitKey) {
         const key = normalizeUnitKey(unitKey);
         if (!key) return null;
@@ -485,6 +499,7 @@
                 const dummy = new Unit(key, 0, 0, 'player');
                 dummy.hideHp = true;
                 dummy.disableFeetSnap = true;
+                applyInventoryIconRenderTweaks(dummy);
                 if (dummy.stats.type === 'air') dummy.y = 0;
                 dummy.draw(ctx);
                 ctx.restore();
@@ -508,6 +523,240 @@
         const dataUrl = canvas.toDataURL('image/png');
         inventoryIconCache.set(key, dataUrl);
         return dataUrl;
+    }
+
+    function drawDrillgroundUnitIcon(unitKey) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key) return null;
+        if (isDrillgroundMissileIconUnit(key)) {
+            return drawDrillgroundMissileIcon(key);
+        }
+
+        if (drillgroundUnitIconCache.has(key)) {
+            const cached = drillgroundUnitIconCache.get(key);
+            return cached || null;
+        }
+
+        const unitDef = getUnitDefByKey(key);
+        if (!unitDef) {
+            drillgroundUnitIconCache.set(key, null);
+            return null;
+        }
+
+        if (typeof Unit === 'undefined') {
+            const fallbackUrl = drawInventoryUnitIcon(key);
+            drillgroundUnitIconCache.set(key, fallbackUrl || null);
+            return fallbackUrl || null;
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 144;
+        canvas.height = 96;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+            drillgroundUnitIconCache.set(key, null);
+            return null;
+        }
+
+        let drew = false;
+        let unitType = '';
+        let unitCategory = '';
+        let verticalBias = -1;
+        try {
+            ctx.save();
+
+            const width = Math.max(0, Number(unitDef.width) || 0);
+            const height = Math.max(0, Number(unitDef.height) || 0);
+            const type = String(unitDef.type || '').trim().toLowerCase();
+            const category = String(unitDef.category || '').trim().toLowerCase();
+            unitType = type;
+            unitCategory = category;
+
+            let scale = 0.94;
+            let offsetY = -3;
+            if (category === 'infantry') {
+                scale = 1.34;
+                offsetY = -2;
+                verticalBias = -1;
+            } else if (type === 'air') {
+                if (key === 'blackhawk') {
+                    scale = 0.62;
+                    offsetY = -10;
+                } else if (key === 'chinook') {
+                    scale = 0.64;
+                    offsetY = -10;
+                } else if (key === 'bomber' || key === 'fighter') {
+                    scale = 0.7;
+                    offsetY = -11;
+                } else if (key === 'apache') {
+                    scale = 0.72;
+                    offsetY = -12;
+                } else if (width >= 120) {
+                    scale = 0.68;
+                    offsetY = -11;
+                } else {
+                    scale = 0.74;
+                    offsetY = -10;
+                }
+                verticalBias = -3;
+            } else if (type === 'mech' || category === 'armored') {
+                if (key === 'icbm') {
+                    scale = 0.6;
+                    offsetY = -4;
+                } else if (width >= 120) {
+                    scale = 0.5;
+                    offsetY = -3;
+                } else if (key === 'humvee' || key === 'apc' || key === 'aa_tank') {
+                    scale = 0.78;
+                    offsetY = -3;
+                } else if (width >= 72 || height >= 42 || key === 'mbt' || key === 'spg') {
+                    scale = 0.54;
+                    offsetY = -3;
+                } else {
+                    scale = 0.54;
+                    offsetY = -2;
+                }
+                if (key === 'humvee') {
+                    offsetY -= 2;
+                    verticalBias = -8;
+                } else if (key === 'apc' || key === 'aa_tank') {
+                    offsetY -= 1;
+                    verticalBias = -6;
+                } else {
+                    verticalBias = -4;
+                }
+            } else if (width >= 55 || height >= 34) {
+                scale = 0.86;
+                offsetY = -5;
+                verticalBias = -2;
+            }
+
+            ctx.translate(72, 82 + offsetY);
+            ctx.scale(scale, scale);
+
+            const dummy = new Unit(key, 0, 0, 'player');
+            dummy.hideHp = true;
+            dummy.disableFeetSnap = true;
+            applyInventoryIconRenderTweaks(dummy);
+            if (dummy.stats?.type === 'air') dummy.y = 0;
+            dummy.draw(ctx);
+
+            ctx.restore();
+            drew = true;
+        } catch (_) {
+            try {
+                ctx.restore();
+            } catch (_) { }
+        }
+
+        if (!drew) {
+            const fallbackUrl = drawInventoryUnitIcon(key);
+            drillgroundUnitIconCache.set(key, fallbackUrl || null);
+            return fallbackUrl || null;
+        }
+
+        const normalizedCanvas = normalizeDrillgroundIconCanvas(canvas, {
+            alphaCutoff: (
+                unitType === 'air'
+                    ? 4
+                    : ((unitCategory === 'armored' || unitType === 'mech') ? 22 : 20)
+            ),
+            padding: 2,
+            verticalBias,
+            trimBottomSoftLine: false
+        });
+        const dataUrl = (normalizedCanvas || canvas).toDataURL('image/png');
+        drillgroundUnitIconCache.set(key, dataUrl);
+        return dataUrl;
+    }
+
+    function normalizeDrillgroundIconCanvas(canvas, options) {
+        if (!canvas) return canvas;
+        const opts = options || {};
+        const alphaCutoff = Math.max(0, Math.min(255, Math.floor(Number(opts.alphaCutoff) || 26)));
+        const padding = Math.max(0, Math.floor(Number(opts.padding) || 2));
+        const verticalBias = Number.isFinite(Number(opts.verticalBias)) ? Number(opts.verticalBias) : 0;
+        const trimBottomSoftLine = opts.trimBottomSoftLine === true;
+        const width = Math.max(1, Math.floor(Number(canvas.width) || 0));
+        const height = Math.max(1, Math.floor(Number(canvas.height) || 0));
+        const srcCtx = canvas.getContext('2d');
+        if (!srcCtx) return canvas;
+
+        let imageData;
+        try {
+            imageData = srcCtx.getImageData(0, 0, width, height);
+        } catch (_) {
+            return canvas;
+        }
+        const data = imageData.data;
+        let minX = width;
+        let minY = height;
+        let maxX = -1;
+        let maxY = -1;
+        const rowCount = new Array(height).fill(0);
+        const rowAlpha = new Array(height).fill(0);
+
+        for (let y = 0; y < height; y++) {
+            const rowBase = y * width * 4;
+            for (let x = 0; x < width; x++) {
+                const alpha = data[rowBase + (x * 4) + 3];
+                if (alpha < alphaCutoff) continue;
+                if (x < minX) minX = x;
+                if (y < minY) minY = y;
+                if (x > maxX) maxX = x;
+                if (y > maxY) maxY = y;
+                rowCount[y] += 1;
+                rowAlpha[y] += alpha;
+            }
+        }
+
+        if (maxX < minX || maxY < minY) {
+            return canvas;
+        }
+
+        if (trimBottomSoftLine) {
+            while (maxY > minY) {
+                const cnt = rowCount[maxY];
+                if (cnt <= 0) {
+                    maxY -= 1;
+                    continue;
+                }
+                const spanW = Math.max(1, maxX - minX + 1);
+                const coverage = cnt / spanW;
+                const avgAlpha = rowAlpha[maxY] / cnt;
+                if (coverage >= 0.82 && avgAlpha <= 150) {
+                    maxY -= 1;
+                    continue;
+                }
+                break;
+            }
+        }
+
+        const boxW = Math.max(1, maxX - minX + 1);
+        const boxH = Math.max(1, maxY - minY + 1);
+        const maxDrawW = Math.max(1, width - (padding * 2));
+        const maxDrawH = Math.max(1, height - (padding * 2));
+        let drawScale = 1;
+        if (boxW > maxDrawW || boxH > maxDrawH) {
+            drawScale = Math.min(maxDrawW / boxW, maxDrawH / boxH);
+        }
+
+        const drawW = boxW * drawScale;
+        const drawH = boxH * drawScale;
+        const drawX = (width - drawW) * 0.5;
+        const desiredY = ((height - drawH) * 0.5) + verticalBias;
+        const minYLimit = padding;
+        const maxYLimit = Math.max(minYLimit, height - drawH - padding);
+        const drawY = Math.max(minYLimit, Math.min(maxYLimit, desiredY));
+
+        const normalized = document.createElement('canvas');
+        normalized.width = width;
+        normalized.height = height;
+        const outCtx = normalized.getContext('2d');
+        if (!outCtx) return canvas;
+        outCtx.clearRect(0, 0, width, height);
+        outCtx.drawImage(canvas, minX, minY, boxW, boxH, drawX, drawY, drawW, drawH);
+        return normalized;
     }
 
     function isDrillgroundMissileIconUnit(unitKey) {
@@ -666,26 +915,266 @@
         return 'city-drillground-unit-size-base';
     }
 
+    function isDrillgroundAssignableUnit(unitKey, unitDef) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key || !unitDef) return false;
+        if (key === 'icbm_enemy') return false;
+        if (unitDef.disabled === true) return false;
+        if (unitDef.hideFromUnitBar === true) return false;
+        if (unitDef.isSkill === true) return false;
+        if (unitDef.isBuilder === true) return false;
+        if (unitDef.droneLaunchOnly === true) return false;
+
+        const unitType = String(unitDef.type || '').trim().toLowerCase();
+        const unitCategory = String(unitDef.category || '').trim().toLowerCase();
+        if (unitType === 'civilian' || unitCategory === 'civilian') return false;
+        return true;
+    }
+
+    function getGridColumnCount(cols, total) {
+        const parsedCols = Math.floor(Number(cols) || 0);
+        if (parsedCols > 0) return parsedCols;
+        return Math.max(1, Math.floor(Number(total) || 0));
+    }
+
+    function isHorizontalAdjacentIndex(cols, leftIndex, rightIndex) {
+        if (!Number.isInteger(leftIndex) || !Number.isInteger(rightIndex)) return false;
+        if (rightIndex !== leftIndex + 1) return false;
+        const colCount = getGridColumnCount(cols, 0);
+        if (colCount <= 0) return false;
+        return Math.floor(leftIndex / colCount) === Math.floor(rightIndex / colCount);
+    }
+
+    function isDrillgroundCell(grid, index) {
+        if (!Array.isArray(grid)) return false;
+        if (!Number.isInteger(index) || index < 0 || index >= grid.length) return false;
+        return isDrillgroundTile(grid[index]);
+    }
+
+    function getDrillgroundTileAt(grid, index) {
+        if (!isDrillgroundCell(grid, index)) return '';
+        return String(grid[index] || '').trim();
+    }
+
+    function isSameDrillgroundType(grid, leftIndex, rightIndex) {
+        const leftTile = getDrillgroundTileAt(grid, leftIndex);
+        const rightTile = getDrillgroundTileAt(grid, rightIndex);
+        return !!leftTile && leftTile === rightTile;
+    }
+
+    function getDrillgroundUnitFootprintSlots(unitKey, unitDefInput) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key) return 1;
+        const unitDef = unitDefInput || getUnitDefByKey(key);
+        if (!unitDef) return 1;
+        const category = String(unitDef.category || '').trim().toLowerCase();
+        if (category === 'infantry') return 1;
+        // Wheeled light vehicles stay single-slot in drillground layout.
+        if (key === 'humvee' || key === 'apc' || key === 'aa_tank') return 1;
+        return 2;
+    }
+
+    const DRILLGROUND_INFANTRY_MAX_STACK = 4;
+
+    function isInfantryUnit(unitDefInput) {
+        const category = String(unitDefInput?.category || '').trim().toLowerCase();
+        return category === 'infantry';
+    }
+
+    function clampDrillgroundInfantryCount(value) {
+        const raw = Math.max(1, Math.floor(Number(value) || 1));
+        return Math.min(DRILLGROUND_INFANTRY_MAX_STACK, raw);
+    }
+
+    function normalizeDrillgroundInfantryCounts(rawCounts, expectedSize, grid, drillgroundSlots) {
+        const next = {};
+        const size = Math.max(0, Math.floor(Number(expectedSize) || 0));
+        if (size <= 0 || !Array.isArray(grid) || grid.length !== size) return next;
+        if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) return next;
+
+        const slotMap = (drillgroundSlots && typeof drillgroundSlots === 'object')
+            ? drillgroundSlots
+            : {};
+        Object.keys(rawCounts).forEach((rawIndex) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= size) return;
+            if (!isDrillgroundTile(grid[index])) return;
+            const unitKey = normalizeUnitKey(slotMap[index]);
+            const unitDef = unitKey ? getUnitDefByKey(unitKey) : null;
+            if (!unitKey || !isInfantryUnit(unitDef)) return;
+            next[index] = clampDrillgroundInfantryCount(rawCounts[rawIndex]);
+        });
+        return next;
+    }
+
+    function getDrillgroundRightCompanionIndex(grid, cols, anchorIndex) {
+        const companionIndex = Number(anchorIndex) + 1;
+        if (!isHorizontalAdjacentIndex(cols, Number(anchorIndex), companionIndex)) return null;
+        if (!isDrillgroundCell(grid, companionIndex)) return null;
+        if (!isSameDrillgroundType(grid, Number(anchorIndex), companionIndex)) return null;
+        return companionIndex;
+    }
+
+    function getDrillgroundMergeFlags(grid, cols, index) {
+        if (!isDrillgroundCell(grid, index)) {
+            return { mergeLeft: false, mergeRight: false, mergeUp: false, mergeDown: false };
+        }
+
+        const colCount = getGridColumnCount(cols, grid.length);
+        const leftIndex = index - 1;
+        const rightIndex = index + 1;
+        const upIndex = index - colCount;
+        const downIndex = index + colCount;
+        const mergeLeft = (
+            isHorizontalAdjacentIndex(cols, leftIndex, index)
+            && isSameDrillgroundType(grid, leftIndex, index)
+        );
+        const mergeRight = (
+            isHorizontalAdjacentIndex(cols, index, rightIndex)
+            && isSameDrillgroundType(grid, index, rightIndex)
+        );
+        const mergeUp = isSameDrillgroundType(grid, upIndex, index);
+        const mergeDown = isSameDrillgroundType(grid, index, downIndex);
+        return { mergeLeft, mergeRight, mergeUp, mergeDown };
+    }
+
+    function buildDrillgroundOccupancy(grid, cols, drillgroundSlots, infantryCounts) {
+        const anchors = new Map();
+        const ownerByIndex = new Map();
+        if (!Array.isArray(grid) || !drillgroundSlots || typeof drillgroundSlots !== 'object') {
+            return { anchors, ownerByIndex };
+        }
+
+        const indices = Object.keys(drillgroundSlots)
+            .map((raw) => Number(raw))
+            .filter((idx) => Number.isInteger(idx) && isDrillgroundCell(grid, idx))
+            .sort((a, b) => a - b);
+
+        indices.forEach((index) => {
+            if (ownerByIndex.has(index)) return;
+
+            const unitKey = normalizeUnitKey(drillgroundSlots[index]);
+            if (!unitKey) return;
+            const unitDef = getUnitDefByKey(unitKey);
+            if (!isDrillgroundAssignableUnit(unitKey, unitDef)) return;
+            const infantryCount = (
+                isInfantryUnit(unitDef)
+                    ? clampDrillgroundInfantryCount(infantryCounts?.[index])
+                    : 1
+            );
+
+            const span = getDrillgroundUnitFootprintSlots(unitKey, unitDef);
+            if (span >= 2) {
+                const companionIndex = getDrillgroundRightCompanionIndex(grid, cols, index);
+                const companionStoredUnitKey = Number.isInteger(companionIndex)
+                    ? normalizeUnitKey(drillgroundSlots[companionIndex])
+                    : null;
+                const companionStoredUnitDef = companionStoredUnitKey
+                    ? getUnitDefByKey(companionStoredUnitKey)
+                    : null;
+                const companionHasOwnUnit = !!(
+                    companionStoredUnitKey
+                    && isDrillgroundAssignableUnit(companionStoredUnitKey, companionStoredUnitDef)
+                );
+
+                if (Number.isInteger(companionIndex) && !ownerByIndex.has(companionIndex) && !companionHasOwnUnit) {
+                    anchors.set(index, {
+                        unitKey,
+                        unitDef,
+                        span: 2,
+                        companionIndex,
+                        infantryCount: 1
+                    });
+                    ownerByIndex.set(index, index);
+                    ownerByIndex.set(companionIndex, index);
+                    return;
+                }
+            }
+
+            anchors.set(index, {
+                unitKey,
+                unitDef,
+                span: 1,
+                companionIndex: null,
+                infantryCount
+            });
+            ownerByIndex.set(index, index);
+        });
+
+        return { anchors, ownerByIndex };
+    }
+
+    function getDrillgroundEntryAt(index, occupancy) {
+        if (!Number.isInteger(index) || !occupancy) return null;
+        const anchorIndex = occupancy.ownerByIndex.get(index);
+        if (!Number.isInteger(anchorIndex)) return null;
+        const anchorEntry = occupancy.anchors.get(anchorIndex);
+        if (!anchorEntry) return null;
+        return {
+            anchorIndex,
+            unitKey: anchorEntry.unitKey,
+            unitDef: anchorEntry.unitDef,
+            span: anchorEntry.span,
+            companionIndex: anchorEntry.companionIndex,
+            infantryCount: clampDrillgroundInfantryCount(anchorEntry.infantryCount),
+            isAnchor: anchorIndex === index
+        };
+    }
+
     function appendDrillgroundVisual(cell, options) {
         if (!cell) return;
         const opts = options || {};
         const unitKey = normalizeUnitKey(opts.unitKey);
         const unitDef = unitKey ? getUnitDefByKey(unitKey) : null;
+        const span = Math.max(1, Math.floor(Number(opts.span) || getDrillgroundUnitFootprintSlots(unitKey, unitDef)));
+        const isCompanion = opts.isCompanion === true;
+        const mergeLeft = opts.mergeLeft === true;
+        const mergeRight = opts.mergeRight === true;
+        const mergeUp = opts.mergeUp === true;
+        const mergeDown = opts.mergeDown === true;
+        const infantryCount = clampDrillgroundInfantryCount(opts.infantryCount);
+        const infantryStacked = !!unitKey && isInfantryUnit(unitDef) && infantryCount > 1;
         const sizeClass = getDrillgroundUnitSizeClass(unitKey, unitDef);
 
         const pad = document.createElement('span');
         pad.className = 'city-drillground-pad';
         if (!unitKey) pad.classList.add('city-drillground-pad-empty');
+        if (mergeRight) pad.classList.add('city-drillground-pad-joined-left');
+        if (mergeLeft) pad.classList.add('city-drillground-pad-joined-right');
+        if (mergeUp) pad.classList.add('city-drillground-pad-joined-top');
+        if (mergeDown) pad.classList.add('city-drillground-pad-joined-bottom');
         cell.appendChild(pad);
+
+        if (isCompanion && span >= 2) return;
 
         if (!unitKey) return;
 
-        const iconUrl = isDrillgroundMissileIconUnit(unitKey)
-            ? drawDrillgroundMissileIcon(unitKey)
-            : drawInventoryUnitIcon(unitKey);
+        const iconUrl = drawDrillgroundUnitIcon(unitKey);
         if (iconUrl) {
+            if (infantryStacked) {
+                const squad = document.createElement('span');
+                squad.className = 'city-drillground-infantry-squad city-drillground-unit-populated';
+                squad.dataset.cityDrillgroundUnit = '1';
+                squad.dataset.stackCount = String(infantryCount);
+                for (let i = 0; i < infantryCount; i++) {
+                    const squadImg = document.createElement('img');
+                    squadImg.className = 'city-drillground-infantry-squad-unit';
+                    squadImg.src = iconUrl;
+                    squadImg.alt = getInventoryDisplayName(unitKey, unitDef || undefined);
+                    squadImg.decoding = 'async';
+                    squad.appendChild(squadImg);
+                }
+                cell.appendChild(squad);
+                return;
+            }
             const img = document.createElement('img');
             img.className = `city-drillground-unit city-drillground-unit-populated ${sizeClass}`;
+            if (isInfantryUnit(unitDef)) img.classList.add('city-drillground-unit-infantry');
+            if (span >= 2) img.classList.add('city-drillground-unit-span-2');
+            if (unitKey) {
+                const unitKeyClass = `city-drillground-unit-key-${String(unitKey).toLowerCase().replace(/[^a-z0-9_-]/g, '-')}`;
+                img.classList.add(unitKeyClass);
+            }
             img.dataset.cityDrillgroundUnit = '1';
             img.src = iconUrl;
             img.alt = getInventoryDisplayName(unitKey, unitDef || undefined);
@@ -709,7 +1198,7 @@
         const readSlot = (rawIndex, value) => {
             const index = Number(rawIndex);
             if (!Number.isInteger(index) || index < 0 || index >= size) return;
-            if (hasGrid && grid[index] !== 'drillground') return;
+            if (hasGrid && !isDrillgroundTile(grid[index])) return;
             const unitKey = normalizeUnitKey(value);
             if (!unitKey) return;
             next[index] = unitKey;
@@ -790,6 +1279,8 @@
     function getTileClassName(tile) {
         if (!tile) return '';
         if (tile === 'road') return 'tile-road';
+        if (tile === 'drillground') return 'tile-drillground';
+        if (tile === 'drillground_gray') return 'tile-drillground-gray';
         if (isAirportTile(tile)) return 'tile-airport';
         if (isParkPlazaTile(tile)) return 'tile-park';
         return `tile-${tile}`;
@@ -898,7 +1389,7 @@
         if (!cell || !isObjectTile(tile)) return;
 
         const opts = options || {};
-        if (tile === 'drillground') {
+        if (isDrillgroundTile(tile)) {
             appendDrillgroundVisual(cell, opts);
             return;
         }
@@ -1774,6 +2265,13 @@
         const rows = Math.max(8, Math.floor(Number(city.rows) || 14));
         const total = cols * rows;
         const drillgroundSlots = normalizeDrillgroundSlots(city.drillgroundSlots, total, grid);
+        const drillgroundInfantryCounts = normalizeDrillgroundInfantryCounts(
+            city.drillgroundInfantryCounts,
+            total,
+            grid,
+            drillgroundSlots
+        );
+        const drillgroundOccupancy = buildDrillgroundOccupancy(grid, cols, drillgroundSlots, drillgroundInfantryCounts);
 
         gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
         gridEl.style.aspectRatio = `${cols} / ${rows}`;
@@ -1806,15 +2304,31 @@
             const groundTransitionMask = ground === 'grass' ? 0 : getGroundTransitionMask(ground, groundLayer, index, cols, rows);
             const roadMask = tile === 'road' ? getRoadMask(grid, index, cols, rows) : 0;
             const tileClassName = getTileClassName(tile);
-            const drillgroundUnitKey = tile === 'drillground'
-                ? normalizeUnitKey(drillgroundSlots[index])
-                : '';
+            const drillgroundEntry = (isDrillgroundTile(tile))
+                ? getDrillgroundEntryAt(index, drillgroundOccupancy)
+                : null;
+            const drillgroundUnitKey = drillgroundEntry ? drillgroundEntry.unitKey : '';
+            const drillgroundUnitSpan = drillgroundEntry ? drillgroundEntry.span : 0;
+            const drillgroundInfantryCount = drillgroundEntry ? clampDrillgroundInfantryCount(drillgroundEntry.infantryCount) : 1;
+            const drillgroundIsAnchor = drillgroundEntry ? drillgroundEntry.isAnchor === true : false;
+            const drillgroundIsCompanion = !!(drillgroundEntry && drillgroundEntry.span >= 2 && drillgroundEntry.isAnchor !== true);
+            const drillgroundMerge = (isDrillgroundTile(tile))
+                ? getDrillgroundMergeFlags(grid, cols, index)
+                : { mergeLeft: false, mergeRight: false, mergeUp: false, mergeDown: false };
 
             const signature = [
                 ground,
                 groundTransitionMask,
                 tile || '',
                 drillgroundUnitKey,
+                drillgroundUnitSpan,
+                drillgroundInfantryCount,
+                drillgroundIsAnchor ? 1 : 0,
+                drillgroundIsCompanion ? 1 : 0,
+                drillgroundMerge.mergeLeft ? 1 : 0,
+                drillgroundMerge.mergeRight ? 1 : 0,
+                drillgroundMerge.mergeUp ? 1 : 0,
+                drillgroundMerge.mergeDown ? 1 : 0,
                 roadMask,
                 tileClassName
             ].join('|');
@@ -1824,6 +2338,10 @@
 
             const classes = ['city-cell', 'city-cell-readonly', `ground-${ground}`];
             if (tileClassName) classes.push(tileClassName);
+            if (isDrillgroundTile(tile) && drillgroundMerge.mergeRight) classes.push('city-drillground-merged-left');
+            if (isDrillgroundTile(tile) && drillgroundMerge.mergeLeft) classes.push('city-drillground-merged-right');
+            if (isDrillgroundTile(tile) && drillgroundIsAnchor) classes.push('city-drillground-anchor');
+            if (isDrillgroundTile(tile) && drillgroundIsCompanion) classes.push('city-drillground-companion');
             cell.className = classes.join(' ');
             cell.replaceChildren();
 
@@ -1837,7 +2355,19 @@
                 appendObjectTileVisual(
                     cell,
                     tile,
-                    tile === 'drillground' ? { unitKey: drillgroundUnitKey } : undefined
+                    isDrillgroundTile(tile)
+                        ? {
+                            unitKey: drillgroundUnitKey,
+                            span: drillgroundUnitSpan,
+                            infantryCount: drillgroundInfantryCount,
+                            isAnchor: drillgroundIsAnchor,
+                            isCompanion: drillgroundIsCompanion,
+                            mergeLeft: drillgroundMerge.mergeLeft,
+                            mergeRight: drillgroundMerge.mergeRight,
+                            mergeUp: drillgroundMerge.mergeUp,
+                            mergeDown: drillgroundMerge.mergeDown
+                        }
+                        : undefined
                 );
             }
         }

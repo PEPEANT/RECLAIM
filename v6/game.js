@@ -1571,8 +1571,95 @@ const game = {
 
     applyCityUnitsToBattleStock() {
         if (typeof CONFIG === 'undefined' || !CONFIG || !CONFIG.units) return;
-        const cityUnits = (this.citySim && typeof this.citySim.units === 'object') ? this.citySim.units : null;
-        if (!cityUnits) return;
+        const cityState = (typeof CitySimState !== 'undefined'
+            && CitySimState
+            && typeof CitySimState.ensure === 'function')
+            ? CitySimState.ensure(this)
+            : this.citySim;
+        if (!cityState || typeof cityState !== 'object') return;
+        if (!cityState.units || typeof cityState.units !== 'object') {
+            cityState.units = {};
+        }
+        if (!cityState.drillgroundSlots || typeof cityState.drillgroundSlots !== 'object') {
+            cityState.drillgroundSlots = {};
+        }
+        if (!cityState.drillgroundInfantryCounts || typeof cityState.drillgroundInfantryCounts !== 'object') {
+            cityState.drillgroundInfantryCounts = {};
+        }
+
+        const cityUnits = cityState.units;
+        const drillgroundSlots = cityState.drillgroundSlots;
+        const drillgroundInfantryCounts = cityState.drillgroundInfantryCounts;
+        const drillgroundUnitCounts = {};
+        let recoveredDrillgroundSlots = false;
+
+        Object.keys(drillgroundSlots).forEach((rawIndex) => {
+            const slotKey = String(rawIndex || '').trim();
+            if (!slotKey) return;
+            const unitKey = String(drillgroundSlots[rawIndex] || '').trim();
+            if (!unitKey) {
+                delete drillgroundSlots[rawIndex];
+                delete drillgroundInfantryCounts[rawIndex];
+                recoveredDrillgroundSlots = true;
+                return;
+            }
+
+            const unit = CONFIG.units[unitKey];
+            if (!unit) {
+                delete drillgroundSlots[rawIndex];
+                delete drillgroundInfantryCounts[rawIndex];
+                recoveredDrillgroundSlots = true;
+                return;
+            }
+
+            const unitType = String(unit.type || '').trim().toLowerCase();
+            const unitCategory = String(unit.category || '').trim().toLowerCase();
+            const blockedForDrillground = (
+                unit.disabled === true
+                || unit.isBuilder === true
+                || unit.droneLaunchOnly === true
+                || unit.hideFromUnitBar === true
+                || unitType === 'civilian'
+                || unitCategory === 'civilian'
+            );
+
+            if (unit.isSkill === true) {
+                const current = Math.max(0, Math.floor(Number(cityUnits[unitKey]) || 0));
+                cityUnits[unitKey] = current + 1;
+                delete drillgroundSlots[rawIndex];
+                delete drillgroundInfantryCounts[rawIndex];
+                recoveredDrillgroundSlots = true;
+                return;
+            }
+
+            if (blockedForDrillground) {
+                delete drillgroundSlots[rawIndex];
+                delete drillgroundInfantryCounts[rawIndex];
+                recoveredDrillgroundSlots = true;
+                return;
+            }
+
+            const isInfantry = unitCategory === 'infantry';
+            const slotCount = isInfantry
+                ? Math.max(1, Math.min(4, Math.floor(Number(drillgroundInfantryCounts?.[rawIndex]) || 1)))
+                : 1;
+            if (!isInfantry && Object.prototype.hasOwnProperty.call(drillgroundInfantryCounts, rawIndex)) {
+                delete drillgroundInfantryCounts[rawIndex];
+                recoveredDrillgroundSlots = true;
+            }
+
+            const current = Math.max(0, Math.floor(Number(drillgroundUnitCounts[unitKey]) || 0));
+            drillgroundUnitCounts[unitKey] = current + slotCount;
+        });
+
+        if (recoveredDrillgroundSlots) {
+            if (typeof this.recalcCityDerived === 'function') {
+                try { this.recalcCityDerived(); } catch (_) { }
+            }
+            if (typeof this.saveCitySimState === 'function') {
+                try { this.saveCitySimState(); } catch (_) { }
+            }
+        }
 
         Object.keys(CONFIG.units).forEach((key) => {
             const unit = CONFIG.units[key];
@@ -1590,6 +1677,19 @@ const game = {
 
             if (!this.playerStock || typeof this.playerStock !== 'object') this.playerStock = {};
             this.playerStock[key] = cityCount;
+        });
+
+        Object.keys(drillgroundUnitCounts).forEach((key) => {
+            const unit = CONFIG.units[key];
+            if (!unit) return;
+            if (unit.isSkill === true) return;
+            if (unit.hideFromUnitBar === true) return;
+            if (unit.disabled === true) return;
+            const count = Math.max(0, Math.floor(Number(drillgroundUnitCounts[key]) || 0));
+            if (count <= 0) return;
+            if (!this.playerStock || typeof this.playerStock !== 'object') this.playerStock = {};
+            const current = Math.max(0, Math.floor(Number(this.playerStock[key]) || 0));
+            this.playerStock[key] = current + count;
         });
 
         this.playerVeteransById = {};
@@ -3005,7 +3105,8 @@ const game = {
                 return;
             }
 
-            const blockerIds = ['boot-gate', 'loading-screen', 'cinematic-modal', 'portrait-overlay', 'end-screen', 'exit-modal'];
+            // Keep exit confirmation modal visible during battle until player explicitly confirms/cancels.
+            const blockerIds = ['boot-gate', 'loading-screen', 'cinematic-modal', 'portrait-overlay', 'end-screen'];
 
             if (this.running) {
                 this._uiBlankTicks = 0;

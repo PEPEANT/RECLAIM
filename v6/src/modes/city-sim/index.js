@@ -805,6 +805,39 @@
         stopLoop(game);
     }
 
+    function parseClassTokens(input) {
+        if (Array.isArray(input)) {
+            return input
+                .map((entry) => String(entry || '').trim())
+                .filter((entry) => entry.length > 0);
+        }
+        return String(input || '')
+            .trim()
+            .split(/\s+/)
+            .filter((entry) => entry.length > 0);
+    }
+
+    function clearActionModalCustomClasses(modal, panel) {
+        if (modal) {
+            const rawModalClasses = String(modal.dataset.cityActionCustomClasses || '').trim();
+            if (rawModalClasses) {
+                rawModalClasses.split(/\s+/).forEach((className) => {
+                    if (className) modal.classList.remove(className);
+                });
+            }
+            delete modal.dataset.cityActionCustomClasses;
+        }
+        if (panel) {
+            const rawPanelClasses = String(panel.dataset.cityActionCustomClasses || '').trim();
+            if (rawPanelClasses) {
+                rawPanelClasses.split(/\s+/).forEach((className) => {
+                    if (className) panel.classList.remove(className);
+                });
+            }
+            delete panel.dataset.cityActionCustomClasses;
+        }
+    }
+
     function openActionModal(title, message, options) {
         const opts = (options && typeof options === 'object') ? options : {};
         const isConfirm = opts.mode === 'confirm';
@@ -819,11 +852,23 @@
         const panel = modal ? modal.querySelector('.city-action-panel') : null;
         const actionRow = closeBtn ? closeBtn.parentElement : null;
 
+        clearActionModalCustomClasses(modal, panel);
         if (modal) modal.classList.toggle('city-action-modal-bar', barMode);
         if (panel) panel.classList.toggle('city-action-panel-bar', barMode);
         if (actionRow) actionRow.classList.toggle('city-action-buttons-bar', barMode);
         if (msgEl) msgEl.classList.toggle('city-action-msg-bar', barMode);
         if (titleEl) titleEl.classList.toggle('city-action-title-bar', barMode);
+
+        const modalClasses = parseClassTokens(opts.modalClass);
+        if (modal && modalClasses.length > 0) {
+            modal.classList.add(...modalClasses);
+            modal.dataset.cityActionCustomClasses = modalClasses.join(' ');
+        }
+        const panelClasses = parseClassTokens(opts.panelClass);
+        if (panel && panelClasses.length > 0) {
+            panel.classList.add(...panelClasses);
+            panel.dataset.cityActionCustomClasses = panelClasses.join(' ');
+        }
 
         if (titleEl) titleEl.textContent = title || '안내';
         if (msgEl) {
@@ -886,6 +931,7 @@
         if (msgEl) msgEl.textContent = '';
         if (msgEl) msgEl.classList.remove('city-action-msg-bar');
         if (titleEl) titleEl.classList.remove('city-action-title-bar');
+        clearActionModalCustomClasses(modal, panel);
         if (modal) modal.classList.remove('city-action-modal-bar');
         if (panel) panel.classList.remove('city-action-panel-bar');
         if (actionRow) actionRow.classList.remove('city-action-buttons-bar');
