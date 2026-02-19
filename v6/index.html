@@ -628,6 +628,8 @@
                 </div>
 
                 <div class="city-top-right">
+                    <button type="button" id="city-briefing-btn" class="city-briefing-btn"
+                        onclick="if(typeof BriefingAnimation!=='undefined') BriefingAnimation.play({force:true})">▶ 튜토리얼</button>
                     <div class="city-res-chip">
                         <div class="city-res-row">
                             <img src="png/money.png" alt="자금">
@@ -1557,6 +1559,7 @@
     <script src="src/modes/city-sim/stocks.js"></script>
     <script src="src/modes/city-sim/save.js?v=20260216sv2"></script>
     <script src="src/modes/city-sim/index.js?v=20260216i3"></script>
+    <script src="src/modes/city-sim/animated/index.js"></script>
     <script src="src/data/campaign-occupation-stages.js"></script>
     <script src="src/data/campaign-skirmish-stages.js"></script>
     <script src="game.js?v=20260216g11"></script>

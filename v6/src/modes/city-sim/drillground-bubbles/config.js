@@ -11,14 +11,22 @@
     const MODE_TYPES = Object.freeze(['personal', 'group']);
 
     const DEFAULT_OPTIONS = Object.freeze({
-        intervalMs: 120000,
-        intervalJitterMs: 24000,
-        bubbleDurationMs: 4200,
-        minGapMs: 9000,
+        intervalMs: 8000,
+        intervalJitterMs: 1200,
+        bubbleDurationMs: 6200,
+        minGapMs: 900,
         eventTtlMs: 12 * 60 * 1000,
-        initialDelayMinMs: 7000,
-        initialDelayMaxMs: 22000,
-        maxQueuedEvents: 8
+        initialDelayMinMs: 150,
+        initialDelayMaxMs: 500,
+        maxQueuedEvents: 16,
+        maxConcurrentBubbles: 3,
+        lineRepeatWindow: 18,
+        eventBurstQueueCount: 6,
+        eventBurstMinGapMs: 220,
+        eventBurstDurationMs: 7000,
+        ambientBattlePreChancePct: 72,
+        defaultGroupChancePct: 45,
+        battlePreGroupChancePct: 78
     });
 
     const DEFAULT_DIALOGUES = Object.freeze({

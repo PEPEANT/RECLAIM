@@ -741,7 +741,23 @@
 
         playCityBgm();
 
+        // [브리핑] city-sim 최초 진입 시 우측 하단에 작전설명 캐릭터 표시
+        if (typeof BriefingAnimation !== 'undefined' && BriefingAnimation.shouldPlay()) {
+            BriefingAnimation.play();
+        }
+
         if (typeof game.renderCityScreen === 'function') game.renderCityScreen();
+        if (typeof CitySimDrillgroundBubbles !== 'undefined'
+            && CitySimDrillgroundBubbles
+            && typeof CitySimDrillgroundBubbles.init === 'function') {
+            CitySimDrillgroundBubbles.init(game);
+            if (typeof CitySimDrillgroundBubbles.tick === 'function') {
+                const bubbleDirty = CitySimDrillgroundBubbles.tick(game) === true;
+                if (bubbleDirty && typeof game.renderCityGrid === 'function') {
+                    game.renderCityGrid();
+                }
+            }
+        }
         if (typeof CitySimConstruction !== 'undefined'
             && CitySimConstruction
             && typeof CitySimConstruction.refreshOwnSigns === 'function') {
@@ -995,6 +1011,14 @@
         CitySimEconomy.tick(game);
         if (typeof game.tickCityConstruction === 'function') {
             game.tickCityConstruction();
+        }
+        if (typeof CitySimDrillgroundBubbles !== 'undefined'
+            && CitySimDrillgroundBubbles
+            && typeof CitySimDrillgroundBubbles.tick === 'function') {
+            const bubbleDirty = CitySimDrillgroundBubbles.tick(game) === true;
+            if (bubbleDirty && typeof game.renderCityGrid === 'function') {
+                game.renderCityGrid();
+            }
         }
     }
 

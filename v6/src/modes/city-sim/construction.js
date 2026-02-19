@@ -3316,10 +3316,46 @@
         return 'city-drillground-unit-size-base';
     }
 
+    function getDrillgroundBubbleToken(game, options) {
+        const api = (typeof CitySimDrillgroundBubbles !== 'undefined') ? CitySimDrillgroundBubbles : null;
+        if (!api || typeof api.getRenderToken !== 'function') return '';
+
+        const opts = options || {};
+        if (opts.preview === true || opts.isCompanion === true) return '';
+
+        const anchorIndex = Math.floor(Number(opts.anchorIndex));
+        if (!Number.isInteger(anchorIndex) || anchorIndex < 0) return '';
+
+        return String(api.getRenderToken(game, {
+            anchorIndex
+        }) || '');
+    }
+
+    function appendDrillgroundSpeechBubble(cell, options) {
+        const api = (typeof CitySimDrillgroundBubbles !== 'undefined') ? CitySimDrillgroundBubbles : null;
+        if (!api || typeof api.appendBubble !== 'function') return;
+
+        const opts = options || {};
+        if (opts.preview === true || opts.isCompanion === true) return;
+
+        const game = opts.game || null;
+        if (!game) return;
+
+        const anchorIndex = Math.floor(Number(opts.anchorIndex));
+        if (!Number.isInteger(anchorIndex) || anchorIndex < 0) return;
+
+        api.appendBubble(cell, game, {
+            anchorIndex,
+            preview: false,
+            isCompanion: false
+        });
+    }
+
     function appendDrillgroundVisual(cell, options) {
         if (!cell) return;
         const opts = options || {};
         const preview = opts.preview === true;
+        const game = opts.game || null;
         const unitKey = normalizeUnitKey(opts.unitKey);
         const unitDef = unitKey ? getUnitDefByKey(unitKey) : null;
         const span = Math.max(1, Math.floor(Number(opts.span) || getDrillgroundUnitFootprintSlots(unitKey, unitDef)));
@@ -3330,6 +3366,7 @@
         const mergeUp = opts.mergeUp === true;
         const mergeDown = opts.mergeDown === true;
         const infantryCount = clampDrillgroundInfantryCount(opts.infantryCount);
+        const anchorIndex = Math.floor(Number(opts.anchorIndex));
         const infantryStacked = !!unitKey && isInfantryUnit(unitDef) && infantryCount > 1;
         const sizeClass = getDrillgroundUnitSizeClass(unitKey, unitDef);
 
@@ -3362,6 +3399,15 @@
                     squad.appendChild(squadImg);
                 }
                 cell.appendChild(squad);
+                appendDrillgroundSpeechBubble(cell, {
+                    game,
+                    anchorIndex,
+                    unitKey,
+                    unitDef,
+                    infantryCount,
+                    preview,
+                    isCompanion
+                });
                 return;
             }
             const img = document.createElement('img');
@@ -3378,6 +3424,15 @@
             img.alt = getInventoryDisplayName(unitKey, unitDef || undefined);
             img.decoding = 'async';
             cell.appendChild(img);
+            appendDrillgroundSpeechBubble(cell, {
+                game,
+                anchorIndex,
+                unitKey,
+                unitDef,
+                infantryCount,
+                preview,
+                isCompanion
+            });
             return;
         }
 
@@ -3390,6 +3445,15 @@
         fallback.dataset.cityDrillgroundUnit = '1';
         fallback.textContent = getInventoryDisplayName(unitKey, unitDef || undefined).slice(0, 2);
         cell.appendChild(fallback);
+        appendDrillgroundSpeechBubble(cell, {
+            game,
+            anchorIndex,
+            unitKey,
+            unitDef,
+            infantryCount,
+            preview,
+            isCompanion
+        });
     }
 
     function getTileSpriteUrl(tile) {
@@ -3790,6 +3854,11 @@
         if (!gridEl) return;
 
         const state = CitySimState.ensure(game);
+        if (typeof CitySimDrillgroundBubbles !== 'undefined'
+            && CitySimDrillgroundBubbles
+            && typeof CitySimDrillgroundBubbles.init === 'function') {
+            CitySimDrillgroundBubbles.init(game);
+        }
         ensureGroundLayer(state);
         const groundLayer = Array.isArray(state.ground) ? state.ground : [];
 
@@ -3896,6 +3965,15 @@
             const drillgroundMerge = (isDrillgroundTile(tile))
                 ? getDrillgroundMergeFlags(state, index)
                 : { mergeLeft: false, mergeRight: false, mergeUp: false, mergeDown: false };
+            const drillgroundBubbleToken = (isDrillgroundTile(tile) && drillgroundIsAnchor)
+                ? getDrillgroundBubbleToken(game, {
+                    anchorIndex: drillgroundAnchorIndex,
+                    unitKey: drillgroundUnitKey,
+                    unitDef: drillgroundEntry?.unitDef || null,
+                    infantryCount: drillgroundInfantryCount,
+                    isCompanion: drillgroundIsCompanion
+                })
+                : '';
             const productionQueue = (tile && getProductionCatalog(tile))
                 ? getProductionQueueAt(state, index)
                 : null;
@@ -3985,6 +4063,7 @@
                 drillgroundUnitKey,
                 drillgroundUnitSpan,
                 drillgroundInfantryCount,
+                drillgroundBubbleToken,
                 drillgroundAnchorIndex,
                 drillgroundIsAnchor ? 1 : 0,
                 drillgroundIsCompanion ? 1 : 0,
@@ -4041,6 +4120,7 @@
             if (isObjectTool(tile) && tile !== 'road') {
                 appendObjectTileVisual(cell, tile, isDrillgroundTile(tile)
                     ? {
+                        game,
                         unitKey: drillgroundUnitKey,
                         span: drillgroundUnitSpan,
                         infantryCount: drillgroundInfantryCount,
@@ -4069,7 +4149,7 @@
                 if (showRoadGhost) {
                     appendRoadShape(cell, 0, { preview: true });
                 } else if (showTreeGhost || showObjectGhost || showMoveGhost) {
-                    appendObjectTileVisual(cell, previewGhostTile || placementTool, { preview: true });
+                    appendObjectTileVisual(cell, previewGhostTile || placementTool, { preview: true, game });
                 } else if (showGroundGhost) {
                     const ghostGround = document.createElement('span');
                     ghostGround.className = 'city-cell-ground-ghost';
@@ -4617,7 +4697,24 @@
 
     function collectHonorMedalTargets(game) {
         const state = CitySimState.ensure(game);
-        const targets = [];
+        const mergedByUnit = new Map();
+        const ensureTarget = (unitKey, unitDefInput) => {
+            const key = normalizeUnitKey(unitKey);
+            if (!key) return null;
+            const unitDef = unitDefInput || getUnitDefByKey(key);
+            if (!isPromotableVeteranUnit(key, unitDef)) return null;
+            if (!mergedByUnit.has(key)) {
+                mergedByUnit.set(key, {
+                    id: `unit:${key}`,
+                    unitKey: key,
+                    unit: unitDef,
+                    displayName: getInventoryDisplayName(key, unitDef || undefined),
+                    count: 0
+                });
+            }
+            return mergedByUnit.get(key) || null;
+        };
+
         const occupancy = buildDrillgroundOccupancy(state);
         Array.from(occupancy.anchors.keys())
             .sort((a, b) => a - b)
@@ -4625,21 +4722,12 @@
                 const entry = occupancy.anchors.get(index);
                 const unitKey = normalizeUnitKey(entry?.unitKey);
                 const unitDef = entry?.unitDef || getUnitDefByKey(unitKey);
-                if (!unitKey || !isPromotableVeteranUnit(unitKey, unitDef)) return;
-                const displayName = getInventoryDisplayName(unitKey, unitDef || undefined);
+                const target = ensureTarget(unitKey, unitDef);
+                if (!target) return;
                 const entryCount = isInfantryUnit(unitDef)
                     ? clampDrillgroundInfantryCount(entry?.infantryCount)
                     : 1;
-                targets.push({
-                    id: `drillground:${index}`,
-                    source: 'drillground',
-                    sourceLabel: '배치',
-                    index,
-                    unitKey,
-                    unit: unitDef,
-                    displayName,
-                    count: entryCount
-                });
+                target.count += Math.max(1, entryCount);
             });
 
         const units = state.units && typeof state.units === 'object' ? state.units : {};
@@ -4649,21 +4737,14 @@
                 const count = Math.max(0, Math.floor(Number(units[unitKey]) || 0));
                 if (count <= 0) return;
                 const unitDef = getUnitDefByKey(unitKey);
-                if (!isPromotableVeteranUnit(unitKey, unitDef)) return;
-                const displayName = getInventoryDisplayName(unitKey, unitDef || undefined);
-                targets.push({
-                    id: `inventory:${unitKey}`,
-                    source: 'inventory',
-                    sourceLabel: '보관',
-                    index: null,
-                    unitKey,
-                    unit: unitDef,
-                    displayName,
-                    count
-                });
+                const target = ensureTarget(unitKey, unitDef);
+                if (!target) return;
+                target.count += count;
             });
 
-        return targets;
+        return Array.from(mergedByUnit.values())
+            .filter((entry) => Math.max(0, Math.floor(Number(entry.count) || 0)) > 0)
+            .sort((a, b) => String(a.displayName || '').localeCompare(String(b.displayName || ''), 'ko'));
     }
 
     function resolveHonorMedalTarget(game, targetInput) {
@@ -4679,19 +4760,48 @@
         }
 
         if (!targetInput || typeof targetInput !== 'object') return null;
-        const source = String(targetInput.source || '').trim();
-        if (source !== 'inventory' && source !== 'drillground') return null;
         const unitKey = normalizeUnitKey(targetInput.unitKey);
         if (!unitKey) return null;
+        const unitDef = getUnitDefByKey(unitKey);
+        if (!isPromotableVeteranUnit(unitKey, unitDef)) return null;
         return {
-            id: targetId,
-            source,
-            sourceLabel: String(targetInput.sourceLabel || '').trim(),
-            index: Number.isInteger(Number(targetInput.index)) ? Number(targetInput.index) : null,
+            id: targetId || `unit:${unitKey}`,
             unitKey,
-            unit: getUnitDefByKey(unitKey),
-            displayName: String(targetInput.displayName || '').trim(),
+            unit: unitDef,
+            displayName: String(targetInput.displayName || '').trim() || getInventoryDisplayName(unitKey, unitDef || undefined),
             count: Math.max(0, Math.floor(Number(targetInput.count) || 0))
+        };
+    }
+
+    function consumeUnitFromDrillgroundByUnitKey(game, unitKey, unitDef) {
+        const key = normalizeUnitKey(unitKey);
+        if (!key) return { ok: false };
+        const state = CitySimState.ensure(game);
+        const occupancy = buildDrillgroundOccupancy(state);
+        const candidate = Array.from(occupancy.anchors.entries())
+            .map(([anchorIndex, entry]) => ({ anchorIndex, entry }))
+            .filter(({ entry }) => normalizeUnitKey(entry?.unitKey) === key)
+            .sort((a, b) => a.anchorIndex - b.anchorIndex)[0];
+        if (!candidate || !Number.isInteger(candidate.anchorIndex)) {
+            return { ok: false };
+        }
+        const anchorIndex = candidate.anchorIndex;
+        const entry = candidate.entry;
+        const stackCount = isInfantryUnit(entry?.unitDef)
+            ? clampDrillgroundInfantryCount(entry?.infantryCount)
+            : 1;
+        if (isInfantryUnit(entry?.unitDef) && stackCount > 1) {
+            const nextCount = stackCount - 1;
+            setDrillgroundUnitAtAnchor(game, anchorIndex, key, unitDef, { infantryCount: nextCount });
+            return {
+                ok: true,
+                rollback: { anchorIndex, unitKey: key, unitDef, infantryCount: stackCount }
+            };
+        }
+        setDrillgroundUnitAtAnchor(game, anchorIndex, null);
+        return {
+            ok: true,
+            rollback: { anchorIndex, unitKey: key, unitDef, infantryCount: 1 }
         };
     }
 
@@ -4709,47 +4819,33 @@
             return { ok: false, reason: '승격 가능한 유닛이 아닙니다.' };
         }
 
+        const latestTarget = collectHonorMedalTargets(game).find((entry) => entry && entry.id === target.id);
+        if (!latestTarget || Math.max(0, Math.floor(Number(latestTarget.count) || 0)) <= 0) {
+            return { ok: false, reason: '지급 가능한 유닛 수량이 부족합니다.' };
+        }
+
         let consumedUnit = false;
+        let consumedSource = '';
         let drillgroundRollback = null;
-        if (target.source === 'inventory') {
-            consumedUnit = consumeUnitFromInventory(game, unitKey);
-            if (!consumedUnit) {
-                return { ok: false, reason: '보관함 유닛 수량이 부족합니다.' };
-            }
-        } else if (target.source === 'drillground') {
-            const index = Number(target.index);
-            const state = CitySimState.ensure(game);
-            const occupancy = buildDrillgroundOccupancy(state);
-            const anchorIndex = Number.isInteger(index)
-                ? getDrillgroundPlacementAnchorIndex(state, index, occupancy)
-                : null;
-            const entry = Number.isInteger(anchorIndex)
-                ? getDrillgroundEntryAt(state, anchorIndex, occupancy)
-                : null;
-            const current = entry ? entry.unitKey : null;
-            if (!current || current !== unitKey || !Number.isInteger(anchorIndex)) {
-                return { ok: false, reason: '연병장 배치 유닛이 변경되었습니다.' };
-            }
-            const stackCount = isInfantryUnit(entry?.unitDef)
-                ? clampDrillgroundInfantryCount(entry?.infantryCount)
-                : 1;
-            if (isInfantryUnit(entry?.unitDef) && stackCount > 1) {
-                const nextCount = stackCount - 1;
-                setDrillgroundUnitAtAnchor(game, anchorIndex, unitKey, unitDef, { infantryCount: nextCount });
-                drillgroundRollback = { anchorIndex, unitKey, unitDef, infantryCount: stackCount };
-            } else {
-                setDrillgroundUnitAtAnchor(game, anchorIndex, null);
-                drillgroundRollback = { anchorIndex, unitKey, unitDef, infantryCount: 1 };
-            }
-            consumedUnit = true;
+        consumedUnit = consumeUnitFromInventory(game, unitKey);
+        if (consumedUnit) {
+            consumedSource = 'inventory';
         } else {
-            return { ok: false, reason: '알 수 없는 지급 대상입니다.' };
+            const drillConsume = consumeUnitFromDrillgroundByUnitKey(game, unitKey, unitDef);
+            if (drillConsume.ok) {
+                consumedUnit = true;
+                consumedSource = 'drillground';
+                drillgroundRollback = drillConsume.rollback || null;
+            }
+        }
+        if (!consumedUnit) {
+            return { ok: false, reason: '지급 가능한 유닛 수량이 부족합니다.' };
         }
 
         if (!consumeHonorMedal(game, 1)) {
-            if (target.source === 'inventory') {
+            if (consumedSource === 'inventory') {
                 returnUnitToInventory(game, unitKey);
-            } else if (target.source === 'drillground' && Number.isInteger(Number(target.index))) {
+            } else if (consumedSource === 'drillground') {
                 if (Number.isInteger(drillgroundRollback?.anchorIndex)) {
                     setDrillgroundUnitAtAnchor(
                         game,
@@ -4775,9 +4871,9 @@
             : null;
 
         if (!created) {
-            if (target.source === 'inventory') {
+            if (consumedSource === 'inventory') {
                 returnUnitToInventory(game, unitKey);
-            } else if (target.source === 'drillground' && Number.isInteger(Number(target.index))) {
+            } else if (consumedSource === 'drillground') {
                 if (Number.isInteger(drillgroundRollback?.anchorIndex)) {
                     setDrillgroundUnitAtAnchor(
                         game,
@@ -4862,15 +4958,8 @@
 
         closeFloatingPanelsForUnitAction(game);
 
-        const sourceWeight = (entry) => {
-            if (!entry || typeof entry !== 'object') return 99;
-            if (entry.source === 'drillground') return 0;
-            if (entry.source === 'inventory') return 1;
-            return 9;
-        };
-
         const honorTabs = INVENTORY_TABS
-            .filter((tab) => tab && ['infantry', 'armored', 'air', 'special'].includes(String(tab.id || '').trim()))
+            .filter((tab) => tab && ['infantry', 'armored', 'air'].includes(String(tab.id || '').trim()))
             .map((tab) => ({ id: String(tab.id), label: String(tab.label || tab.id) }));
 
         const groupedTargets = new Map();
@@ -4884,8 +4973,6 @@
         honorTabs.forEach((tab) => {
             const list = groupedTargets.get(tab.id) || [];
             list.sort((a, b) => {
-                const weightDiff = sourceWeight(a) - sourceWeight(b);
-                if (weightDiff !== 0) return weightDiff;
                 return String(a.displayName || '').localeCompare(String(b.displayName || ''), 'ko');
             });
         });
@@ -4900,6 +4987,12 @@
                 totalCount
             };
         });
+
+        const hasEligibleTargets = tabSummaries.some((tab) => Array.isArray(tab.entries) && tab.entries.length > 0);
+        if (!hasEligibleTargets) {
+            showToast('지급 가능한 유닛이 없습니다.');
+            return;
+        }
 
         const firstTab = (tabSummaries.find((tab) => tab.entries.length > 0) || tabSummaries[0] || {}).id || '';
         if (!firstTab) {
@@ -4916,13 +5009,8 @@
 
         const renderTargetCardHtml = (entry) => {
             const iconUrl = drawInventoryUnitIcon(entry.unitKey);
-            const sourceLabel = entry.source === 'drillground'
-                ? '연병장'
-                : '보관함';
-            const badgeText = entry.source === 'inventory'
-                ? `보유 ${formatNumber(entry.count)}`
-                : `배치 ${formatNumber(Math.max(1, Math.floor(Number(entry.count) || 1)))}기`;
-            const colorBar = String(entry.unit?.color || (entry.source === 'drillground' ? '#38bdf8' : '#facc15'));
+            const badgeText = `보유 ${formatNumber(Math.max(1, Math.floor(Number(entry.count) || 1)))}기`;
+            const colorBar = String(entry.unit?.color || '#facc15');
             return (
                 `<button type="button" class="btn-unit city-honor-medal-card city-honor-medal-target" data-city-honor-target="${escapeHtml(entry.id)}" title="${escapeHtml(entry.displayName)}">` +
                 (
@@ -4931,7 +5019,7 @@
                         : `<span class="city-honor-medal-card-fallback">${escapeHtml(entry.displayName.slice(0, 2))}</span>`
                 ) +
                 `<span class="city-honor-medal-card-name">${escapeHtml(entry.displayName)}</span>` +
-                `<span class="city-honor-medal-card-meta">${sourceLabel}</span>` +
+                `<span class="city-honor-medal-card-meta">총 보유</span>` +
                 `<span class="city-honor-medal-card-badge">${badgeText}</span>` +
                 `<span class="city-honor-medal-card-bar" style="background-color:${escapeHtml(colorBar)}"></span>` +
                 `</button>`

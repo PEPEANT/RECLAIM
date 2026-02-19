@@ -3368,6 +3368,16 @@ const game = {
         this._skirmishMode = !!opts.skirmish;
         this._skirmishData = opts.skirmishData || null;
 
+        try {
+            if (typeof CitySimDrillgroundBubbles !== 'undefined'
+                && CitySimDrillgroundBubbles
+                && typeof CitySimDrillgroundBubbles.queueBattleEvent === 'function') {
+                CitySimDrillgroundBubbles.queueBattleEvent(this, 'battle_pre', { immediate: true });
+            }
+        } catch (err) {
+            console.warn('[startGame] drillground bubble pre-event queue failed:', err);
+        }
+
         this.start();
     },
 
@@ -5339,6 +5349,17 @@ const game = {
         this.isGameOver = true;
         this.running = false;
         this._uiRecoverySuspendUntil = Date.now() + 3000;
+
+        try {
+            if (typeof CitySimDrillgroundBubbles !== 'undefined'
+                && CitySimDrillgroundBubbles
+                && typeof CitySimDrillgroundBubbles.queueBattleEvent === 'function') {
+                const eventType = result === 'win' ? 'battle_post_victory' : 'battle_post_defeat';
+                CitySimDrillgroundBubbles.queueBattleEvent(this, eventType, { immediate: true });
+            }
+        } catch (err) {
+            console.warn('[endGame] drillground bubble result-event queue failed:', err);
+        }
 
         // 국지전 모드 정리
         try {

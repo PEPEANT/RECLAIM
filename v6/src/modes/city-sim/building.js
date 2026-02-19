@@ -783,7 +783,7 @@
 
         const pondW = Math.max(26, Math.round(width * 0.22));
         const pondH = Math.max(18, Math.round(height * 0.14));
-        const pondX = Math.round(width * 0.65);
+        const pondX = Math.round(width * 0.76);
         const pondY = Math.round(height * 0.18);
         ctx.fillStyle = '#6bc5f3';
         ctx.beginPath();
