@@ -2534,6 +2534,53 @@ input[type=range]::-webkit-slider-runnable-track {
     display: none !important;
 }
 
+/* ============================================
+   Briefing Animation Popup (우측 하단 캐릭터)
+   ============================================ */
+.briefing-popup {
+    position: fixed;
+    bottom: -6px;
+    right: clamp(36px, 5vw, 84px);
+    z-index: 999999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none; /* 캔버스 클릭 통과 */
+}
+
+.briefing-popup-close {
+    pointer-events: auto;
+    align-self: flex-end;
+    margin-bottom: 4px;
+    background: rgba(15, 23, 42, 0.75);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: #94a3b8;
+    font-size: 11px;
+    line-height: 1;
+    padding: 3px 6px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: color 0.15s, border-color 0.15s;
+}
+.briefing-popup-close:hover {
+    color: #f1f5f9;
+    border-color: rgba(148, 163, 184, 0.7);
+}
+
+.briefing-popup-canvas {
+    display: block;
+    /* 너비/높이는 JS에서 동적으로 설정 */
+}
+
+/* 발 아래 그라데이션 그림자 (지면 효과) */
+.briefing-popup-shadow {
+    width: 100%;
+    height: 28px;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.45) 0%, transparent 70%);
+    margin-top: -10px;
+    pointer-events: none;
+}
+
 .boot-gate {
     position: fixed;
     inset: 0;
@@ -4145,7 +4192,8 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-top-right {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: start;
     gap: 0.35rem;
     width: auto;
     justify-self: end;
@@ -4155,6 +4203,10 @@ input[type=range]::-webkit-slider-runnable-track {
     right: var(--city-top-right-offset-x);
     z-index: 64;
     pointer-events: none;
+}
+
+.city-top-right.city-visit-top-right {
+    grid-template-columns: minmax(0, 1fr);
 }
 
 .city-res-chip {
@@ -4206,6 +4258,53 @@ input[type=range]::-webkit-slider-runnable-track {
     transform: translateY(-1px);
     border-color: rgba(125, 211, 252, 0.82);
     box-shadow: 0 6px 14px rgba(29, 78, 216, 0.32);
+}
+
+/* 튜토리얼 재생 버튼 */
+.city-briefing-btn {
+    pointer-events: auto;
+    justify-self: end;
+    min-height: 30px;
+    padding: 0.16rem 0.62rem;
+    border-radius: 0.45rem;
+    border: 1px solid rgba(251, 191, 36, 0.55);
+    background: linear-gradient(180deg, rgba(120, 53, 15, 0.75), rgba(92, 40, 10, 0.72));
+    color: #fef3c7;
+    font-size: 0.72rem;
+    font-weight: 900;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35);
+}
+.city-briefing-btn:hover {
+    transform: translateY(-1px);
+    border-color: rgba(251, 191, 36, 0.85);
+    box-shadow: 0 6px 14px rgba(180, 83, 9, 0.35);
+}
+
+.city-top-right:not(.city-visit-top-right) .city-briefing-btn {
+    grid-column: 1;
+    grid-row: 1;
+    justify-self: start;
+    align-self: center;
+}
+
+.city-top-right:not(.city-visit-top-right) .city-res-chip {
+    grid-column: 2;
+    grid-row: 1;
+}
+
+.city-top-right:not(.city-visit-top-right) .city-tax-collect-btn {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.city-top-right:not(.city-visit-top-right) .city-tax-auto-btn {
+    grid-column: 2;
+    grid-row: 3;
 }
 
 .city-tax-collect-btn:disabled,
@@ -4839,12 +4938,14 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-cell.tile-drillground.city-drillground-anchor,
 .city-cell.tile-drillground-gray.city-drillground-anchor {
-    z-index: 8;
+    z-index: 40;
+    overflow: visible;
 }
 
 .city-cell.tile-drillground.city-drillground-companion,
 .city-cell.tile-drillground-gray.city-drillground-companion {
-    z-index: 2;
+    z-index: 30;
+    overflow: visible;
 }
 
 .city-cell.tile-hq {
@@ -5071,6 +5172,89 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-drillground-unit.city-drillground-unit-preview {
     opacity: 0.74;
+}
+
+.city-drillground-bubble {
+    position: absolute;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    --city-bubble-tail-x: 50%;
+    left: 50%;
+    top: -2%;
+    transform: translate(-50%, -100%);
+    width: max-content;
+    max-width: min(64vw, 360px);
+    padding: 3px 7px;
+    border-radius: 10px;
+    border: 1px solid #111111;
+    background: #ffffff;
+    color: #111111;
+    font-size: clamp(0.54rem, 1vw, 0.66rem);
+    font-weight: 700;
+    line-height: 1.18;
+    text-align: center;
+    writing-mode: horizontal-tb !important;
+    text-orientation: mixed;
+    white-space: nowrap !important;
+    word-break: keep-all !important;
+    overflow-wrap: normal !important;
+    overflow: visible;
+    isolation: isolate;
+    pointer-events: none;
+    z-index: 100200 !important;
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.24);
+}
+
+.city-drillground-bubble-text {
+    display: block;
+    position: relative;
+    z-index: 100201 !important;
+    max-width: min(64vw, 360px);
+    white-space: nowrap !important;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.city-drillground-bubble::before {
+    content: none;
+}
+
+.city-drillground-bubble::after {
+    content: '';
+    position: absolute;
+    left: var(--city-bubble-tail-x);
+    bottom: -5px;
+    width: 10px;
+    height: 10px;
+    background: #ffffff;
+    border-right: 1px solid #111111;
+    border-bottom: 1px solid #111111;
+    transform: translateX(-50%) rotate(45deg);
+    z-index: 100199 !important;
+}
+
+.city-drillground-bubble.is-group {
+    background: #ffffff;
+    border-color: #111111;
+}
+
+.city-drillground-bubble.is-group::after {
+    background: #ffffff;
+    border-right-color: #111111;
+    border-bottom-color: #111111;
+}
+
+.city-drillground-bubble.event-battle-pre {
+    border-color: #111111;
+}
+
+.city-drillground-bubble.event-battle-victory {
+    border-color: #111111;
+}
+
+.city-drillground-bubble.event-battle-defeat {
+    border-color: #111111;
 }
 
 .city-drillground-unit.city-drillground-unit-infantry {
@@ -8160,6 +8344,7 @@ input[type=range]::-webkit-slider-runnable-track {
 
 @media (pointer: coarse) and (max-width: 1200px) {
     #city-action-modal.city-action-modal-bar.city-action-modal-unit-profile,
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-picker,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-rename {
         align-items: stretch !important;
@@ -8170,6 +8355,7 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     #city-action-modal.city-action-modal-bar.city-action-modal-unit-profile .city-action-panel.city-action-panel-bar.city-action-panel-unit-profile,
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-action-panel.city-action-panel-bar.city-action-panel-honor-picker,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-picker .city-action-panel.city-action-panel-bar.city-action-panel-veteran-picker,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-rename .city-action-panel.city-action-panel-bar.city-action-panel-veteran-rename {
         width: 100vw !important;
@@ -8183,6 +8369,7 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     #city-action-modal.city-action-modal-bar.city-action-modal-unit-profile #city-action-title,
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker #city-action-title,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-picker #city-action-title,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-rename #city-action-title {
         margin: 0 2.1rem 0.3rem 0 !important;
@@ -8190,6 +8377,7 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     #city-action-modal.city-action-modal-bar.city-action-modal-unit-profile .city-action-buttons-bar,
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-action-buttons-bar,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-picker .city-action-buttons-bar,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-rename .city-action-buttons-bar {
         top: calc(0.52rem + env(safe-area-inset-top)) !important;
@@ -8197,6 +8385,7 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     #city-action-modal.city-action-modal-bar.city-action-modal-unit-profile #city-action-close-btn,
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker #city-action-close-btn,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-picker #city-action-close-btn,
     #city-action-modal.city-action-modal-bar.city-action-modal-veteran-rename #city-action-close-btn {
         width: 30px !important;
@@ -8242,6 +8431,87 @@ input[type=range]::-webkit-slider-runnable-track {
     .city-veteran-target-picker .city-honor-medal-actions {
         grid-column: 2 / 3;
         align-items: flex-start;
+    }
+
+}
+
+@media (pointer: coarse) and (orientation: landscape) and (max-width: 1200px) {
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-action-panel.city-action-panel-bar.city-action-panel-honor-picker {
+        overflow: hidden;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker #city-action-msg {
+        height: calc(100% - 1.45rem);
+        overflow: hidden;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-picker {
+        height: 100%;
+        min-height: 0;
+        display: grid;
+        grid-template-columns: minmax(118px, 24vw) minmax(0, 1fr);
+        grid-template-rows: auto minmax(0, 1fr) auto;
+        gap: 0.5rem;
+        overflow: hidden;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-head {
+        grid-column: 1 / 3;
+        margin-bottom: 0;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-tabs {
+        grid-column: 1 / 2;
+        grid-row: 2 / 4;
+        display: flex;
+        flex-direction: column;
+        gap: 0.26rem;
+        overflow: hidden;
+        min-height: 0;
+        margin-top: 0;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-tabs .btn-category {
+        width: 100%;
+        min-height: 40px;
+        justify-content: space-between;
+        font-size: 0.72rem;
+        padding: 0.32rem 0.44rem;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-tab-body {
+        grid-column: 2 / 3;
+        grid-row: 2 / 3;
+        min-height: 0;
+        max-height: none;
+        height: 100%;
+        overflow: hidden;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-tab-panel {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-auto-rows: 72px;
+        gap: 0.3rem;
+        overflow: hidden;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-card {
+        height: 72px;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-card-name {
+        font-size: 0.5rem;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-card-meta,
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-card-badge {
+        font-size: 0.36rem;
+    }
+
+    #city-action-modal.city-action-modal-bar.city-action-modal-honor-picker .city-honor-medal-actions {
+        grid-column: 2 / 3;
+        grid-row: 3 / 4;
+        justify-content: flex-end;
     }
 }
 
@@ -8495,7 +8765,7 @@ input[type=range]::-webkit-slider-runnable-track {
         grid-template-columns: 188px minmax(0, 1fr);
     }
 
-    .city-top-right {
+    .city-top-right.city-visit-top-right {
         grid-template-columns: minmax(0, 1fr);
     }
 }
@@ -8563,6 +8833,10 @@ input[type=range]::-webkit-slider-runnable-track {
         justify-self: end;
         align-self: start;
         transform: none;
+    }
+
+    .city-top-right.city-visit-top-right {
+        grid-template-columns: minmax(0, 1fr);
     }
 
     .city-res-row {
@@ -8758,7 +9032,7 @@ input[type=range]::-webkit-slider-runnable-track {
         font-size: 0.64rem !important;
     }
 
-    .city-top-right {
+    .city-top-right.city-visit-top-right {
         grid-template-columns: minmax(0, 1fr);
         justify-self: end;
         transform: none;
