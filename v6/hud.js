@@ -514,6 +514,8 @@ const HUD = {
                 return { key: 'cmd_recon', fallback: 'RECON', icon: 'fa-solid fa-binoculars' };
             case 'smoke':
                 return { key: 'cmd_smoke', fallback: 'SMOKE', icon: 'fa-solid fa-smog', targetingType: '__smoke__' };
+            case 'medkit':
+                return { key: 'cmd_medkit', fallback: 'MEDKIT', icon: 'fa-solid fa-kit-medical' };
             case 'drop':
                 return { key: 'cmd_drop', fallback: 'DROP', icon: 'fa-solid fa-arrow-down', targetingType: '__drop__' };
             case 'missile':
@@ -598,13 +600,17 @@ const HUD = {
         let canDrop = false;
         let hasMissileCharge = false;
         let hasCameraman = false;
+        let hasMedkitCharge = false;
 
         selectedUnits.forEach(u => {
             const stats = u.stats || {};
             const id = stats.id;
 
             if (id === 'recon') hasRecon = true;
-            if (id === 'special_forces' && (u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
+            // [ITEM] 연막탄: special_forces 기본 제거, smokeChargesLeft > 0인 모든 유닛 지원
+            if ((u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
+            // [ITEM] 의료 키트: medkitChargesLeft > 0인 베테랑 유닛
+            if ((u.medkitChargesLeft || 0) > 0) hasMedkitCharge = true;
             if (id && ['blackhawk', 'chinook', 'apc', 'humvee'].includes(id) && (u.transportDropsLeft || 0) > 0) {
                 canDrop = true;
             }
@@ -627,9 +633,24 @@ const HUD = {
         const selectedOperators = (typeof game.getSelectedOperators === 'function')
             ? game.getSelectedOperators()
             : selectedUnits.filter(u => u && u.stats?.operator === true);
+        const selectedOperatorsForAt = (typeof game.getSelectedOperatorsForDrone === 'function')
+            ? game.getSelectedOperatorsForDrone('drone_at')
+            : selectedOperators.filter((u) => {
+                if (Array.isArray(u?.veteranLoadoutSkillItemKeys)
+                    && u.veteranLoadoutSkillItemKeys.some((key) => String(key || '').trim() === 'drone_at_item')) {
+                    return true;
+                }
+                return String(u?.veteranLoadoutItemKey || '').trim() === 'drone_at_item';
+            });
         const deployableOperators = (typeof game.getDeployableOperators === 'function')
             ? game.getDeployableOperators()
-            : selectedOperators.filter(u => (u.droneChargesLeft || 0) > 0 && (!u.ownedDrone || u.ownedDrone.dead));
+            : selectedOperators.filter(u => (u.droneChargesLeft || 0) > 0);
+        const deployableOperatorsForSuicide = (typeof game.getDeployableOperatorsForDrone === 'function')
+            ? game.getDeployableOperatorsForDrone('drone_suicide')
+            : deployableOperators;
+        const deployableOperatorsForAt = (typeof game.getDeployableOperatorsForDrone === 'function')
+            ? game.getDeployableOperatorsForDrone('drone_at')
+            : selectedOperatorsForAt.filter(u => (u.droneChargesLeft || 0) > 0);
 
         const selectedIcbm = (typeof game.getSelectedIcbmLaunchers === 'function')
             ? game.getSelectedIcbmLaunchers()
@@ -656,6 +677,7 @@ const HUD = {
             hasSelection: selectedUnits.length > 0,
             hasRecon,
             hasSmokeCharge,
+            hasMedkitCharge,
             canDrop,
             hasMissileCharge,
             hasCameraman,
@@ -664,10 +686,11 @@ const HUD = {
             skirmishBattle,
             commandLockedByMode,
             hasOperatorSelection: selectedOperators.length > 0,
+            hasOperatorAtSkill: selectedOperatorsForAt.length > 0,
             hasDeployableOperator: deployableOperators.length > 0,
             hasSelectedIcbm: selectedIcbm.length > 0,
-            canDroneSuicide: (!commandLockedByMode) && deployableOperators.length > 0,
-            canDroneAt: (!commandLockedByMode) && deployableOperators.length > 0,
+            canDroneSuicide: (!commandLockedByMode) && deployableOperatorsForSuicide.length > 0,
+            canDroneAt: (!commandLockedByMode) && deployableOperatorsForAt.length > 0,
             canIcbmTactical,
             canIcbmEmp,
             canIcbmNuke,
@@ -713,6 +736,7 @@ const HUD = {
             case 'move': return !!ctx.canMove;
             case 'recon': return !!ctx.hasRecon;
             case 'smoke': return !!ctx.hasSmokeCharge;
+            case 'medkit': return !!ctx.hasMedkitCharge;
             case 'drop': return !!ctx.canDrop;
             case 'missile': return !!ctx.hasMissileCharge;
             case 'news': return !!ctx.hasCameraman;
@@ -758,17 +782,23 @@ const HUD = {
         }
 
         if (ctx.hasOperatorSelection) {
-            map.skill1 = pick(['drone_suicide']);
-            map.skill2 = pick(['smoke', 'missile', 'recon', 'news']);
-            map.skill3 = pick(['missile', 'recon', 'news', 'smoke']);
+            map.skill1 = 'drone_suicide';
+            used.add('drone_suicide');
+            if (ctx.hasOperatorAtSkill) {
+                map.skill2 = 'drone_at';
+                used.add('drone_at');
+            } else {
+                map.skill2 = pick(['smoke', 'missile', 'recon', 'news']);
+            }
+            map.skill3 = pick(['smoke', 'missile', 'recon', 'news']);
             map.interact = pick(['drop', 'eject', 'news', 'recon']);
             return map;
         }
 
-        map.skill1 = pick(['missile', 'smoke', 'recon', 'news']);
-        map.skill2 = pick(['smoke', 'missile', 'news', 'recon']);
-        map.skill3 = pick(['recon', 'news', 'missile', 'smoke']);
-        map.interact = pick(['drop', 'eject', 'news', 'recon', 'missile', 'smoke']);
+        map.skill1 = pick(['missile', 'smoke', 'medkit', 'recon', 'news']);
+        map.skill2 = pick(['smoke', 'medkit', 'missile', 'news', 'recon']);
+        map.skill3 = pick(['medkit', 'recon', 'news', 'missile', 'smoke']);
+        map.interact = pick(['drop', 'eject', 'news', 'recon', 'missile', 'smoke', 'medkit']);
 
         return map;
     },
@@ -867,8 +897,13 @@ const HUD = {
             for (let i = 0; i < units.length; i++) {
                 const u = units[i];
                 if (!u || u.dead) continue;
-                if (u.stats?.operator && u.ownedDrone && !u.ownedDrone.dead && typeof game.requestDroneRecall === 'function') {
-                    if (game.requestDroneRecall(u.ownedDrone)) droneRecalled = true;
+                if (u.stats?.operator && typeof game.requestDroneRecall === 'function') {
+                    const owned = (typeof game.getAliveOperatorDrones === 'function')
+                        ? game.getAliveOperatorDrones(u)
+                        : ((u.ownedDrone && !u.ownedDrone.dead) ? [u.ownedDrone] : []);
+                    for (let j = 0; j < owned.length; j++) {
+                        if (game.requestDroneRecall(owned[j])) droneRecalled = true;
+                    }
                 }
             }
         }
@@ -954,6 +989,11 @@ const HUD = {
                 if (typeof game.prepareSmokeCommand === 'function') {
                     game.prepareSmokeCommand();
                     return true;
+                }
+                return false;
+            case 'medkit':
+                if (typeof game.useMedkitCommand === 'function') {
+                    return game.useMedkitCommand() === true;
                 }
                 return false;
             case 'drop':
@@ -1074,10 +1114,14 @@ const HUD = {
             `build:${ctx.buildModeActive ? 1 : 0}`,
             `recon:${ctx.hasRecon ? 1 : 0}`,
             `smoke:${ctx.hasSmokeCharge ? 1 : 0}`,
+            `medkit:${ctx.hasMedkitCharge ? 1 : 0}`,
             `drop:${ctx.canDrop ? 1 : 0}`,
             `missile:${ctx.hasMissileCharge ? 1 : 0}`,
             `news:${ctx.hasCameraman ? 1 : 0}`,
             `eject:${ctx.canEject ? 1 : 0}`,
+            `droneS:${ctx.canDroneSuicide ? 1 : 0}`,
+            `droneA:${ctx.canDroneAt ? 1 : 0}`,
+            `opAt:${ctx.hasOperatorAtSkill ? 1 : 0}`,
             `stance:${stance}`,
             `s1:${roleMap.skill1 || '-'}`,
             `s2:${roleMap.skill2 || '-'}`,

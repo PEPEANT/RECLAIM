@@ -491,6 +491,7 @@
         else if (type === 'machine_gun') file = 'bgm/machine_gun.mp3';
         else if (type === 'self') file = 'bgm/self.mp3';
         else if (type === 'flak') file = 'bgm/flak.mp3';
+        else if (type === 'rifle_d') file = 'bgm/gun4.mp3';
 
         const gunVolume = this.volume.sfx * this.volume.master * 0.5;
         if (type === 'special_ops') {

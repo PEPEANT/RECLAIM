@@ -1,0 +1,192 @@
+/* City tutorial overlay and guide highlights. */
+
+.city-tutorial-intro-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 72;
+    pointer-events: none;
+}
+
+.city-tutorial-intro-character {
+    position: fixed;
+    right: clamp(12px, 2.8vw, 46px);
+    bottom: -24px;
+    width: clamp(240px, 39vw, 520px);
+    height: clamp(320px, 76vh, 720px);
+}
+
+.city-tutorial-intro-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+}
+
+.city-tutorial-intro-media {
+    object-fit: contain;
+    background: transparent;
+}
+
+.city-tutorial-intro-shadow {
+    position: absolute;
+    left: 8%;
+    right: 8%;
+    bottom: 2px;
+    height: 28px;
+    background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.42) 0%, transparent 70%);
+    pointer-events: none;
+}
+
+.city-tutorial-intro-choice-panel {
+    position: fixed;
+    left: 50%;
+    top: auto;
+    bottom: calc(0.74rem + env(safe-area-inset-bottom));
+    transform: translateX(-50%);
+    width: min(320px, calc(100vw - 1.2rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    border: 1px solid rgba(148, 163, 184, 0.52);
+    border-radius: 0.58rem;
+    background: rgba(2, 6, 23, 0.9);
+    box-shadow: 0 12px 30px rgba(2, 6, 23, 0.48);
+    padding: 0.44rem;
+    display: grid;
+    gap: 0.28rem;
+    pointer-events: auto;
+}
+
+.city-tutorial-intro-choice-panel.is-guided {
+    bottom: calc(11.2rem + env(safe-area-inset-bottom));
+    width: min(420px, calc(100vw - 1.2rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+    background: rgba(2, 6, 23, 0.88);
+}
+
+.city-tutorial-intro-choice-panel.is-guided .city-tutorial-intro-fallback {
+    color: #e2e8f0;
+    font-size: 0.66rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1.34;
+}
+
+.city-tutorial-intro-fallback {
+    margin: 0;
+    font-size: 0.58rem;
+    color: #fef9c3;
+    line-height: 1.28;
+}
+
+.city-tutorial-intro-actions {
+    display: grid;
+    gap: 0.24rem;
+}
+
+.city-tutorial-intro-actions.is-hidden {
+    display: none;
+}
+
+.city-tutorial-intro-btn {
+    width: 100%;
+    min-height: 34px;
+    border-radius: 0.5rem;
+    border: 1px solid rgba(148, 163, 184, 0.58);
+    font-size: 0.62rem;
+    font-weight: 700;
+    line-height: 1.2;
+    padding: 0.34rem 0.46rem;
+    color: #e2e8f0;
+    background: rgba(30, 41, 59, 0.84);
+}
+
+.city-tutorial-intro-btn:hover,
+.city-tutorial-intro-btn:focus-visible {
+    border-color: rgba(186, 230, 253, 0.86);
+}
+
+.city-tutorial-intro-btn-primary {
+    border-color: rgba(56, 189, 248, 0.76);
+    background: rgba(12, 74, 110, 0.74);
+    color: #e0f2fe;
+}
+
+.city-tutorial-intro-btn-secondary {
+    border-color: rgba(148, 163, 184, 0.62);
+    background: rgba(51, 65, 85, 0.72);
+}
+
+@keyframes cityTutorialTargetPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.62), 0 0 18px rgba(250, 204, 21, 0.45);
+    }
+
+    60% {
+        box-shadow: 0 0 0 6px rgba(250, 204, 21, 0.08), 0 0 22px rgba(250, 204, 21, 0.58);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(250, 204, 21, 0), 0 0 18px rgba(250, 204, 21, 0.45);
+    }
+}
+
+.city-tutorial-target-highlight {
+    outline: 2px solid rgba(250, 204, 21, 0.92) !important;
+    outline-offset: 2px;
+    animation: cityTutorialTargetPulse 1.08s ease-in-out infinite;
+}
+
+@media (max-width: 900px) {
+    .city-tutorial-intro-character {
+        right: clamp(10px, 2.6vw, 34px);
+        bottom: -14px;
+        width: clamp(220px, 36vw, 460px);
+        height: clamp(300px, 68vh, 620px);
+    }
+
+    .city-tutorial-intro-choice-panel {
+        width: min(292px, calc(100vw - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+        bottom: calc(0.6rem + env(safe-area-inset-bottom));
+    }
+
+    .city-tutorial-intro-choice-panel.is-guided {
+        width: min(360px, calc(100vw - 1rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+        bottom: calc(10.4rem + env(safe-area-inset-bottom));
+    }
+
+    .city-tutorial-intro-btn {
+        min-height: 30px;
+        font-size: 0.58rem;
+        padding: 0.28rem 0.36rem;
+    }
+}
+
+@media (max-width: 640px) {
+    .city-tutorial-intro-character {
+        right: calc(0.12rem + env(safe-area-inset-right));
+        bottom: -10px;
+        width: clamp(170px, 38vw, 250px);
+        height: clamp(240px, 62vh, 390px);
+    }
+
+    .city-tutorial-intro-choice-panel {
+        left: 50%;
+        top: auto;
+        bottom: calc(0.48rem + env(safe-area-inset-bottom));
+        transform: translateX(-50%);
+        width: min(248px, calc(100vw - 0.86rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+        padding: 0.34rem;
+        gap: 0.2rem;
+    }
+
+    .city-tutorial-intro-choice-panel.is-guided {
+        width: min(292px, calc(100vw - 0.86rem - env(safe-area-inset-left) - env(safe-area-inset-right)));
+        bottom: calc(9.4rem + env(safe-area-inset-bottom));
+    }
+
+    .city-tutorial-intro-fallback {
+        font-size: 0.52rem;
+    }
+
+    .city-tutorial-intro-btn {
+        min-height: 26px;
+        font-size: 0.52rem;
+        padding: 0.2rem 0.28rem;
+    }
+}

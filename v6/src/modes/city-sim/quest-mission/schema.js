@@ -214,13 +214,19 @@
         return RECURRING_QUEST_ID_SET.has(key);
     }
 
+    function isTemporaryQuestId(id) {
+        const key = toText(id, '');
+        if (!key) return false;
+        return key.startsWith('tutorial_');
+    }
+
     function normalizePermanentClaimed(rawList) {
         const list = Array.isArray(rawList) ? rawList : [];
         const out = [];
         const seen = new Set();
         list.forEach((value) => {
             const id = toText(value, '');
-            if (!id || seen.has(id) || isRecurringQuestId(id)) return;
+            if (!id || seen.has(id) || isRecurringQuestId(id) || isTemporaryQuestId(id)) return;
             seen.add(id);
             out.push(id);
         });
@@ -297,6 +303,7 @@
         return {
             money: clampInt(reward.money, fallback.money, 0, 999999999),
             gold: clampInt(reward.gold, fallback.gold, 0, 999999),
+            honor: clampInt(reward.honor, fallback.honor, 0, 999999),
             exp: clampInt(reward.exp, fallback.exp, 0, 999999),
             box: toText(reward.box, toText(fallback.box, '')),
             boxType: toText(reward.boxType, toText(fallback.boxType, ''))
@@ -306,11 +313,13 @@
     function formatRewardLabel(reward) {
         const money = Math.max(0, Math.floor(Number(reward?.money) || 0));
         const gold = Math.max(0, Math.floor(Number(reward?.gold) || 0));
+        const honor = Math.max(0, Math.floor(Number(reward?.honor) || 0));
         const exp = Math.max(0, Math.floor(Number(reward?.exp) || 0));
         const box = toText(reward?.box, '');
         const parts = [];
         if (money > 0) parts.push(`현금 +${formatNumber(money)}`);
         if (gold > 0) parts.push(`골드 +${formatNumber(gold)}`);
+        if (honor > 0) parts.push(`명예훈장 +${formatNumber(honor)}`);
         if (exp > 0) parts.push(`EXP +${formatNumber(exp)}`);
         if (box) parts.push(box);
         return parts.join(' · ');
@@ -579,7 +588,9 @@
         Object.keys(state.quests).forEach((id) => {
             const quest = state.quests[id];
             if (!quest || typeof quest !== 'object') return;
-            if (String(quest.status || '') === QUEST_STATUS.CLAIMED && !isRecurringQuestId(id)) {
+            if (String(quest.status || '') === QUEST_STATUS.CLAIMED
+                && !isRecurringQuestId(id)
+                && !isTemporaryQuestId(id)) {
                 permanentClaimedSet.add(id);
             }
         });
@@ -889,6 +900,7 @@
                 reward: {
                     money: q.reward.money,
                     gold: q.reward.gold,
+                    honor: q.reward.honor,
                     exp: q.reward.exp,
                     box: q.reward.box,
                     boxType: q.reward.boxType

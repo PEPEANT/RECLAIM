@@ -71,6 +71,8 @@
             rows.forEach((item) => {
                 const li = document.createElement('li');
                 li.className = 'city-mission-item';
+                const itemId = String(item?.id || '').trim();
+                if (itemId) li.setAttribute('data-city-mission-id', itemId);
                 if (item.status === 'claimed') li.classList.add('claimed');
                 if (item.status === 'claimable') li.classList.add('claimable');
 
@@ -104,6 +106,7 @@
                     claimBtn.type = 'button';
                     claimBtn.className = 'city-mission-claim-btn';
                     claimBtn.textContent = '지급받기';
+                    if (itemId) claimBtn.setAttribute('data-city-mission-claim', itemId);
                     claimBtn.disabled = false;
                     bindTapAction(claimBtn, () => {
                         if (game && isFn(game.claimCityQuest)) {
@@ -115,6 +118,7 @@
                     const statusChip = document.createElement('span');
                     statusChip.className = `city-mission-status status-${item.status}`;
                     statusChip.textContent = item.statusLabel || '';
+                    if (itemId) statusChip.setAttribute('data-city-mission-status', itemId);
                     meta.appendChild(statusChip);
                 }
 

@@ -60,7 +60,7 @@
             {
                 id: 'box_level1',
                 name: '일반 보급박스',
-                desc: '보병 유닛/군자금/골드 중 1종을 획득합니다.',
+                desc: '소총·방탄복·연막탄 등 D/C등급 장비 1종을 획득합니다.',
                 costMoney: 500,
                 costGold: 0,
                 assetClosed: 'png/store/BOX_Level1.png',
@@ -70,7 +70,7 @@
             {
                 id: 'box_level2',
                 name: '특수 보급박스',
-                desc: '자주포/기갑/금 중 1종을 획득합니다.',
+                desc: '드론·의료키트·미사일설계도 등 C/A등급 장비 1종을 획득합니다.',
                 costMoney: 1000,
                 costGold: 0,
                 assetClosed: 'png/store/BOX_Level2.png',
@@ -80,7 +80,7 @@
             {
                 id: 'confidential_doc',
                 name: '1급 기밀문서',
-                desc: '전술미사일/EMP/핵미사일 중 1개를 획득합니다.',
+                desc: '무작위 후보 3종 중 원하는 장비 1개를 선택해 획득합니다.',
                 costMoney: 1000,
                 costGold: 0,
                 assetClosed: 'png/store/1confidential.png',
@@ -204,9 +204,12 @@
         const items = SHOP_ITEMS[_activeTab] || [];
         items.forEach((item) => {
             const affordable = item.comingSoon ? false : _canAfford(item);
+            const effectiveCost = _getEffectiveCost(item, _game);
             const card = document.createElement('button');
             card.type = 'button';
             card.className = 'btn-unit city-shop-card';
+            card.dataset.cityShopItemId = String(item.id || '').trim();
+            card.dataset.cityShopRewardType = String(item.rewardType || '').trim();
             if (!affordable) card.classList.add('cant-afford');
             if (item.comingSoon) card.classList.add('city-shop-card-coming');
 
@@ -232,18 +235,23 @@
             if (item.comingSoon) {
                 cost.textContent = '준비중';
                 cost.style.color = '#94a3b8';
-            } else if (Number(item.costGold) > 0 && Number(item.costMoney) > 0) {
-                cost.textContent = `${formatNumber(item.costMoney)} + ${formatNumber(item.costGold)}G`;
+            } else if (Number(effectiveCost.costGold) > 0 && Number(effectiveCost.costMoney) > 0) {
+                cost.textContent = `${formatNumber(effectiveCost.costMoney)} + ${formatNumber(effectiveCost.costGold)}G`;
                 cost.style.color = '#fcd34d';
-            } else if (Number(item.costGold) > 0) {
+            } else if (Number(effectiveCost.costGold) > 0) {
                 cost.textContent = _activeTab === 'special'
-                    ? `골드 ${formatNumber(item.costGold)}`
-                    : `${formatNumber(item.costGold)}G`;
+                    ? `골드 ${formatNumber(effectiveCost.costGold)}`
+                    : `${formatNumber(effectiveCost.costGold)}G`;
                 cost.style.color = '#fcd34d';
             } else {
-                cost.textContent = _activeTab === 'special'
-                    ? `머니 ${formatNumber(item.costMoney)}`
-                    : formatNumber(item.costMoney);
+                if (Number(effectiveCost.costMoney) <= 0) {
+                    cost.textContent = '무료';
+                    cost.style.color = '#22d3ee';
+                } else {
+                    cost.textContent = _activeTab === 'special'
+                        ? `머니 ${formatNumber(effectiveCost.costMoney)}`
+                        : formatNumber(effectiveCost.costMoney);
+                }
             }
 
             card.appendChild(artWrap);
@@ -347,8 +355,9 @@
             : {};
         const money = Number(state.res?.money) || 0;
         const gold = Number(state.res?.gold) || 0;
-        const needGold = Math.max(0, Math.floor(Number(item?.costGold) || 0));
-        const needMoney = Math.max(0, Math.floor(Number(item?.costMoney) || 0));
+        const effectiveCost = _getEffectiveCost(item, _game);
+        const needGold = Math.max(0, Math.floor(Number(effectiveCost.costGold) || 0));
+        const needMoney = Math.max(0, Math.floor(Number(effectiveCost.costMoney) || 0));
         if (needGold > gold) return false;
         if (needMoney > money) return false;
         return true;
@@ -376,14 +385,59 @@
         return null;
     }
 
+    function _getTutorialShopCostOverride(item, gameRef) {
+        const targetGame = gameRef || _game;
+        if (!targetGame) return null;
+        const api = global.CitySimTutorialIntro;
+        if (!api || typeof api.getShopCostOverride !== 'function') return null;
+        let raw = null;
+        try {
+            raw = api.getShopCostOverride(targetGame, {
+                itemId: String(item?.id || '').trim(),
+                rewardType: String(item?.rewardType || '').trim(),
+                tab: String(_activeTab || '').trim()
+            });
+        } catch (_) {
+            raw = null;
+        }
+        if (!raw || typeof raw !== 'object') return null;
+        return {
+            costMoney: Math.max(0, Math.floor(Number(raw.costMoney) || 0)),
+            costGold: Math.max(0, Math.floor(Number(raw.costGold) || 0))
+        };
+    }
+
+    function _getEffectiveCost(item, gameRef) {
+        const override = _getTutorialShopCostOverride(item, gameRef);
+        if (override) return override;
+        return {
+            costMoney: Math.max(0, Math.floor(Number(item?.costMoney) || 0)),
+            costGold: Math.max(0, Math.floor(Number(item?.costGold) || 0))
+        };
+    }
+
+    function _consumeTutorialForcedItem(boxId, gameRef) {
+        const targetGame = gameRef || _game;
+        if (!targetGame) return '';
+        const api = global.CitySimTutorialIntro;
+        if (!api || typeof api.consumeForcedBoxItemReward !== 'function') return '';
+        try {
+            const itemKey = api.consumeForcedBoxItemReward(targetGame, { boxId: String(boxId || '').trim() });
+            return String(itemKey || '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
     function _deductCost(item) {
         if (!_game || typeof CitySimState === 'undefined' || !CitySimState || typeof CitySimState.mutate !== 'function') {
             return;
         }
+        const effectiveCost = _getEffectiveCost(item, _game);
         CitySimState.mutate(_game, (draft) => {
             if (!draft.res || typeof draft.res !== 'object') draft.res = {};
-            const needGold = Math.max(0, Math.floor(Number(item?.costGold) || 0));
-            const needMoney = Math.max(0, Math.floor(Number(item?.costMoney) || 0));
+            const needGold = Math.max(0, Math.floor(Number(effectiveCost.costGold) || 0));
+            const needMoney = Math.max(0, Math.floor(Number(effectiveCost.costMoney) || 0));
             if (needGold > 0) {
                 draft.res.gold = Math.max(0, (Number(draft.res.gold) || 0) - needGold);
             }
@@ -507,6 +561,7 @@
         if (reward.type === 'gold') return `골드 +${formatNumber(reward.amount)}`;
         if (reward.type === 'unit') return `${reward.unitName || reward.unitKey} +${formatNumber(reward.amount)}`;
         if (reward.type === 'veteran_item') return `${reward.itemName || reward.itemKey} +${formatNumber(reward.amount)}`;
+        if (reward.type === 'item') return `[${reward.grade || '?'}] ${reward.itemName || reward.itemKey}`;
         return '';
     }
 
@@ -524,14 +579,20 @@
 
         const rewardLines = (Array.isArray(rewards) ? rewards : [])
             .map((reward) => {
-                const cls = reward.type === 'unit'
-                    ? 'unit'
-                    : reward.type === 'veteran_item'
-                        ? 'item'
-                    : reward.type === 'gold'
-                        ? 'gold'
-                        : 'money';
-                return `<div class="shop-open-reward ${cls}">${_rewardText(reward)}</div>`;
+                let cls = 'money';
+                let style = '';
+                if (reward.type === 'unit') cls = 'unit';
+                else if (reward.type === 'veteran_item') cls = 'item';
+                else if (reward.type === 'gold') cls = 'gold';
+                else if (reward.type === 'item') {
+                    cls = 'item';
+                    // 등급 색상 적용
+                    if (typeof CityItems !== 'undefined' && CityItems && reward.grade) {
+                        const col = CityItems.GRADE_COLOR[reward.grade] || '';
+                        if (col) style = ` style="color:${col}"`;
+                    }
+                }
+                return `<div class="shop-open-reward ${cls}"${style}>${_rewardText(reward)}</div>`;
             })
             .join('');
 
@@ -623,8 +684,54 @@
             draft.boxes[boxId] = Math.max(0, Math.floor(Number(draft.boxes[boxId]) || 0) - 1);
         });
 
-        const rewards = _rollRewards(item, targetGame);
-        _applyRewards(rewards, targetGame);
+        // ── 기밀문서: 3-pick-1 모달 (유닛 드롭 없음) ──────────────
+        if (boxId === 'confidential') {
+            if (typeof targetGame.saveCitySimState === 'function') targetGame.saveCitySimState();
+            _openingLocked = true;
+            _showOpenEffect(item, []);
+            if (typeof CityItems !== 'undefined' && CityItems) {
+                setTimeout(function () {
+                    CityItems.openConfidentialPick(targetGame, function () {
+                        if (typeof targetGame.saveCitySimState === 'function') {
+                            try { targetGame.saveCitySimState(); } catch (_) {}
+                        }
+                        if (typeof targetGame.renderCityInventory === 'function') {
+                            try { targetGame.renderCityInventory(); } catch (_) {}
+                        }
+                    });
+                }, 1400);
+            }
+            return { ok: true, rewards: [] };
+        }
+
+        // ── 일반/특수 보급상자: 아이템 1개 확정 지급 ───────────────
+        const itemRewards = [];
+        if (typeof CityItems !== 'undefined' && CityItems) {
+            let pickedKey = _consumeTutorialForcedItem(boxId, targetGame);
+            if (!pickedKey || !CityItems.ITEM_DEFS[pickedKey]) {
+                let pool = null;
+                if (boxId === 'box_level1') pool = CityItems.BOX1_ITEM_POOL;
+                else if (boxId === 'box_level2') pool = CityItems.BOX2_ITEM_POOL;
+
+                if (pool) {
+                    // items.js의 pickWeighted와 동일한 로직
+                    const total = pool.reduce(function (s, e) { return s + (Number(e.weight) || 0); }, 0);
+                    let roll = Math.random() * total;
+                    pickedKey = pool[pool.length - 1].itemKey;
+                    for (let i = 0; i < pool.length; i++) {
+                        roll -= pool[i].weight;
+                        if (roll < 0) { pickedKey = pool[i].itemKey; break; }
+                    }
+                }
+            }
+            if (pickedKey) {
+                CityItems.grantItem(targetGame, pickedKey, 1);
+                const def = CityItems.ITEM_DEFS[pickedKey];
+                if (def) {
+                    itemRewards.push({ type: 'item', itemKey: pickedKey, itemName: def.name, grade: def.grade });
+                }
+            }
+        }
 
         if (typeof targetGame.saveCitySimState === 'function') targetGame.saveCitySimState();
         if (typeof CitySimEconomy !== 'undefined' && CitySimEconomy && typeof CitySimEconomy.renderResources === 'function') {
@@ -632,8 +739,8 @@
         }
 
         _openingLocked = true;
-        _showOpenEffect(item, rewards);
-        return { ok: true, rewards };
+        _showOpenEffect(item, itemRewards);
+        return { ok: true, rewards: itemRewards };
     }
 
     function buyItem(itemId) {

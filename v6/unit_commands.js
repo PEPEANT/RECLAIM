@@ -215,6 +215,17 @@
             const u = this.players[i];
             if (!isUnitHit(u, wx, wy)) continue;
 
+            const tutorialApi = (typeof CitySimTutorialIntro !== 'undefined' && CitySimTutorialIntro)
+                ? CitySimTutorialIntro
+                : null;
+            if (tutorialApi && typeof tutorialApi.isBattleUnitSelectionAllowed === 'function') {
+                const allowed = tutorialApi.isBattleUnitSelectionAllowed(this, u);
+                if (allowed === false) {
+                    ui.showToast('튜토리얼 단계: 드론병만 선택할 수 있습니다.');
+                    return true;
+                }
+            }
+
             if (isLockedUnit(u)) {
                 ui.showToast('목표가 지정된 유닛은 조작할 수 없습니다.');
                 return true;
@@ -269,16 +280,28 @@
         this.selectedUnits.clear();
 
         // 박스 내 유닛 선택
+        let blockedByTutorial = 0;
         for (const u of this.players) {
             if (isLockedUnit(u)) continue;
-            if (isUnitInRect(u, x1, y1, x2, y2)) {
-                this.selectedUnits.add(u);
-                u.isSelected = true;
+            if (!isUnitInRect(u, x1, y1, x2, y2)) continue;
+            const tutorialApi = (typeof CitySimTutorialIntro !== 'undefined' && CitySimTutorialIntro)
+                ? CitySimTutorialIntro
+                : null;
+            if (tutorialApi && typeof tutorialApi.isBattleUnitSelectionAllowed === 'function') {
+                const allowed = tutorialApi.isBattleUnitSelectionAllowed(this, u);
+                if (allowed === false) {
+                    blockedByTutorial++;
+                    continue;
+                }
             }
+            this.selectedUnits.add(u);
+            u.isSelected = true;
         }
 
         if (this.selectedUnits.size > 0) {
             ui.showToast(`${this.selectedUnits.size}개 유닛 선택`);
+        } else if (blockedByTutorial > 0) {
+            ui.showToast('튜토리얼 단계: 드론병만 선택할 수 있습니다.');
         }
 
         if (typeof app !== 'undefined') app.markUiDirty();
@@ -415,10 +438,14 @@
                     // 2순위: 선택된 드론병의 ownedDrone 복귀
                     if (!droneRecalled) {
                         game.selectedUnits.forEach(u => {
-                            if (u && !u.dead && u.stats?.operator && u.ownedDrone && !u.ownedDrone.dead) {
+                            if (u && !u.dead && u.stats?.operator) {
+                                const owned = (typeof game.getAliveOperatorDrones === 'function')
+                                    ? game.getAliveOperatorDrones(u)
+                                    : ((u.ownedDrone && !u.ownedDrone.dead) ? [u.ownedDrone] : []);
                                 if (typeof game.requestDroneRecall === 'function') {
-                                    game.requestDroneRecall(u.ownedDrone);
-                                    droneRecalled = true;
+                                    owned.forEach(d => {
+                                        if (game.requestDroneRecall(d)) droneRecalled = true;
+                                    });
                                 }
                             }
                         });

@@ -1,5 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap');
 
+/* NOTE: Legacy aggregate stylesheet. Add new feature styles to module CSS files (see docs/engineering/CODE_ORGANIZATION_RULES.md). */
+
 :root {
     --app-width: 100vw;
     --app-height: 100dvh;
@@ -4311,6 +4313,104 @@ input[type=range]::-webkit-slider-runnable-track {
     grid-row: 3;
 }
 
+/* ── 아이템 시스템 ────────────────────────────────── */
+
+/* 보관함 카드 등급 뱃지 */
+.city-item-grade-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    font-size: 9px;
+    font-weight: bold;
+    line-height: 1;
+    padding: 1px 3px;
+    border-radius: 3px;
+    border: 1px solid currentColor;
+    background: rgba(0, 0, 0, 0.55);
+    z-index: 20;
+    pointer-events: none;
+}
+
+/* 기밀문서 3-pick-1 모달 */
+.item-pick-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.75);
+    backdrop-filter: blur(4px);
+    gap: 20px;
+    padding: 20px;
+}
+
+.item-pick-title {
+    color: #f0f0f0;
+    font-size: 16px;
+    font-weight: bold;
+    text-align: center;
+    letter-spacing: 0.03em;
+}
+
+.item-pick-cards {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    justify-content: center;
+}
+
+.item-pick-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding: 18px 20px;
+    min-width: 100px;
+    background: rgba(15, 15, 25, 0.9);
+    border: 2px solid #555;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+    color: #e5e7eb;
+}
+
+.item-pick-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.item-pick-icon {
+    font-size: 32px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+}
+
+.item-pick-unit-icon {
+    width: 64px;
+    height: 48px;
+    object-fit: contain;
+    image-rendering: pixelated;
+}
+
+.item-pick-grade {
+    font-size: 11px;
+    font-weight: bold;
+    letter-spacing: 0.05em;
+}
+
+.item-pick-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: #f3f4f6;
+    text-align: center;
+}
+
+/* ─────────────────────────────────────────────────── */
 .city-tax-collect-btn:disabled,
 .city-tax-auto-btn:disabled {
     cursor: default;
@@ -7238,8 +7338,23 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-veteran-item-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.26rem;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.city-veteran-item-list.is-drop-target {
+    outline: 1px dashed rgba(56, 189, 248, 0.9);
+    outline-offset: 2px;
+}
+
+.city-veteran-item-row {
     display: grid;
-    gap: 0.2rem;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.16rem;
+    width: min(178px, 100%);
 }
 
 .city-veteran-item-btn {
@@ -7263,6 +7378,16 @@ input[type=range]::-webkit-slider-runnable-track {
     background: rgba(20, 83, 45, 0.5);
 }
 
+.city-veteran-item-btn.is-draggable {
+    cursor: grab;
+    touch-action: none;
+    user-select: none;
+}
+
+.city-veteran-item-btn.is-draggable:active {
+    cursor: grabbing;
+}
+
 .city-veteran-item-btn:disabled {
     opacity: 0.45;
 }
@@ -7271,18 +7396,80 @@ input[type=range]::-webkit-slider-runnable-track {
     color: #f8fafc;
     font-size: 0.62rem;
     font-weight: 800;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.city-veteran-item-btn-left {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.28rem;
+    min-width: 0;
+}
+
+.city-veteran-item-btn-icon {
+    width: 18px;
+    height: 18px;
+    border-radius: 0.22rem;
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    object-fit: cover;
+    flex-shrink: 0;
+}
+
+.city-veteran-item-btn-icon-fallback {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #e2e8f0;
+    background: rgba(51, 65, 85, 0.7);
+    font-size: 0.52rem;
+    font-weight: 700;
 }
 
 .city-veteran-item-btn-meta {
     color: #93c5fd;
     font-size: 0.56rem;
     font-weight: 700;
+    flex-shrink: 0;
+    margin-left: 0.18rem;
+}
+
+.city-veteran-item-action-btn {
+    width: 100%;
+    min-width: 70px;
+    height: 30px;
+    padding: 0 0.46rem;
+    font-size: 0.58rem;
+    white-space: nowrap;
+}
+
+.city-veteran-item-action-btn.is-current {
+    border-color: rgba(34, 197, 94, 0.72);
 }
 
 .city-veteran-item-empty {
     color: #94a3b8;
     font-size: 0.58rem;
     line-height: 1.3;
+}
+
+.city-veteran-drag-ghost {
+    position: fixed;
+    z-index: 99999;
+    pointer-events: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 24px;
+    padding: 0.16rem 0.42rem;
+    border-radius: 999px;
+    border: 1px solid rgba(56, 189, 248, 0.85);
+    background: rgba(12, 74, 110, 0.94);
+    color: #e0f2fe;
+    font-size: 0.56rem;
+    font-weight: 800;
+    box-shadow: 0 8px 24px rgba(2, 6, 23, 0.45);
 }
 
 .city-unit-profile-role {
@@ -7344,6 +7531,19 @@ input[type=range]::-webkit-slider-runnable-track {
     text-align: center;
 }
 
+.city-unit-profile-skillslot.is-filled {
+    border-color: rgba(56, 189, 248, 0.75);
+}
+
+.city-unit-profile-skillslot.is-fixed {
+    border-color: rgba(248, 250, 252, 0.34);
+    background: rgba(30, 41, 59, 0.72);
+}
+
+.city-unit-profile-skillslot.is-drop-target {
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.32), inset 0 0 0 1px rgba(56, 189, 248, 0.45);
+}
+
 .city-unit-profile-skillslot-icon {
     color: #60a5fa;
     font-size: 0.66rem;
@@ -7362,6 +7562,20 @@ input[type=range]::-webkit-slider-runnable-track {
     font-size: 0.56rem;
     font-weight: 700;
     line-height: 1.05;
+}
+
+.city-unit-profile-skillslot-note {
+    color: #fcd34d;
+    font-size: 0.48rem;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.city-unit-profile-skilltree-help {
+    margin-top: 0.22rem;
+    color: #93c5fd;
+    font-size: 0.52rem;
+    line-height: 1.3;
 }
 
 .city-unit-profile-info-text {
@@ -7778,6 +7992,21 @@ input[type=range]::-webkit-slider-runnable-track {
 
     .city-veteran-item-btn-meta {
         font-size: 0.5rem;
+    }
+
+    .city-veteran-item-row {
+        width: 100%;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 0.16rem;
+        align-items: center;
+    }
+
+    .city-veteran-item-action-btn {
+        width: auto;
+        min-width: 56px;
+        height: 26px;
+        font-size: 0.52rem;
+        padding: 0 0.22rem;
     }
 
     .city-veteran-item-empty {
@@ -9122,6 +9351,7 @@ input[type=range]::-webkit-slider-runnable-track {
         height: 26px;
         font-size: 0.76rem;
     }
+
 }
 
 @media (max-width: 640px) {

@@ -160,9 +160,16 @@
         return RECURRING_QUEST_ID_SET.has(id);
     }
 
+    function isTemporaryQuestId(questId) {
+        const id = String(questId || '').trim();
+        if (!id) return false;
+        return id.startsWith('tutorial_');
+    }
+
     function isOneTimeQuestId(questId) {
         const id = String(questId || '').trim();
         if (!id) return false;
+        if (isTemporaryQuestId(id)) return false;
         return !isRecurringQuestId(id);
     }
 
@@ -637,6 +644,7 @@
         const safeReward = isFn(Schema.normalizeReward) ? Schema.normalizeReward(reward, {}) : reward;
         const money = Math.max(0, Math.floor(Number(safeReward?.money) || 0));
         const gold = Math.max(0, Math.floor(Number(safeReward?.gold) || 0));
+        const honor = Math.max(0, Math.floor(Number(safeReward?.honor) || 0));
         const exp = Math.max(0, Math.floor(Number(safeReward?.exp) || 0));
         const boxType = String(safeReward?.boxType || '').trim();
         const sourceName = String(quest?.missionName || '퀘스트 보상').trim() || '퀘스트 보상';
@@ -651,11 +659,15 @@
             if (!rewardOk) return { ok: false, expResult: null };
         }
 
-        if ((money > 0 || gold > 0) && typeof CitySimState !== 'undefined' && CitySimState && isFn(CitySimState.mutate)) {
+        if ((money > 0 || gold > 0 || honor > 0) && typeof CitySimState !== 'undefined' && CitySimState && isFn(CitySimState.mutate)) {
             CitySimState.mutate(game, (draft) => {
                 if (!draft.res || typeof draft.res !== 'object') draft.res = {};
                 if (money > 0) draft.res.money = Math.max(0, Number(draft.res.money) || 0) + money;
                 if (gold > 0) draft.res.gold = Math.max(0, Number(draft.res.gold) || 0) + gold;
+                if (honor > 0) {
+                    if (!draft.hud || typeof draft.hud !== 'object') draft.hud = {};
+                    draft.hud.honor = Math.max(0, Math.floor(Number(draft.hud.honor) || 0)) + honor;
+                }
             });
         }
 
@@ -780,23 +792,25 @@
         } else {
             quest.progress = Math.max(quest.progress, quest.target);
             quest.status = QUEST_STATUS.CLAIMED;
-            // Lock one-time quests immediately to prevent claimed -> claimable regression during save/load races.
-            state.meta = (state.meta && typeof state.meta === 'object') ? state.meta : {};
-            const permanent = Array.isArray(state.meta.permanentClaimed) ? state.meta.permanentClaimed : [];
-            const permanentSet = new Set(
-                permanent
-                    .map((value) => String(value || '').trim())
-                    .filter(Boolean)
-            );
-            permanentSet.add(id);
-            if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
-                state.meta.loginSupplyClaimed = true;
+            if (isOneTimeQuestId(id)) {
+                // Lock one-time quests immediately to prevent claimed -> claimable regression during save/load races.
+                state.meta = (state.meta && typeof state.meta === 'object') ? state.meta : {};
+                const permanent = Array.isArray(state.meta.permanentClaimed) ? state.meta.permanentClaimed : [];
+                const permanentSet = new Set(
+                    permanent
+                        .map((value) => String(value || '').trim())
+                        .filter(Boolean)
+                );
+                permanentSet.add(id);
+                if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
+                    state.meta.loginSupplyClaimed = true;
+                }
+                if (id === QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX) {
+                    state.meta.skirmishFirstWinClaimed = true;
+                }
+                state.meta.permanentClaimed = Array.from(permanentSet);
+                markQuestClaimedInLedger(ledgerUid, id);
             }
-            if (id === QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX) {
-                state.meta.skirmishFirstWinClaimed = true;
-            }
-            state.meta.permanentClaimed = Array.from(permanentSet);
-            markQuestClaimedInLedger(ledgerUid, id);
         }
 
         if (isFn(Schema.syncDerivedFields)) {

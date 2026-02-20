@@ -6,10 +6,17 @@
     const DEFAULT_EXP_MAX = 100;
     const FACTORY_RESEARCH_KEYS = ['aa_tank', 'spg', 'icbm', 'chinook', 'bomber'];
     const INCOME_BUILDING_TILE_SET = new Set(['house', 'apartment_large', 'shop_store', 'decor']);
-    const VETERAN_ITEM_COMPAT = {
-        drone_module: new Set(['drone_operator'])
-    };
+    const CITY_ITEM_KEYS = ['rifle_d', 'body_armor_d', 'scope_d', 'smoke_grenade', 'medkit_c', 'drone_suicide_item', 'drone_at_item', 'bp_missile'];
+    const CITY_ITEM_KEY_SET = new Set(CITY_ITEM_KEYS);
+    const SUPPLY_BOX_KEYS = ['box_level1', 'box_level2', 'confidential'];
+    const VETERAN_ITEM_COMPAT = {};
     const VETERAN_ITEM_KEYS = Object.keys(VETERAN_ITEM_COMPAT);
+    const VETERAN_SKILL_SLOT_COUNT = 3;
+    const VETERAN_FIXED_SKILL_SLOT_INDEX = 0;
+    const VETERAN_DRONE_ITEM_TO_COMMAND = {
+        drone_suicide_item: 'drone_suicide',
+        drone_at_item: 'drone_at'
+    };
     const LOGIN_DEBUG_KEY = 'reclaim_login_debug';
     let pendingCityCloudSave = null;
     let pendingCityCloudUid = '';
@@ -28,6 +35,75 @@
     function parseNumber(value, fallback) {
         const n = Number(value);
         return Number.isFinite(n) ? n : fallback;
+    }
+
+    function sanitizeTutorialMode(value) {
+        const key = String(value || '').trim();
+        if (key === 'guided' || key === 'skip') return key;
+        return '';
+    }
+
+    function sanitizeTutorialChoice(value) {
+        const key = String(value || '').trim();
+        if (key === 'guided' || key === 'skip') return key;
+        return '';
+    }
+
+    function createDefaultTutorialState() {
+        return {
+            cityIntroSeen: false,
+            cityIntroSkipped: false,
+            cityIntroChoice: '',
+            mode: '',
+            step: 0,
+            maxStep: 10,
+            completed: false,
+            updatedAt: 0
+        };
+    }
+
+    function sanitizeTutorialState(rawTutorial, fallbackTutorial, legacyCityIntroSeen) {
+        const fallback = (fallbackTutorial && typeof fallbackTutorial === 'object' && !Array.isArray(fallbackTutorial))
+            ? fallbackTutorial
+            : createDefaultTutorialState();
+        const raw = (rawTutorial && typeof rawTutorial === 'object' && !Array.isArray(rawTutorial))
+            ? rawTutorial
+            : {};
+
+        const maxStep = Math.max(1, Math.floor(parseNumber(raw.maxStep, fallback.maxStep || 10)));
+        const rawStep = Math.floor(parseNumber(raw.step, fallback.step || 0));
+        const seen = raw.cityIntroSeen === true
+            || legacyCityIntroSeen === true
+            || fallback.cityIntroSeen === true;
+        const mode = sanitizeTutorialMode(raw.mode || fallback.mode || '');
+        const choice = sanitizeTutorialChoice(raw.cityIntroChoice || fallback.cityIntroChoice || '');
+        const skipped = seen && (
+            raw.cityIntroSkipped === true
+            || fallback.cityIntroSkipped === true
+            || mode === 'skip'
+            || choice === 'skip'
+        );
+        const completed = raw.completed === true || fallback.completed === true;
+        const updatedAt = Math.max(0, Math.floor(parseNumber(raw.updatedAt, fallback.updatedAt || 0)));
+
+        const normalizedStep = seen
+            ? (skipped ? 0 : Math.max(1, Math.min(maxStep, rawStep)))
+            : Math.max(0, Math.min(maxStep, rawStep));
+
+        return {
+            cityIntroSeen: seen,
+            cityIntroSkipped: skipped,
+            cityIntroChoice: seen ? (choice || (skipped ? 'skip' : 'guided')) : '',
+            mode: mode || (seen ? (skipped ? 'skip' : 'guided') : ''),
+            step: normalizedStep,
+            maxStep,
+            completed,
+            updatedAt
+        };
+    }
+
+    function serializeTutorialState(rawTutorial) {
+        return sanitizeTutorialState(rawTutorial, createDefaultTutorialState(), false);
     }
 
     function isLoginDebugEnabled() {
@@ -225,6 +301,63 @@
         return serialized;
     }
 
+    function sanitizeVeteranItemKey(value, unitKey) {
+        const key = String(value || '').trim();
+        if (!key) return '';
+        const unit = String(unitKey || '').trim();
+        if (CITY_ITEM_KEY_SET.has(key)) {
+            return unit ? key : '';
+        }
+        if (!Object.prototype.hasOwnProperty.call(VETERAN_ITEM_COMPAT, key)) return '';
+        const allowed = VETERAN_ITEM_COMPAT[key];
+        if (!unit || !(allowed instanceof Set) || !allowed.has(unit)) return '';
+        return key;
+    }
+
+    function sanitizeVeteranSkillLoadoutItemKey(value, unitKey) {
+        const unit = String(unitKey || '').trim();
+        const key = sanitizeVeteranItemKey(value, unit);
+        if (!key) return '';
+        if (unit !== 'drone_operator') return '';
+        if (!Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)) return '';
+        return key;
+    }
+
+    function getDefaultVeteranSkillItemKeys() {
+        return Array.from({ length: VETERAN_SKILL_SLOT_COUNT }, () => '');
+    }
+
+    function sanitizeVeteranSkillItemKeys(rawLoadout, unitKey) {
+        const unit = String(unitKey || '').trim();
+        const loadout = (rawLoadout && typeof rawLoadout === 'object' && !Array.isArray(rawLoadout))
+            ? rawLoadout
+            : {};
+        const rawSkillItemKeys = Array.isArray(loadout.skillItemKeys) ? loadout.skillItemKeys : [];
+        const skillItemKeys = getDefaultVeteranSkillItemKeys();
+        for (let slotIndex = 1; slotIndex < VETERAN_SKILL_SLOT_COUNT; slotIndex++) {
+            const key = sanitizeVeteranSkillLoadoutItemKey(rawSkillItemKeys[slotIndex] || '', unit);
+            if (!key) continue;
+            skillItemKeys[slotIndex] = key;
+        }
+        const legacyItemKey = sanitizeVeteranSkillLoadoutItemKey(loadout.itemKey || '', unit);
+        if (legacyItemKey && !skillItemKeys[1]) {
+            skillItemKeys[1] = legacyItemKey;
+        }
+        skillItemKeys[VETERAN_FIXED_SKILL_SLOT_INDEX] = '';
+        return skillItemKeys;
+    }
+
+    function getPrimaryVeteranLoadoutItemKey(skillItemKeys) {
+        const keys = Array.isArray(skillItemKeys) ? skillItemKeys : [];
+        for (let slotIndex = 0; slotIndex < keys.length; slotIndex++) {
+            if (slotIndex === VETERAN_FIXED_SKILL_SLOT_INDEX) continue;
+            const key = String(keys[slotIndex] || '').trim();
+            if (!key) continue;
+            return key;
+        }
+        return '';
+    }
+
     function sanitizeVeteranEntry(rawEntry, index, allowedUnitKeys) {
         if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) return null;
         const unitKey = String(rawEntry.unitKey || rawEntry.key || '').trim();
@@ -234,8 +367,11 @@
         const level = Math.max(2, Math.floor(parseNumber(rawEntry.level, 2)));
         const createdAt = Math.max(0, Math.floor(parseNumber(rawEntry.createdAt, 0)));
         const name = String(rawEntry.name || '').trim().slice(0, 24);
-        const rawLoadout = (rawEntry.loadout && typeof rawEntry.loadout === 'object') ? rawEntry.loadout : {};
-        const itemKey = sanitizeVeteranItemKey(rawLoadout.itemKey || rawEntry.itemKey || '', unitKey);
+        const rawLoadout = (rawEntry.loadout && typeof rawEntry.loadout === 'object')
+            ? rawEntry.loadout
+            : { itemKey: rawEntry.itemKey || '' };
+        const skillItemKeys = sanitizeVeteranSkillItemKeys(rawLoadout, unitKey);
+        const itemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
         return {
             id,
             unitKey,
@@ -243,7 +379,8 @@
             createdAt,
             name,
             loadout: {
-                itemKey
+                itemKey,
+                skillItemKeys
             }
         };
     }
@@ -266,16 +403,6 @@
         return sanitizeVeterans(rawVeterans, allowedUnitKeys);
     }
 
-    function sanitizeVeteranItemKey(value, unitKey) {
-        const key = String(value || '').trim();
-        if (!key) return '';
-        if (!Object.prototype.hasOwnProperty.call(VETERAN_ITEM_COMPAT, key)) return '';
-        const unit = String(unitKey || '').trim();
-        const allowed = VETERAN_ITEM_COMPAT[key];
-        if (!unit || !(allowed instanceof Set) || !allowed.has(unit)) return '';
-        return key;
-    }
-
     function sanitizeVeteranItems(rawItems) {
         const out = {};
         VETERAN_ITEM_KEYS.forEach((key) => {
@@ -286,6 +413,26 @@
 
     function serializeVeteranItems(rawItems) {
         return sanitizeVeteranItems(rawItems);
+    }
+
+    function sanitizeItems(rawItems) {
+        const src = (rawItems && typeof rawItems === 'object' && !Array.isArray(rawItems)) ? rawItems : {};
+        const out = {};
+        CITY_ITEM_KEYS.forEach((key) => {
+            const v = Math.max(0, Math.floor(parseNumber(src[key], 0)));
+            if (v > 0) out[key] = v;
+        });
+        return out;
+    }
+
+    function sanitizeBoxes(rawBoxes) {
+        const src = (rawBoxes && typeof rawBoxes === 'object' && !Array.isArray(rawBoxes)) ? rawBoxes : {};
+        const out = {};
+        SUPPLY_BOX_KEYS.forEach((key) => {
+            const v = Math.max(0, Math.floor(parseNumber(src[key], 0)));
+            if (v > 0) out[key] = v;
+        });
+        return out;
     }
 
     function sanitizeResearchUnlocks(rawUnlocks) {
@@ -568,6 +715,8 @@
             units: { ...defaultState.units },
             veterans: Array.isArray(defaultState.veterans) ? defaultState.veterans.slice() : [],
             veteranItems: { ...(defaultState.veteranItems || {}) },
+            boxes: sanitizeBoxes(defaultState.boxes),
+            items: sanitizeItems(defaultState.items),
             researchUnlocks: { ...(defaultState.researchUnlocks || {}) },
             grid: seededGrid,
             ground: Array.isArray(defaultState.ground) ? defaultState.ground.slice() : [],
@@ -577,6 +726,7 @@
             incomeSlots: {},
             taxAuto: sanitizeTaxAuto(defaultState.taxAuto),
             hud: { ...defaultState.hud },
+            tutorial: sanitizeTutorialState(defaultState.tutorial, defaultState.tutorial, false),
             view: { ...defaultState.view }
         };
     }
@@ -702,6 +852,8 @@
             Math.min(hudExpMax, Math.round((Math.min(rawHudExp, legacyExpMax) / legacyExpMax) * hudExpMax))
         );
         const hudHonor = Math.max(0, Math.floor(parseNumber(loadedHud?.honor, defaults.hud.honor || 0)));
+        const loadedTutorial = isCompatible ? loaded?.tutorial : null;
+        const legacyCityIntroSeen = loaded?.tutorial_city_intro_seen === true;
         const next = {
             cols: defaults.cols,
             rows: defaults.rows,
@@ -727,6 +879,12 @@
             veteranItems: isCompatible
                 ? sanitizeVeteranItems(loaded?.veteranItems)
                 : sanitizeVeteranItems(defaults.veteranItems),
+            boxes: isCompatible
+                ? sanitizeBoxes(loaded?.boxes)
+                : sanitizeBoxes(defaults.boxes),
+            items: isCompatible
+                ? sanitizeItems(loaded?.items)
+                : sanitizeItems(defaults.items),
             researchUnlocks: isCompatible
                 ? sanitizeResearchUnlocks(loaded?.researchUnlocks)
                 : sanitizeResearchUnlocks(defaults.researchUnlocks),
@@ -748,6 +906,9 @@
                 honor: hudHonor,
                 netMoney: 0
             },
+            tutorial: isCompatible
+                ? sanitizeTutorialState(loadedTutorial, defaults.tutorial, legacyCityIntroSeen)
+                : sanitizeTutorialState(defaults.tutorial, defaults.tutorial, false),
             view: {
                 x: Math.round(parseNumber(loadedView?.x, defaults.view.x)),
                 y: Math.round(parseNumber(loadedView?.y, defaults.view.y)),
@@ -873,6 +1034,8 @@
             units: serializeUnits(state.units),
             veterans: serializeVeterans(state.veterans, allowedUnitKeys),
             veteranItems: serializeVeteranItems(state.veteranItems),
+            boxes: sanitizeBoxes(state.boxes),
+            items: sanitizeItems(state.items),
             researchUnlocks: serializeResearchUnlocks(state.researchUnlocks),
             grid: Array.isArray(state.grid) ? state.grid : [],
             ground: Array.isArray(state.ground) ? state.ground.map((tile) => {
@@ -896,6 +1059,8 @@
                 expMax: currentExpMax,
                 honor: Math.max(0, Math.floor(Number(state.hud?.honor) || 0))
             },
+            tutorial: serializeTutorialState(state.tutorial),
+            tutorial_city_intro_seen: state.tutorial?.cityIntroSeen === true,
             view: {
                 x: Math.round(Number(state.view?.x) || 0),
                 y: Math.round(Number(state.view?.y) || 0),

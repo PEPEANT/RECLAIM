@@ -5,12 +5,19 @@
     const MIN_CITY_LEVEL = 1;
     const MAX_CITY_LEVEL = 19;
     const DEFAULT_EXP_MAX = 100;
+    const TUTORIAL_MAX_STEP = 10;
     const FACTORY_RESEARCH_KEYS = ['aa_tank', 'spg', 'icbm', 'chinook', 'bomber'];
     const INCOME_BUILDING_TILE_SET = new Set(['house', 'apartment_large', 'shop_store', 'decor']);
-    const VETERAN_ITEM_COMPAT = {
-        drone_module: new Set(['drone_operator'])
-    };
+    const CITY_ITEM_KEYS = ['rifle_d', 'body_armor_d', 'scope_d', 'smoke_grenade', 'medkit_c', 'drone_suicide_item', 'drone_at_item', 'bp_missile'];
+    const CITY_ITEM_KEY_SET = new Set(CITY_ITEM_KEYS);
+    const VETERAN_ITEM_COMPAT = {};
     const VETERAN_ITEM_KEYS = Object.keys(VETERAN_ITEM_COMPAT);
+    const VETERAN_SKILL_SLOT_COUNT = 3;
+    const VETERAN_FIXED_SKILL_SLOT_INDEX = 0;
+    const VETERAN_DRONE_ITEM_TO_COMMAND = {
+        drone_suicide_item: 'drone_suicide',
+        drone_at_item: 'drone_at'
+    };
 
     function clampLevel(value) {
         return Math.max(MIN_CITY_LEVEL, Math.min(MAX_CITY_LEVEL, Math.floor(Number(value) || MIN_CITY_LEVEL)));
@@ -64,6 +71,61 @@
             canPlace: false,
             reason: '',
             sourceIndex: null
+        };
+    }
+
+    function normalizeTutorialMode(value) {
+        const key = String(value || '').trim();
+        if (key === 'guided' || key === 'skip') return key;
+        return '';
+    }
+
+    function normalizeTutorialChoice(value) {
+        const key = String(value || '').trim();
+        if (key === 'guided' || key === 'skip') return key;
+        return '';
+    }
+
+    function createDefaultTutorialState() {
+        return {
+            cityIntroSeen: false,
+            cityIntroSkipped: false,
+            cityIntroChoice: '',
+            mode: '',
+            step: 0,
+            maxStep: TUTORIAL_MAX_STEP,
+            completed: false,
+            updatedAt: 0
+        };
+    }
+
+    function normalizeTutorialState(rawTutorial, legacySeen = false) {
+        const fallback = createDefaultTutorialState();
+        const raw = (rawTutorial && typeof rawTutorial === 'object' && !Array.isArray(rawTutorial))
+            ? rawTutorial
+            : {};
+        const maxStep = Math.max(1, Math.floor(Number(raw.maxStep) || fallback.maxStep));
+        const step = Math.max(0, Math.min(maxStep, Math.floor(Number(raw.step) || 0)));
+        const mode = normalizeTutorialMode(raw.mode);
+        const choice = normalizeTutorialChoice(raw.cityIntroChoice);
+        const seen = (raw.cityIntroSeen === true) || (legacySeen === true);
+        const skipped = seen && (raw.cityIntroSkipped === true || mode === 'skip' || choice === 'skip');
+        const completed = raw.completed === true;
+        const updatedAt = Math.max(0, Math.floor(Number(raw.updatedAt) || 0));
+
+        const normalizedStep = seen
+            ? (skipped ? 0 : Math.max(1, step))
+            : step;
+
+        return {
+            cityIntroSeen: seen,
+            cityIntroSkipped: skipped,
+            cityIntroChoice: seen ? (choice || (skipped ? 'skip' : 'guided')) : '',
+            mode: mode || (seen ? (skipped ? 'skip' : 'guided') : ''),
+            step: normalizedStep,
+            maxStep,
+            completed,
+            updatedAt
         };
     }
 
@@ -225,14 +287,71 @@
         return base.slice(0, 24);
     }
 
+    function normalizeCityItems(rawItems) {
+        const src = (rawItems && typeof rawItems === 'object' && !Array.isArray(rawItems)) ? rawItems : {};
+        const out = {};
+        CITY_ITEM_KEYS.forEach((key) => {
+            const count = Math.max(0, Math.floor(Number(src[key]) || 0));
+            if (count > 0) out[key] = count;
+        });
+        return out;
+    }
+
     function normalizeVeteranItemKey(value, unitKey = '') {
         const key = String(value == null ? '' : value).trim();
         if (!key) return '';
-        if (!Object.prototype.hasOwnProperty.call(VETERAN_ITEM_COMPAT, key)) return '';
         const unit = String(unitKey || '').trim();
+        if (CITY_ITEM_KEY_SET.has(key)) {
+            return unit ? key : '';
+        }
+        if (!Object.prototype.hasOwnProperty.call(VETERAN_ITEM_COMPAT, key)) return '';
         const allowed = VETERAN_ITEM_COMPAT[key];
         if (!unit || !(allowed instanceof Set) || !allowed.has(unit)) return '';
         return key;
+    }
+
+    function normalizeVeteranSkillLoadoutItemKey(value, unitKey = '') {
+        const unit = String(unitKey || '').trim();
+        const key = normalizeVeteranItemKey(value, unit);
+        if (!key) return '';
+        if (unit !== 'drone_operator') return '';
+        if (!Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)) return '';
+        return key;
+    }
+
+    function getDefaultVeteranSkillItemKeys() {
+        return Array.from({ length: VETERAN_SKILL_SLOT_COUNT }, () => '');
+    }
+
+    function normalizeVeteranSkillItemKeys(rawLoadout, unitKey = '') {
+        const unit = String(unitKey || '').trim();
+        const loadout = (rawLoadout && typeof rawLoadout === 'object' && !Array.isArray(rawLoadout))
+            ? rawLoadout
+            : {};
+        const rawSkillItemKeys = Array.isArray(loadout.skillItemKeys) ? loadout.skillItemKeys : [];
+        const skillItemKeys = getDefaultVeteranSkillItemKeys();
+        for (let slotIndex = 1; slotIndex < VETERAN_SKILL_SLOT_COUNT; slotIndex++) {
+            const key = normalizeVeteranSkillLoadoutItemKey(rawSkillItemKeys[slotIndex] || '', unit);
+            if (!key) continue;
+            skillItemKeys[slotIndex] = key;
+        }
+        const legacyItemKey = normalizeVeteranSkillLoadoutItemKey(loadout.itemKey || '', unit);
+        if (legacyItemKey && !skillItemKeys[1]) {
+            skillItemKeys[1] = legacyItemKey;
+        }
+        skillItemKeys[VETERAN_FIXED_SKILL_SLOT_INDEX] = '';
+        return skillItemKeys;
+    }
+
+    function getPrimaryVeteranLoadoutItemKey(skillItemKeys) {
+        const keys = Array.isArray(skillItemKeys) ? skillItemKeys : [];
+        for (let slotIndex = 0; slotIndex < keys.length; slotIndex++) {
+            if (slotIndex === VETERAN_FIXED_SKILL_SLOT_INDEX) continue;
+            const key = String(keys[slotIndex] || '').trim();
+            if (!key) continue;
+            return key;
+        }
+        return '';
     }
 
     function normalizeVeteranItems(rawItems) {
@@ -264,8 +383,11 @@
         const createdAt = Math.max(0, Math.floor(Number(rawEntry.createdAt) || 0));
         const level = Math.max(2, Math.floor(Number(rawEntry.level) || 2));
         const name = normalizeVeteranName(rawEntry.name || '', '');
-        const rawLoadout = (rawEntry.loadout && typeof rawEntry.loadout === 'object') ? rawEntry.loadout : {};
-        const itemKey = normalizeVeteranItemKey(rawLoadout.itemKey || rawEntry.itemKey || '', unitKey);
+        const rawLoadout = (rawEntry.loadout && typeof rawEntry.loadout === 'object')
+            ? rawEntry.loadout
+            : { itemKey: rawEntry.itemKey || '' };
+        const skillItemKeys = normalizeVeteranSkillItemKeys(rawLoadout, unitKey);
+        const itemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
         return {
             id,
             unitKey,
@@ -273,7 +395,8 @@
             name,
             createdAt,
             loadout: {
-                itemKey
+                itemKey,
+                skillItemKeys
             }
         };
     }
@@ -331,6 +454,10 @@
         const veterans = normalizeVeterans(options.veterans);
         const veteranItems = normalizeVeteranItems(options.veteranItems);
         const researchUnlocks = normalizeResearchUnlocks(options.researchUnlocks);
+        const tutorial = normalizeTutorialState(
+            options.tutorial,
+            options.tutorial_city_intro_seen === true
+        );
 
         return {
             cols,
@@ -356,6 +483,7 @@
             veteranItems,
             researchUnlocks,
             boxes: {},
+            items: normalizeCityItems(options.items),
             grid: baseGrid,
             ground,
             drillgroundSlots,
@@ -375,6 +503,7 @@
                 honor,
                 netMoney: 0
             },
+            tutorial,
             view: {
                 x: toNumber(options?.view?.x, 0),
                 y: toNumber(options?.view?.y, 0),
@@ -412,6 +541,10 @@
         if (!game.citySim.boxes || typeof game.citySim.boxes !== 'object') {
             game.citySim.boxes = {};
         }
+        if (!game.citySim.items || typeof game.citySim.items !== 'object') {
+            game.citySim.items = {};
+        }
+        game.citySim.items = normalizeCityItems(game.citySim.items);
 
         if (!game.citySim.placement || typeof game.citySim.placement !== 'object') {
             game.citySim.placement = createPlacementState();
@@ -497,6 +630,11 @@
                 scale: 1
             };
         }
+
+        game.citySim.tutorial = normalizeTutorialState(
+            game.citySim.tutorial,
+            game.citySim.tutorial_city_intro_seen === true
+        );
 
         if (typeof game.citySim.buildTab !== 'string' || !game.citySim.buildTab) {
             game.citySim.buildTab = 'base';
@@ -779,6 +917,39 @@
         });
     }
 
+    function patchTutorial(game, patch) {
+        mutate(game, (state) => {
+            const current = normalizeTutorialState(state.tutorial, state.tutorial_city_intro_seen === true);
+            state.tutorial = normalizeTutorialState({
+                ...current,
+                ...(patch && typeof patch === 'object' ? patch : {}),
+                updatedAt: Math.max(
+                    Math.floor(Number(current.updatedAt) || 0),
+                    Math.floor(Number((patch && patch.updatedAt)) || Date.now())
+                )
+            });
+        });
+    }
+
+    function markTutorialCityIntroSeen(game, options = {}) {
+        const skipped = options.skipped === true;
+        const providedChoice = normalizeTutorialChoice(options.choice);
+        const choice = providedChoice || (skipped ? 'skip' : 'guided');
+        patchTutorial(game, {
+            cityIntroSeen: true,
+            cityIntroSkipped: skipped,
+            cityIntroChoice: choice,
+            mode: skipped ? 'skip' : 'guided',
+            step: skipped ? 0 : Math.max(1, Math.floor(Number(options.step) || 1)),
+            updatedAt: Math.max(0, Math.floor(Number(options.updatedAt) || Date.now()))
+        });
+    }
+
+    function isTutorialCityIntroSeen(game) {
+        const state = ensure(game);
+        return state.tutorial?.cityIntroSeen === true;
+    }
+
     function getVeterans(game) {
         const state = ensure(game);
         if (!Array.isArray(state.veterans)) return [];
@@ -788,8 +959,9 @@
             level: entry.level,
             name: entry.name,
             createdAt: entry.createdAt,
-            loadout: {
-                itemKey: normalizeVeteranItemKey(entry?.loadout?.itemKey || '', entry?.unitKey || '')
+            loadout: normalizeVeteranEntry(entry)?.loadout || {
+                itemKey: '',
+                skillItemKeys: getDefaultVeteranSkillItemKeys()
             }
         }));
     }
@@ -804,10 +976,11 @@
             if (!unitKey) return;
             const id = String(payload?.id || '').trim()
                 || `vet_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-            const loadoutItemKey = normalizeVeteranItemKey(
-                payload?.loadout?.itemKey || payload?.itemKey || '',
+            const skillItemKeys = normalizeVeteranSkillItemKeys(
+                payload?.loadout || { itemKey: payload?.itemKey || '' },
                 unitKey
             );
+            const loadoutItemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
             const entry = normalizeVeteranEntry({
                 id,
                 unitKey,
@@ -815,7 +988,8 @@
                 name: normalizeVeteranName(payload?.name || '', ''),
                 createdAt: Math.max(0, Math.floor(Number(payload?.createdAt) || Date.now())),
                 loadout: {
-                    itemKey: loadoutItemKey
+                    itemKey: loadoutItemKey,
+                    skillItemKeys
                 }
             });
             if (!entry) return;
@@ -838,13 +1012,21 @@
             const current = state.veterans[idx];
             const unitKey = String(current?.unitKey || '').trim();
             if (!unitKey) return;
-            const normalizedItemKey = normalizeVeteranItemKey(nextItemKey, unitKey);
-            const currentItemKey = normalizeVeteranItemKey(current?.loadout?.itemKey || '', unitKey);
+            const normalizedItemKey = normalizeVeteranSkillLoadoutItemKey(nextItemKey, unitKey);
+            const currentLoadout = normalizeVeteranEntry(current)?.loadout || {
+                itemKey: '',
+                skillItemKeys: getDefaultVeteranSkillItemKeys()
+            };
+            const currentSkillItemKeys = normalizeVeteranSkillItemKeys(currentLoadout, unitKey);
+            const currentItemKey = getPrimaryVeteranLoadoutItemKey(currentSkillItemKeys);
             if (normalizedItemKey === currentItemKey) return;
+            currentSkillItemKeys[1] = normalizedItemKey;
             state.veterans[idx] = {
                 ...current,
                 loadout: {
-                    itemKey: normalizedItemKey
+                    ...currentLoadout,
+                    itemKey: getPrimaryVeteranLoadoutItemKey(currentSkillItemKeys),
+                    skillItemKeys: currentSkillItemKeys
                 }
             };
             updated = true;
@@ -880,6 +1062,8 @@
         createDefaultResources,
         createDefaultUnits,
         normalizeResearchUnlocks,
+        createDefaultTutorialState,
+        normalizeTutorialState,
         createInitialState,
         ensure,
         replace,
@@ -908,6 +1092,9 @@
         setSelection,
         clearSelection,
         patchView,
+        patchTutorial,
+        markTutorialCityIntroSeen,
+        isTutorialCityIntroSeen,
         normalizeVeteranItemKey,
         getVeterans,
         addVeteran,

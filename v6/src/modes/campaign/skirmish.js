@@ -96,6 +96,7 @@
 
             // 배치 클릭 이벤트 바인딩
             this._bindPlacementClick(game);
+            this._pushTutorialGuideMessage(game, true);
 
             // Stage 1 pre-battle ambience + background music.
             this._startStageAudio();
@@ -140,6 +141,103 @@
         _canBypassSpawnBlock(unitId) {
             const key = String(unitId || '').trim();
             return !!(key && this._deployBypassUnits && this._deployBypassUnits.has(key));
+        },
+
+        _getTutorialSkirmishState(game) {
+            if (!game || typeof game !== 'object') return null;
+            const tutorial = game._cityTutorialSkirmish;
+            if (!tutorial || typeof tutorial !== 'object') return null;
+            if (tutorial.active !== true) return null;
+            return tutorial;
+        },
+
+        _emitTutorialEvent(game, eventType, payload = {}) {
+            if (typeof CitySimTutorialIntro === 'undefined' || !CitySimTutorialIntro) return;
+            if (typeof CitySimTutorialIntro.onSkirmishEvent !== 'function') return;
+            try {
+                CitySimTutorialIntro.onSkirmishEvent(game, eventType, payload);
+            } catch (_) { }
+        },
+
+        _getTutorialPlacementRequirements(game) {
+            const tutorial = this._getTutorialSkirmishState(game);
+            if (!tutorial) {
+                return {
+                    tutorial: null,
+                    infantryRequired: 0,
+                    infantryPlaced: 0,
+                    veteranRequired: 0,
+                    veteranPlaced: 0
+                };
+            }
+            const infantryRequired = Math.max(0, Math.floor(Number(tutorial.infantryRequired) || 0));
+            const infantryPlaced = Math.max(0, Math.floor(Number(tutorial.infantryPlaced) || 0));
+            const veteranRequired = Math.max(0, Math.floor(Number(tutorial.veteranRequired) || 0));
+            const veteranPlaced = Math.max(0, Math.floor(Number(tutorial.veteranPlaced) || 0));
+            return {
+                tutorial,
+                infantryRequired,
+                infantryPlaced,
+                veteranRequired,
+                veteranPlaced
+            };
+        },
+
+        _pushTutorialGuideMessage(game, force = false) {
+            const requirements = this._getTutorialPlacementRequirements(game);
+            const tutorial = requirements.tutorial;
+            if (!tutorial) return;
+            const infantryRequired = requirements.infantryRequired;
+            const infantryPlaced = requirements.infantryPlaced;
+            const veteranRequired = requirements.veteranRequired;
+            const veteranPlaced = requirements.veteranPlaced;
+
+            let phase = 'ready';
+            let message = '튜토리얼: [전투 시작]을 눌러 작전을 개시하세요.';
+            if (infantryRequired > 0 && infantryPlaced < infantryRequired) {
+                phase = 'infantry';
+                message = `튜토리얼: 무료 보병 ${infantryRequired}기를 먼저 배치하세요. (${infantryPlaced}/${infantryRequired})`;
+            } else if (veteranRequired > 0 && veteranPlaced < veteranRequired) {
+                phase = 'veteran';
+                message = `튜토리얼: 별 표시(베테랑 탭)에서 드론병을 배치하세요. (${veteranPlaced}/${veteranRequired})`;
+            }
+
+            if (!force && tutorial._lastGuidePhase === phase) return;
+            tutorial._lastGuidePhase = phase;
+            if (typeof ChatPanel !== 'undefined' && ChatPanel && typeof ChatPanel.push === 'function') {
+                ChatPanel.push(message, 'INFO');
+            }
+        },
+
+        _updateTutorialPlacementProgress(game, unitId, source) {
+            const tutorial = this._getTutorialSkirmishState(game);
+            if (!tutorial) return;
+
+            const unitKey = String(unitId || '').trim();
+            const sourceKey = String(source || '').trim();
+            let updated = false;
+
+            if (unitKey === 'infantry' && sourceKey !== 'veteran') {
+                tutorial.infantryPlaced = Math.max(0, Math.floor(Number(tutorial.infantryPlaced) || 0)) + 1;
+                updated = true;
+            }
+            if (sourceKey === 'veteran') {
+                tutorial.veteranPlaced = Math.max(0, Math.floor(Number(tutorial.veteranPlaced) || 0)) + 1;
+                updated = true;
+            }
+            if (!updated) return;
+
+            const requirements = this._getTutorialPlacementRequirements(game);
+
+            this._emitTutorialEvent(game, 'placed', {
+                unitId: unitKey,
+                source: sourceKey,
+                infantryPlaced: Math.max(0, Math.floor(Number(tutorial.infantryPlaced) || 0)),
+                infantryRequired: requirements.infantryRequired,
+                veteranPlaced: Math.max(0, Math.floor(Number(tutorial.veteranPlaced) || 0)),
+                veteranRequired: requirements.veteranRequired
+            });
+            this._pushTutorialGuideMessage(game, true);
         },
 
         _calcAuxVolume(multiplier = 1) {
@@ -474,12 +572,14 @@
             if (!game || typeof game.getVeteranSpawnEntries !== 'function') return;
             const entries = game.getVeteranSpawnEntries();
             if (!Array.isArray(entries) || entries.length <= 0) return;
+            const tutorialOnlyUnitId = String(this.stageData?.tutorialVeteranOnlyUnitId || '').trim();
 
             entries.forEach((entry) => {
                 const veteranId = String(entry?.id || '').trim();
                 const unitId = String(entry?.unitKey || '').trim();
                 const count = Math.max(0, Math.floor(Number(entry?.stock) || 0));
                 if (!veteranId || !unitId || count <= 0) return;
+                if (tutorialOnlyUnitId && unitId !== tutorialOnlyUnitId) return;
                 const unitCfg = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.units)
                     ? CONFIG.units[unitId]
                     : null;
@@ -890,6 +990,14 @@
 
         selectUnitFromBar(game, unitId, veteranId = '') {
             if (this.phase !== 'placement') return false;
+            const tutorial = this._getTutorialSkirmishState(game);
+            const tutorialOnlyUnitId = String(this.stageData?.tutorialVeteranOnlyUnitId || '').trim();
+            if (tutorial && tutorialOnlyUnitId && String(unitId || '').trim() !== tutorialOnlyUnitId) {
+                if (typeof ChatPanel !== 'undefined') {
+                    ChatPanel.push('튜토리얼: 지금은 드론병 베테랑만 선택할 수 있습니다.', 'WARN');
+                }
+                return true;
+            }
             const item = this._pickBudgetItemByUnitId(unitId, veteranId);
             if (!item) {
                 if (typeof ChatPanel !== 'undefined') {
@@ -1155,6 +1263,7 @@
                         }
                     }
 
+                    this._updateTutorialPlacementProgress(game, unitId, source);
                     this._syncUnitBarStock(game);
                     this._renderPalette();
                     this._updateReadyButtonState();
@@ -1208,10 +1317,51 @@
             // Require at least one unit placed
             const totalPlaced = this._getTotalPlacedCount();
             if (totalPlaced === 0) {
+                const tutorialReq = this._getTutorialPlacementRequirements(game);
                 if (typeof ChatPanel !== 'undefined') {
-                    ChatPanel.push('최소 1기 이상 유닛을 배치하세요.', 'WARN');
+                    if (tutorialReq.tutorial && tutorialReq.veteranRequired > 0) {
+                        ChatPanel.push('튜토리얼: 별 표시(베테랑 탭)에서 드론병을 먼저 배치하세요.', 'WARN');
+                    } else {
+                        ChatPanel.push('최소 1기 이상 유닛을 배치하세요.', 'WARN');
+                    }
                 }
                 return;
+            }
+
+            const tutorial = this._getTutorialSkirmishState(game);
+            if (tutorial) {
+                const requirements = this._getTutorialPlacementRequirements(game);
+                const infantryRequired = requirements.infantryRequired;
+                const infantryPlaced = requirements.infantryPlaced;
+                if (infantryRequired > 0 && infantryPlaced < infantryRequired) {
+                    if (typeof ChatPanel !== 'undefined' && ChatPanel && typeof ChatPanel.push === 'function') {
+                        ChatPanel.push(`튜토리얼: 무료 보병을 ${infantryRequired}기 배치해야 합니다. (${infantryPlaced}/${infantryRequired})`, 'WARN');
+                    }
+                    this._emitTutorialEvent(game, 'ready_blocked_infantry', {
+                        infantryPlaced,
+                        infantryRequired
+                    });
+                    this._pushTutorialGuideMessage(game, true);
+                    return;
+                }
+                const veteranRequired = requirements.veteranRequired;
+                const veteranPlaced = requirements.veteranPlaced;
+                if (veteranRequired > 0 && veteranPlaced < veteranRequired) {
+                    if (typeof ChatPanel !== 'undefined' && ChatPanel && typeof ChatPanel.push === 'function') {
+                        ChatPanel.push(`튜토리얼: 별 표시(베테랑 탭)에서 드론병을 ${veteranRequired}기 배치해야 합니다. (${veteranPlaced}/${veteranRequired})`, 'WARN');
+                    }
+                    this._emitTutorialEvent(game, 'ready_blocked_veteran', {
+                        veteranPlaced,
+                        veteranRequired
+                    });
+                    this._pushTutorialGuideMessage(game, true);
+                    return;
+                }
+                tutorial.readyPressed = true;
+                this._emitTutorialEvent(game, 'ready_allowed', {
+                    infantryPlaced,
+                    veteranPlaced
+                });
             }
 
             this._unbindPlacementClick();
@@ -1270,6 +1420,14 @@
             if (!this.isActive || this.phase === 'battle') return;
             this._clearCountdownTimers();
             this.phase = 'battle';
+            const tutorial = this._getTutorialSkirmishState(game);
+            if (tutorial) {
+                tutorial.battleStarted = true;
+                this._emitTutorialEvent(game, 'battle_started', {
+                    infantryPlaced: Math.max(0, Math.floor(Number(tutorial.infantryPlaced) || 0)),
+                    veteranPlaced: Math.max(0, Math.floor(Number(tutorial.veteranPlaced) || 0))
+                });
+            }
             this._applyPredeployHudPolicy(false);
             const overlay = document.getElementById('skirmish-countdown');
             if (overlay) overlay.classList.add('hidden');
@@ -1310,6 +1468,12 @@
 
             const overlay = document.getElementById('skirmish-countdown');
             if (overlay) overlay.classList.add('hidden');
+
+            const tutorial = this._getTutorialSkirmishState(this._game);
+            if (tutorial) {
+                tutorial.active = false;
+                this._emitTutorialEvent(this._game, 'cleanup', {});
+            }
 
             if (this._stockBackup && this._game) {
                 this._game.playerStock = { ...this._stockBackup };

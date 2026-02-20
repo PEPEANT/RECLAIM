@@ -741,11 +741,6 @@
 
         playCityBgm();
 
-        // [브리핑] city-sim 최초 진입 시 우측 하단에 작전설명 캐릭터 표시
-        if (typeof BriefingAnimation !== 'undefined' && BriefingAnimation.shouldPlay()) {
-            BriefingAnimation.play();
-        }
-
         if (typeof game.renderCityScreen === 'function') game.renderCityScreen();
         if (typeof CitySimDrillgroundBubbles !== 'undefined'
             && CitySimDrillgroundBubbles
@@ -776,6 +771,12 @@
                     console.warn('[CitySimIndex] syncIncomingGifts on enter failed:', err);
                 });
         }
+
+        if (typeof CitySimTutorialIntro !== 'undefined'
+            && CitySimTutorialIntro
+            && typeof CitySimTutorialIntro.startOnEnter === 'function') {
+            CitySimTutorialIntro.startOnEnter(game);
+        }
     }
 
     function leave(game) {
@@ -794,6 +795,11 @@
         }
         CitySimState.setMissionOpen(game, false);
         closeCityEvent0216Popup();
+        if (typeof CitySimTutorialIntro !== 'undefined'
+            && CitySimTutorialIntro
+            && typeof CitySimTutorialIntro.onLeave === 'function') {
+            CitySimTutorialIntro.onLeave();
+        }
 
         document.getElementById('city-screen')?.classList.add('hidden');
 
@@ -994,6 +1000,12 @@
             if (typeof game.renderCityInventoryPanel === 'function') game.renderCityInventoryPanel();
         }
         if (typeof game.renderCityContextBar === 'function') game.renderCityContextBar();
+        const tutorialApi = (global.CitySimTutorialIntro && typeof global.CitySimTutorialIntro === 'object')
+            ? global.CitySimTutorialIntro
+            : null;
+        if (tutorialApi && typeof tutorialApi.refreshUi === 'function') {
+            tutorialApi.refreshUi(game);
+        }
 
         renderMissionPanel(game);
         applyViewTransform(game);
@@ -1044,6 +1056,13 @@
 
     function launchBattle(game) {
         if (!game) return;
+        const tutorialApi = (global.CitySimTutorialIntro && typeof global.CitySimTutorialIntro === 'object')
+            ? global.CitySimTutorialIntro
+            : null;
+        if (tutorialApi && typeof tutorialApi.handleBattleLaunch === 'function') {
+            const consumed = tutorialApi.handleBattleLaunch(game);
+            if (consumed === true) return;
+        }
         if (typeof game.openCampaignMap === 'function') game.openCampaignMap();
         else if (typeof game.openDifficultySelect === 'function') game.openDifficultySelect();
     }

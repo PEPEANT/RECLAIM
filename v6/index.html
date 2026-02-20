@@ -44,7 +44,8 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=20260216s15">
+    <link rel="stylesheet" href="style.css?v=20260220s23">
+    <link rel="stylesheet" href="src/modes/city-sim/tutorial/tutorial.css?v=20260220tc1">
     <link rel="stylesheet" href="src/styles/campaign.css">
     <link rel="stylesheet" href="src/styles/city-shop.css">
     <link rel="stylesheet" href="src/styles/skirmish.css?v=20260216sc2">
@@ -631,7 +632,7 @@
 
                 <div class="city-top-right">
                     <button type="button" id="city-briefing-btn" class="city-briefing-btn"
-                        onclick="if(typeof BriefingAnimation!=='undefined') BriefingAnimation.play({force:true})">▶ 튜토리얼</button>
+                        onclick="if(typeof CitySimTutorialIntro!=='undefined' && typeof game!=='undefined') CitySimTutorialIntro.open(game,{force:true})">▶ 튜토리얼</button>
                     <div class="city-res-chip">
                         <div class="city-res-row">
                             <img src="png/money.png" alt="자금">
@@ -1169,7 +1170,7 @@
     <div id="cinematic-modal" class="hidden fixed inset-0 z-[100] bg-black">
         <!-- Video Logo (plays first) -->
         <video id="cinematic-video" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[60%] max-h-[60%]" muted playsinline>
-            <source src="png/grok_video.mp4" type="video/mp4">
+            <source src="assets/tutorial/videos/grok_video.mp4" type="video/mp4">
         </video>
 
         <!-- Canvas Animation (plays after video) -->
@@ -1527,11 +1528,11 @@
     <script src="src/core/camera.js"></script>
     <script src="src/render/news/news_texts.js"></script>
     <script src="src/game/corpse.js"></script>
-    <script src="src/modes/city-sim/state.js?v=20260216st1"></script>
+    <script src="src/modes/city-sim/state.js?v=20260220st3"></script>
     <script src="src/modes/city-sim/quest-mission/constants.js?v=20260216q6"></script>
-    <script src="src/modes/city-sim/quest-mission/schema.js?v=20260216q8"></script>
-    <script src="src/modes/city-sim/quest-mission/engine.js?v=20260216q9"></script>
-    <script src="src/modes/city-sim/quest-mission/ui.js?v=20260214q8"></script>
+    <script src="src/modes/city-sim/quest-mission/schema.js?v=20260220q10"></script>
+    <script src="src/modes/city-sim/quest-mission/engine.js?v=20260220q10"></script>
+    <script src="src/modes/city-sim/quest-mission/ui.js?v=20260220q9"></script>
     <script src="src/modes/city-sim/quest-mission/index.js?v=20260214q5"></script>
     <script src="src/modes/city-sim/network.js"></script>
     <script src="src/modes/city-sim/chat.js"></script>
@@ -1552,21 +1553,23 @@
     <script src="src/modes/city-sim/drillground-bubbles/runtime.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/drillground-bubbles/render.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/drillground-bubbles/index.js?v=20260219b2"></script>
-    <script src="src/modes/city-sim/construction.js?v=20260216cs3"></script>
+    <script src="src/modes/city-sim/construction.js?v=20260220cs8"></script>
     <script src="src/modes/city-sim/construction/validation.js?v=20260214cs1"></script>
     <script src="src/modes/city-sim/construction/progress.js"></script>
     <script src="src/modes/city-sim/construction/render.js?v=20260216cs4"></script>
     <script src="src/modes/city-sim/construction/placement.js?v=20260216cs5"></script>
     <script src="src/modes/city-sim/barracks.js"></script>
     <script src="src/modes/city-sim/unit-upgrade.js"></script>
-    <script src="src/modes/city-sim/gacha.js"></script>
+    <script src="src/modes/city-sim/gacha.js?v=20260220ga1"></script>
     <script src="src/modes/city-sim/stocks.js"></script>
-    <script src="src/modes/city-sim/save.js?v=20260216sv2"></script>
-    <script src="src/modes/city-sim/index.js?v=20260216i3"></script>
-    <script src="src/modes/city-sim/animated/index.js"></script>
+    <script src="src/modes/city-sim/save.js?v=20260220sv4"></script>
+    <script src="src/modes/city-sim/tutorial/progress.js?v=20260220tp1"></script>
+    <script src="src/modes/city-sim/tutorial/intro.js?v=20260220t27"></script>
+    <script src="src/modes/city-sim/items.js?v=20260220it2"></script>
+    <script src="src/modes/city-sim/index.js?v=20260220i5"></script>
     <script src="src/data/campaign-occupation-stages.js"></script>
     <script src="src/data/campaign-skirmish-stages.js"></script>
-    <script src="game.js?v=20260216g11"></script>
+    <script src="game.js?v=20260220g12"></script>
     <script src="src/game/runtime_loop.js"></script>
     <script src="src/game/app_persistence.js?v=20260216ap4"></script>
     <script src="src/game/app_runtime.js"></script>
@@ -1575,7 +1578,7 @@
     <script src="src/game/input.js"></script>
     <script src="src/game/camera_controls.js"></script>
     <script src="src/game/victory.js?v=20260216v2"></script>
-    <script src="src/modes/campaign/skirmish.js?v=20260216sk7"></script>
+    <script src="src/modes/campaign/skirmish.js?v=20260220sk8"></script>
     <script src="src/game/map_setup.js"></script>
     <script src="src/game/news.js"></script>
     <!-- Patch Modules (load order fixed) -->
@@ -1808,3 +1811,4 @@
 </body>
 
 </html>
+
