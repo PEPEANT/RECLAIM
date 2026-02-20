@@ -51,8 +51,15 @@ const LobbyBackground = {
         if (!this.canvas) return;
 
         const parent = this.canvas.parentElement;
-        this.width = Math.max(1, parent ? parent.clientWidth : window.innerWidth);
-        this.height = Math.max(1, parent ? parent.clientHeight : window.innerHeight);
+        const viewport = (typeof window !== 'undefined' && window.visualViewport) ? window.visualViewport : null;
+        const fallbackWidth = Math.max(1, Math.round((viewport && Number.isFinite(viewport.width) ? viewport.width : window.innerWidth) || 1));
+        const fallbackHeight = Math.max(1, Math.round((viewport && Number.isFinite(viewport.height) ? viewport.height : window.innerHeight) || 1));
+        const parentWidth = parent ? Math.round(Number(parent.clientWidth) || 0) : 0;
+        const parentHeight = parent ? Math.round(Number(parent.clientHeight) || 0) : 0;
+
+        // Hidden lobby screens can report 0x0; keep canvas at viewport size instead of shrinking to 1x1.
+        this.width = Math.max(1, parentWidth > 0 ? parentWidth : fallbackWidth);
+        this.height = Math.max(1, parentHeight > 0 ? parentHeight : fallbackHeight);
         this.canvas.width = this.width;
         this.canvas.height = this.height;
 
@@ -173,6 +180,14 @@ const LobbyBackground = {
     },
 
     start() {
+        if (!this.canvas || !this.ctx) {
+            this.init();
+        }
+        if (!this.canvas || !this.ctx) return;
+
+        // Ensure full-size canvas after returning from hidden states (city/map screens).
+        this.resize();
+
         if (this.loopId) return;
 
         this.frame = 0;

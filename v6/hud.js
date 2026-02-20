@@ -635,9 +635,9 @@ const HUD = {
             ? game.getSelectedIcbmLaunchers()
             : selectedUnits.filter(u => u && u.stats?.id === 'icbm');
 
-        const canIcbmTactical = skirmishBattle && this.isIcbmPayloadReady('tactical_missile');
-        const canIcbmEmp = skirmishBattle && this.isIcbmPayloadReady('emp');
-        const canIcbmNuke = skirmishBattle && this.isIcbmPayloadReady('nuke');
+        const canIcbmTactical = this.isIcbmPayloadReady('tactical_missile');
+        const canIcbmEmp = this.isIcbmPayloadReady('emp');
+        const canIcbmNuke = this.isIcbmPayloadReady('nuke');
 
         const cameraLocked = (typeof game.isCameraLocked === 'function') ? game.isCameraLocked() : false;
 
@@ -749,7 +749,7 @@ const HUD = {
             return null;
         };
 
-        if (ctx.skirmishBattle && ctx.hasSelectedIcbm) {
+        if (ctx.hasSelectedIcbm) {
             map.skill1 = pick(['icbm_tactical', 'icbm_emp', 'icbm_nuke']);
             map.skill2 = pick(['icbm_emp', 'icbm_nuke', 'icbm_tactical']);
             map.skill3 = pick(['icbm_nuke', 'icbm_tactical', 'icbm_emp']);
@@ -758,9 +758,9 @@ const HUD = {
         }
 
         if (ctx.hasOperatorSelection) {
-            map.skill1 = pick(['drone_suicide', 'drone_at']);
-            map.skill2 = pick(['drone_at', 'drone_suicide']);
-            map.skill3 = pick(['smoke', 'missile', 'recon', 'news']);
+            map.skill1 = pick(['drone_suicide']);
+            map.skill2 = pick(['smoke', 'missile', 'recon', 'news']);
+            map.skill3 = pick(['missile', 'recon', 'news', 'smoke']);
             map.interact = pick(['drop', 'eject', 'news', 'recon']);
             return map;
         }
@@ -792,20 +792,22 @@ const HUD = {
         }
 
         const meta = this.getMappedCommandMeta(mappedCmd);
-        const iconImageUrl = isSkillRole
-            ? ''
-            : (
+        const isIcbmCmd = mappedCmd === 'icbm_tactical' || mappedCmd === 'icbm_emp' || mappedCmd === 'icbm_nuke';
+        const useImageIcon = !isSkillRole || isIcbmCmd;
+        const iconImageUrl = useImageIcon
+            ? (
                 meta.iconImageKey
                     ? this.getIcbmPayloadCommandIcon(meta.iconImageKey)
                     : (meta.iconImageUnitKey ? this.getUnitCommandIcon(meta.iconImageUnitKey) : '')
-            );
-        const iconClass = isSkillRole ? 'fa-solid fa-bolt' : meta.icon;
+            )
+            : '';
+        const iconClass = (isSkillRole && !isIcbmCmd) ? 'fa-solid fa-bolt' : meta.icon;
         this.setHudCommandButtonVisual(
             btn,
             iconClass,
             this.getLangText(meta.key, meta.fallback),
             iconImageUrl,
-            isSkillRole ? '' : (meta.iconImageClass || '')
+            useImageIcon ? (meta.iconImageClass || '') : ''
         );
         this.setHudButtonEnabled(btn, this.isMappedCommandAvailable(mappedCmd, ctx));
 

@@ -347,6 +347,8 @@
                         <button onclick="game.setCategory('air')" id="tab-air"
                             class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_air">AIR</button>
                     </div>
+                    <button id="unit-veteran-toggle" type="button" class="veteran-toggle-btn"
+                        aria-label="베테랑 생산 보기" aria-pressed="false" title="베테랑 생산 보기">★</button>
 
                     <div id="unit-list-wrapper" class="relative">
                         <div id="unit-list-container"
@@ -718,6 +720,8 @@
             <section id="city-inventory-panel" class="city-build-panel city-inventory-drawer">
                 <div id="city-inventory-panel-shell"
                     class="relative flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <button type="button" id="city-inventory-veteran-toggle" class="city-inventory-veteran-toggle"
+                        aria-label="베테랑 보관함 보기" aria-pressed="false" title="베테랑 보관함 보기">★</button>
                     <button type="button" class="city-build-close-mini" onclick="game.openCityInventory(false)"
                         aria-label="보관함 패널 닫기">✕</button>
                     <div id="city-inventory-title" class="city-inventory-title">보관함</div>

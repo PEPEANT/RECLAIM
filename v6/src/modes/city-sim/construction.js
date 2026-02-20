@@ -312,9 +312,10 @@
         { id: 'armored', label: '기갑' },
         { id: 'air', label: '공군' },
         { id: 'special', label: '특수' },
-        { id: 'veteran', label: '베테랑' },
         { id: 'supply', label: '보급품' }
     ];
+    let inventoryVeteranMode = false;
+    let inventoryVeteranToggleBound = false;
 
     const SUPPLY_INVENTORY_ITEMS = [
         {
@@ -336,7 +337,7 @@
     const VETERAN_ITEM_DEFS = {
         drone_module: {
             id: 'drone_module',
-            name: '드론 모듈',
+            name: '드론모듈',
             asset: 'png/box.png',
             desc: '드론병 전용 · 드론 최대 발진 수 3기'
         }
@@ -969,17 +970,59 @@
         renderBuildSelection(game);
     }
 
+    function getInventoryTabsForActiveMode() {
+        if (inventoryVeteranMode !== true) return INVENTORY_TABS.slice();
+        return INVENTORY_TABS.filter((tab) => tab.id !== 'supply');
+    }
+
+    function getInventoryTabLabel(tabId) {
+        const target = String(tabId || '').trim();
+        const found = INVENTORY_TABS.find((tab) => tab.id === target);
+        return found ? found.label : '보병';
+    }
+
+    function syncInventoryVeteranToggleButton(game) {
+        const btn = document.getElementById('city-inventory-veteran-toggle');
+        if (!btn) return;
+
+        if (!inventoryVeteranToggleBound) {
+            btn.addEventListener('click', (event) => {
+                if (event && typeof event.preventDefault === 'function') event.preventDefault();
+                if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+                inventoryVeteranMode = inventoryVeteranMode !== true;
+                const runtimeGame = (typeof global !== 'undefined' && global && global.game)
+                    ? global.game
+                    : game;
+                if (!runtimeGame) return;
+                renderInventoryPanel(runtimeGame);
+            });
+            inventoryVeteranToggleBound = true;
+        }
+
+        btn.classList.toggle('is-open', inventoryVeteranMode === true);
+        btn.setAttribute('aria-pressed', inventoryVeteranMode === true ? 'true' : 'false');
+        const label = inventoryVeteranMode === true
+            ? '일반 보관함 보기'
+            : '베테랑 보관함 보기';
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
+    }
+
     function setInventoryTab(game, tab) {
         if (!tab) return;
-        const nextTab = INVENTORY_TABS.find((item) => item.id === tab)?.id || INVENTORY_TABS[0].id;
+        const tabs = getInventoryTabsForActiveMode();
+        const nextTab = tabs.find((item) => item.id === tab)?.id
+            || tabs[0]?.id
+            || INVENTORY_TABS[0].id;
         CitySimState.setInventoryTab(game, nextTab);
         renderInventoryPanel(game);
     }
 
     function normalizeInventoryTab(game, state) {
+        const tabs = getInventoryTabsForActiveMode();
         const current = String(state?.inventoryTab || '').trim();
-        if (INVENTORY_TABS.some((tab) => tab.id === current)) return current;
-        const fallback = INVENTORY_TABS[0].id;
+        if (tabs.some((tab) => tab.id === current)) return current;
+        const fallback = tabs[0]?.id || INVENTORY_TABS[0].id;
         CitySimState.setInventoryTab(game, fallback);
         return fallback;
     }
@@ -4467,9 +4510,9 @@
     function equipVeteranItem(game, veteranId, itemKey) {
         const targetId = String(veteranId || '').trim();
         const nextItemKey = normalizeVeteranItemKey(itemKey);
-        if (!targetId || !nextItemKey) return { ok: false, reason: '장착 아이템 정보가 올바르지 않습니다.' };
+        if (!targetId || !nextItemKey) return { ok: false, reason: '적용 아이템 정보가 올바르지 않습니다.' };
 
-        let result = { ok: false, reason: '장착에 실패했습니다.' };
+        let result = { ok: false, reason: '적용에 실패했습니다.' };
         CitySimState.mutate(game, (draft) => {
             if (!Array.isArray(draft.veterans) || draft.veterans.length <= 0) {
                 result = { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
@@ -4488,7 +4531,7 @@
                 return;
             }
             if (!isVeteranItemCompatible(nextItemKey, unitKey)) {
-                result = { ok: false, reason: '이 유닛은 해당 아이템을 장착할 수 없습니다.' };
+                result = { ok: false, reason: '이 유닛은 해당 아이템을 적용할 수 없습니다.' };
                 return;
             }
 
@@ -5378,6 +5421,14 @@
         news: { langKey: 'cmd_news', fallback: '방송송출', iconClass: 'fa-solid fa-tower-broadcast' },
         drop: { langKey: 'cmd_drop', fallback: '하차', iconClass: 'fa-solid fa-arrow-down' }
     };
+    const VETERAN_RANDOM_NAME_POOL_INFANTRY = [
+        '호크', '고스트', '레이븐', '스톰', '아이언', '리퍼', '섀도우', '델타', '에코', '텐드라', '몬순',
+        '버스터', '헤머', '앤빌', '팔콘', '울프', '폭스', '베어', '이글', '크로우', '불독', '코브라'
+    ];
+    const VETERAN_RANDOM_NAME_POOL_HEAVY = [
+        '썬더', '라이트닝', '나이트폭스', '블레이드', '바이퍼', '타이탄', '메탈', '스틸', '블리츠', '사이클론',
+        '템페스트', '타이푼', '블리자드', '스트라이커', '워든', '센티널', '팬서', '타이거', '재규어', '라이온'
+    ];
 
     function getLocalizedText(langKey, fallback) {
         if (typeof Lang !== 'undefined' && Lang && typeof Lang.getText === 'function') {
@@ -5404,7 +5455,6 @@
 
         if (unitDef?.operator === true || key === 'drone_operator') {
             push('drone_suicide');
-            push('drone_at');
         }
         if (key === 'special_forces') {
             push('smoke');
@@ -5444,6 +5494,57 @@
             });
         }
         return slots;
+    }
+
+    function normalizeVeteranNameToken(value) {
+        return String(value || '').trim().toLowerCase();
+    }
+
+    function getVeteranRandomNamePool(unitKey, unitDef) {
+        const category = getUnitCategoryForInventoryTab(unitKey, unitDef);
+        if (category === 'armored' || category === 'air') return VETERAN_RANDOM_NAME_POOL_HEAVY;
+        return VETERAN_RANDOM_NAME_POOL_INFANTRY;
+    }
+
+    function getUsedVeteranNameSet(game, excludeVeteranId = '') {
+        const excludedId = String(excludeVeteranId || '').trim();
+        const used = new Set();
+        getVeteranEntries(game).forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            if (excludedId && String(entry.id || '').trim() === excludedId) return;
+            const name = normalizeVeteranNameToken(entry.name);
+            if (!name) return;
+            used.add(name);
+        });
+        return used;
+    }
+
+    function makeUniqueVeteranName(game, baseName, excludeVeteranId = '') {
+        const base = String(baseName || '').trim().slice(0, 24);
+        if (!base) return '';
+
+        const used = getUsedVeteranNameSet(game, excludeVeteranId);
+        const baseToken = normalizeVeteranNameToken(base);
+        if (!used.has(baseToken)) return base;
+
+        for (let seq = 2; seq <= 999; seq++) {
+            const suffix = seq <= 99 ? String(seq).padStart(2, '0') : String(seq);
+            const maxBaseLen = Math.max(1, 24 - suffix.length);
+            const candidate = `${base.slice(0, maxBaseLen)}${suffix}`;
+            if (!used.has(normalizeVeteranNameToken(candidate))) {
+                return candidate;
+            }
+        }
+        return base;
+    }
+
+    function pickRandomVeteranName(game, unitKey, unitDef, excludeVeteranId = '') {
+        const pool = getVeteranRandomNamePool(unitKey, unitDef);
+        if (!Array.isArray(pool) || pool.length <= 0) return '';
+        const index = Math.max(0, Math.floor(Math.random() * pool.length));
+        const picked = String(pool[index] || '').trim();
+        if (!picked) return '';
+        return makeUniqueVeteranName(game, picked, excludeVeteranId);
     }
 
     function getUnitPreviewGunType(unitKey) {
@@ -5501,7 +5602,6 @@
         const baseDisplayName = getInventoryDisplayName(unitKey, unit);
         const displayName = isVeteranProfile ? (veteranName || baseDisplayName) : baseDisplayName;
         const equippedItemKey = isVeteranProfile ? getVeteranLoadoutItemKey(veteranEntry) : '';
-        const equippedItemDef = equippedItemKey ? getVeteranItemDef(equippedItemKey) : null;
         const compatibleItemDefs = isVeteranProfile
             ? VETERAN_ITEM_ORDER
                 .map((key) => getVeteranItemDef(key))
@@ -5528,27 +5628,26 @@
             : (fixedCount != null
                 ? `${formatNumber(ownedCount)}기 배치`
                 : `보유 ${formatNumber(ownedCount)}기`);
-        const veteranEditHtml = isVeteranProfile
+        const veteranNameHeaderHtml = isVeteranProfile
             ? (
-                `<div class="city-veteran-inline-wrap">` +
-                `<label class="city-veteran-inline-name-label" for="city-veteran-inline-name-input">이름</label>` +
-                `<div class="city-veteran-inline-name-row">` +
+                `<div class="city-unit-profile-name-row">` +
+                `<div class="city-unit-profile-name">${escapeHtml(displayName)}</div>` +
+                `<div class="city-veteran-inline-name-row city-veteran-inline-name-row-compact">` +
                 `<input id="city-veteran-inline-name-input" class="city-veteran-inline-name-input" type="text" maxlength="24" ` +
                 `value="${escapeHtml(veteranName)}" placeholder="${escapeHtml(baseDisplayName)}" autocomplete="off">` +
+                `<div class="city-veteran-inline-btn-row">` +
                 `<button type="button" class="city-veteran-inline-btn is-primary" data-city-veteran-inline-save>저장</button>` +
-                `<button type="button" class="city-veteran-inline-btn is-default" data-city-veteran-inline-default>기본명</button>` +
+                `<button type="button" class="city-veteran-inline-btn is-default" data-city-veteran-inline-default>기본</button>` +
+                `<button type="button" class="city-veteran-inline-btn is-default" data-city-veteran-inline-random>랜덤</button>` +
                 `</div>` +
-                `<div class="city-veteran-inline-name-help">최대 24자</div>` +
                 `</div>` +
+                `</div>`
+            )
+            : `<div class="city-unit-profile-name">${escapeHtml(displayName)}</div>`;
+        const veteranItemHtml = isVeteranProfile
+            ? (
                 `<div class="city-veteran-item-wrap">` +
-                `<div class="city-veteran-item-head">장착 슬롯</div>` +
-                `<div class="city-veteran-item-slot${equippedItemDef ? ' is-equipped' : ''}">` +
-                `<div class="city-veteran-item-slot-name">${escapeHtml(equippedItemDef ? equippedItemDef.name : 'ㅁ')}</div>` +
-                `<div class="city-veteran-item-slot-desc">${escapeHtml(equippedItemDef ? equippedItemDef.desc : '아이템 미장착')}</div>` +
-                `</div>` +
-                `<div class="city-veteran-item-actions">` +
-                `<button type="button" class="city-veteran-inline-btn is-default" data-city-veteran-item-unequip${equippedItemDef ? '' : ' disabled'}>해제</button>` +
-                `</div>` +
+                `<div class="city-veteran-item-head">아이템 보관함</div>` +
                 `<div class="city-veteran-item-list">` +
                 (
                     compatibleItemDefs.length > 0
@@ -5556,9 +5655,7 @@
                             const count = getVeteranItemCount(game, itemDef.id);
                             const isCurrent = equippedItemKey === itemDef.id;
                             const canEquip = isCurrent || count > 0;
-                            const badge = isCurrent
-                                ? '장착중'
-                                : `보유 ${formatNumber(count)}`;
+                            const badge = `${formatNumber(count)}`;
                             return (
                                 `<button type="button" class="city-veteran-item-btn${isCurrent ? ' is-current' : ''}" ` +
                                 `data-city-veteran-item-equip="${escapeHtml(itemDef.id)}"${canEquip ? '' : ' disabled'}>` +
@@ -5567,7 +5664,7 @@
                                 `</button>`
                             );
                         }).join('')
-                        : `<div class="city-veteran-item-empty">장착 가능한 아이템이 없습니다.</div>`
+                        : `<div class="city-veteran-item-empty">등록된 아이템이 없습니다.</div>`
                 ) +
                 `</div>` +
                 `</div>`
@@ -5587,6 +5684,31 @@
             )).join('') +
             `</div>` +
             `</div>`;
+        const summaryMetaHtml = isVeteranProfile
+            ? ''
+            : (
+                `<div class="city-unit-profile-role">${escapeHtml(role)}</div>` +
+                `<p class="city-unit-profile-desc">${escapeHtml(displayDesc)}</p>`
+            );
+        const infoPanelHtml =
+            `<div class="city-unit-profile-info-title">정보</div>` +
+            `<div class="city-unit-profile-stats">` +
+            `<div class="city-unit-profile-stat"><span>총기</span><strong>${escapeHtml(getUnitWeaponLabel(unitKey, unit))}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>공격력</span><strong>${escapeHtml(getUnitAttackLabel(unit))}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>방어력</span><strong>${escapeHtml(getUnitDefenseLabel(unit))}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>사거리</span><strong>${formatNumber(unit.range || 0)}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>공격 간격</span><strong>${escapeHtml(getUnitFireRateLabel(unit))}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>이동 속도</span><strong>${Number(unit.speed || 0).toFixed(2)}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>분류</span><strong>${escapeHtml(getUnitTypeLabel(unit))}</strong></div>` +
+            `<div class="city-unit-profile-stat"><span>보급 비용</span><strong>${formatNumber(unit.cost || 0)}</strong></div>` +
+            `</div>`;
+        const rightInfoGroupHtml = isVeteranProfile
+            ? ''
+            : (
+                `<div class="city-unit-profile-info-group">` +
+                infoPanelHtml +
+                `</div>`
+            );
 
         const bodyHtml =
             `<div class="city-unit-profile-shell">` +
@@ -5599,12 +5721,8 @@
             `<div class="city-unit-profile-badge">${escapeHtml(leftBadge)}</div>` +
             `<button type="button" class="city-unit-profile-shot-btn" data-city-unit-preview-shot>사격음 재생</button>` +
             `<div class="city-unit-profile-summary">` +
-            `<div class="city-unit-profile-name">${escapeHtml(displayName)}</div>` +
-            (isVeteranProfile
-                ? `<div class="city-unit-profile-veteran-name">기본명: ${escapeHtml(baseDisplayName)}</div>`
-                : '') +
-            `<div class="city-unit-profile-role">${escapeHtml(role)}</div>` +
-            `<p class="city-unit-profile-desc">${escapeHtml(displayDesc)}</p>` +
+            veteranNameHeaderHtml +
+            summaryMetaHtml +
             `</div>` +
             `</div>` +
             `</div>` +
@@ -5612,20 +5730,8 @@
             `<div class="city-unit-profile-skill-group">` +
             skillTreeHtml +
             `</div>` +
-            `<div class="city-unit-profile-info-group">` +
-            `<div class="city-unit-profile-info-title">정보</div>` +
-            `<div class="city-unit-profile-stats">` +
-            `<div class="city-unit-profile-stat"><span>총기</span><strong>${escapeHtml(getUnitWeaponLabel(unitKey, unit))}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>공격력</span><strong>${escapeHtml(getUnitAttackLabel(unit))}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>방어력</span><strong>${escapeHtml(getUnitDefenseLabel(unit))}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>사거리</span><strong>${formatNumber(unit.range || 0)}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>공격 간격</span><strong>${escapeHtml(getUnitFireRateLabel(unit))}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>이동 속도</span><strong>${Number(unit.speed || 0).toFixed(2)}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>분류</span><strong>${escapeHtml(getUnitTypeLabel(unit))}</strong></div>` +
-            `<div class="city-unit-profile-stat"><span>보급 비용</span><strong>${formatNumber(unit.cost || 0)}</strong></div>` +
-            `</div>` +
-            `</div>` +
-            veteranEditHtml +
+            rightInfoGroupHtml +
+            veteranItemHtml +
             `</div>` +
             `</div>` +
             `</div>`;
@@ -5655,8 +5761,8 @@
         const nameInputEl = msgEl.querySelector('#city-veteran-inline-name-input');
         const nameSaveBtn = msgEl.querySelector('[data-city-veteran-inline-save]');
         const nameDefaultBtn = msgEl.querySelector('[data-city-veteran-inline-default]');
+        const nameRandomBtn = msgEl.querySelector('[data-city-veteran-inline-random]');
         const itemEquipBtns = Array.from(msgEl.querySelectorAll('[data-city-veteran-item-equip]'));
-        const itemUnequipBtn = msgEl.querySelector('[data-city-veteran-item-unequip]');
 
         const reopenVeteranProfile = () => {
             const latest = findVeteranEntryById(game, veteranId);
@@ -5673,7 +5779,12 @@
         const commitRename = (nextName) => {
             const value = String(nextName || '').trim().slice(0, 24);
             if (!value) {
-                showToast('이름을 입력하거나 기본명을 선택하세요.');
+                showToast('이름을 입력하거나 기본을 선택하세요.');
+                return;
+            }
+            const resolvedName = makeUniqueVeteranName(game, value, veteranId);
+            if (!resolvedName) {
+                showToast('이름을 입력하거나 기본을 선택하세요.');
                 return;
             }
             if (typeof CitySimState === 'undefined'
@@ -5682,13 +5793,16 @@
                 showToast('이름 변경 기능을 사용할 수 없습니다.');
                 return;
             }
-            const ok = CitySimState.renameVeteran(game, veteranId, value);
+            const ok = CitySimState.renameVeteran(game, veteranId, resolvedName);
             if (!ok) {
                 showToast('이름 변경에 실패했습니다.');
                 return;
             }
             syncVeteranStateUi(game);
-            showToast(`베테랑 이름이 "${value}"(으)로 변경되었습니다.`);
+            if (nameInputEl && nameInputEl.value !== resolvedName) {
+                nameInputEl.value = resolvedName;
+            }
+            showToast(`베테랑 이름이 "${resolvedName}"(으)로 변경되었습니다.`);
             reopenVeteranProfile();
         };
 
@@ -5697,6 +5811,17 @@
         }
         if (nameDefaultBtn) {
             nameDefaultBtn.addEventListener('click', () => commitRename(baseDisplayName));
+        }
+        if (nameRandomBtn) {
+            nameRandomBtn.addEventListener('click', () => {
+                const randomName = pickRandomVeteranName(game, unitKey, unit, veteranId);
+                if (!randomName) {
+                    showToast('랜덤 이름을 생성할 수 없습니다.');
+                    return;
+                }
+                if (nameInputEl) nameInputEl.value = randomName;
+                commitRename(randomName);
+            });
         }
         if (nameInputEl) {
             nameInputEl.addEventListener('keydown', (event) => {
@@ -5713,28 +5838,19 @@
                 if (!itemKey) return;
                 const result = equipVeteranItem(game, veteranId, itemKey);
                 if (!result.ok) {
-                    showToast(result.reason || '아이템 장착에 실패했습니다.');
+                    showToast(result.reason || '아이템 적용에 실패했습니다.');
+                    return;
+                }
+                if (result.noChange === true) {
+                    showToast('이미 스킬 트리에 적용중입니다.');
                     return;
                 }
                 syncVeteranStateUi(game);
                 const itemDef = getVeteranItemDef(itemKey);
-                showToast(`${itemDef ? itemDef.name : itemKey} 장착 완료`);
+                showToast(`${itemDef ? itemDef.name : itemKey} 스킬 트리에 적용됨`);
                 reopenVeteranProfile();
             });
         });
-
-        if (itemUnequipBtn) {
-            itemUnequipBtn.addEventListener('click', () => {
-                const result = unequipVeteranItem(game, veteranId);
-                if (!result.ok) {
-                    showToast(result.reason || '아이템 해제에 실패했습니다.');
-                    return;
-                }
-                syncVeteranStateUi(game);
-                showToast('아이템을 해제했습니다.');
-                reopenVeteranProfile();
-            });
-        }
     }
 
     function applyInventoryIconRenderTweaks(dummy) {
@@ -5924,13 +6040,19 @@
 
     function renderInventoryPanel(game) {
         const state = CitySimState.ensure(game);
+        syncInventoryVeteranToggleButton(game);
         const requestedTab = normalizeInventoryTab(game, state);
-        const tabSummaries = INVENTORY_TABS.map((tab) => {
+        const veteranModeActive = inventoryVeteranMode === true;
+        const availableTabs = getInventoryTabsForActiveMode();
+        const veteranEntries = veteranModeActive ? getVeteranInventoryEntries(game) : [];
+        const tabSummaries = availableTabs.map((tab) => {
             let entries = [];
-            if (tab.id === 'supply') {
+            if (veteranModeActive) {
+                entries = veteranEntries.filter((entry) => (
+                    getUnitCategoryForInventoryTab(entry.unitKey, entry.unit) === tab.id
+                ));
+            } else if (tab.id === 'supply') {
                 entries = getSupplyInventoryEntries(game);
-            } else if (tab.id === 'veteran') {
-                entries = getVeteranInventoryEntries(game);
             } else {
                 entries = getOwnedInventoryUnitDefsByTab(game, tab.id);
             }
@@ -5949,7 +6071,7 @@
         });
         let activeTab = requestedTab;
         if (!tabSummaries.some((tab) => tab.id === activeTab)) {
-            activeTab = INVENTORY_TABS[0]?.id || null;
+            activeTab = availableTabs[0]?.id || INVENTORY_TABS[0]?.id || null;
             if (activeTab && state.inventoryTab !== activeTab) {
                 CitySimState.setInventoryTab(game, activeTab);
             }
@@ -5957,7 +6079,7 @@
 
         const titleEl = document.getElementById('city-inventory-title');
         if (titleEl) {
-            titleEl.textContent = '보관함';
+            titleEl.textContent = veteranModeActive ? '보관함 · 베테랑' : '보관함';
         }
 
         const tabsEl = document.getElementById('city-inventory-tabs');
@@ -5998,16 +6120,19 @@
         if (entries.length === 0) {
             const empty = document.createElement('div');
             empty.className = 'city-inventory-empty-card';
-            empty.textContent = activeTab === 'supply'
-                ? '보관함에 보급품이 없습니다.'
-                : activeTab === 'veteran'
-                    ? '베테랑 유닛이 없습니다.'
-                : '표시할 유닛이 없습니다.';
+            if (veteranModeActive) {
+                const label = getInventoryTabLabel(activeTab);
+                empty.textContent = `${label} 베테랑 유닛이 없습니다.`;
+            } else if (activeTab === 'supply') {
+                empty.textContent = '보관함에 보급품이 없습니다.';
+            } else {
+                empty.textContent = '표시할 유닛이 없습니다.';
+            }
             listEl.appendChild(empty);
             return;
         }
 
-        if (activeTab === 'veteran') {
+        if (veteranModeActive) {
             entries.forEach((entry) => {
                 const card = document.createElement('button');
                 card.type = 'button';

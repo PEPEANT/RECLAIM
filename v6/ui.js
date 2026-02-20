@@ -15,9 +15,12 @@ const ui = {
     _optContext: 'general',
     _exitAction: 'quit',
     _veteranTabSignature: '',
+    _veteranMode: false,
+    _veteranToggleBound: false,
 
     init() {
         this.initUnitScroller();
+        this.bindVeteranToggle();
         this.bindOptionProfileActions();
         this.bindOptionFullscreenControl();
     },
@@ -86,6 +89,58 @@ const ui = {
 
         this._updateUnitScroller = update;
         update();
+    },
+
+    bindVeteranToggle() {
+        if (this._veteranToggleBound) {
+            this.updateVeteranToggleButton();
+            return;
+        }
+        const btn = document.getElementById('unit-veteran-toggle');
+        if (!btn) return;
+        btn.addEventListener('click', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.setVeteranMode(!this._veteranMode);
+        });
+        this._veteranToggleBound = true;
+        this.updateVeteranToggleButton();
+    },
+
+    setVeteranMode(enabled, options = {}) {
+        const next = enabled === true;
+        const prev = this._veteranMode === true;
+        this._veteranMode = next;
+        this.updateVeteranToggleButton();
+        if (prev === next && options.forceRefresh !== true) return;
+
+        this._veteranTabSignature = '';
+
+        if (typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') {
+            app.markUiDirty();
+            return;
+        }
+
+        const g = (typeof game !== 'undefined') ? game : null;
+        if (!g) return;
+        this.updateUnitButtons(
+            g.currentCategory,
+            g.playerStock || {},
+            g.cooldowns || {},
+            g.supply || 0,
+            g.spawnQueue || {}
+        );
+    },
+
+    updateVeteranToggleButton() {
+        const btn = document.getElementById('unit-veteran-toggle');
+        if (!btn) return;
+        const isOpen = this._veteranMode === true;
+        btn.classList.toggle('is-open', isOpen);
+        btn.setAttribute('aria-pressed', isOpen ? 'true' : 'false');
+        const label = isOpen ? '일반 생산 보기' : '베테랑 생산 보기';
+        btn.setAttribute('aria-label', label);
+        btn.title = label;
     },
 
     showToast(msg) {
@@ -481,15 +536,25 @@ const ui = {
             });
         }
 
+        const normalizedCategory = (cat === 'infantry' || cat === 'armored' || cat === 'air')
+            ? cat
+            : 'infantry';
         const veteranRows = this._buildVeteranRows(veteranEntries, safeCooldowns, safeSupply);
         const veteranTabActive = (cat === 'veteran');
-        if (veteranTabActive) {
+        const veteranModeActive = (this._veteranMode === true);
+        if (veteranModeActive || veteranTabActive) {
+            const rowsForRender = veteranModeActive
+                ? veteranRows.filter((row) => row.category === normalizedCategory)
+                : veteranRows;
             Object.keys(CONFIG.units).forEach((key) => {
                 const cache = this.elementCache[key];
                 if (!cache || !cache.btn) return;
                 if (cache.btn.style.display !== 'none') cache.btn.style.display = 'none';
             });
-            this._renderVeteranCategoryButtons(veteranRows);
+            this._renderVeteranCategoryButtons(rowsForRender, {
+                veteranMode: veteranModeActive,
+                category: veteranModeActive ? normalizedCategory : ''
+            });
             if (typeof this._updateUnitScroller === 'function') {
                 this._updateUnitScroller();
             }
@@ -619,9 +684,11 @@ const ui = {
             const cd = Math.max(0, Number(safeCooldowns[entry.unitKey]) || 0);
             const stock = Math.max(0, Math.floor(Number(entry.stock) || 0));
             const enabled = stock > 0 && cd <= 0 && safeSupply >= cost;
+            const category = this.getUnitCategoryForTab(entry.unitKey, unit);
             return {
                 id: String(entry.id || ''),
                 unitKey: String(entry.unitKey || ''),
+                category,
                 name: String(entry.displayName || unit?.name || entry.unitKey || ''),
                 level: Math.max(2, Math.floor(Number(entry.level) || 2)),
                 stock,
@@ -721,14 +788,16 @@ const ui = {
         return canvas;
     },
 
-    _renderVeteranCategoryButtons(rows) {
+    _renderVeteranCategoryButtons(rows, options = {}) {
         const container = document.getElementById('unit-list-container');
         if (!container) return;
 
         const safeRows = Array.isArray(rows) ? rows : [];
-        const signature = safeRows.map((row) => (
+        const veteranMode = options && options.veteranMode === true;
+        const category = String(options?.category || '').trim().toLowerCase();
+        const signature = `${veteranMode ? 'veteran-mode' : 'legacy'}|${category || 'all'}|${safeRows.map((row) => (
             `${row.id}|${row.unitKey}|${row.name}|${row.level}|${row.stock}|${row.enabled ? 1 : 0}`
-        )).join('||') || 'empty';
+        )).join('||') || 'empty'}`;
         if (signature === this._veteranTabSignature) return;
         this._veteranTabSignature = signature;
 
@@ -736,7 +805,14 @@ const ui = {
         if (safeRows.length <= 0) {
             const empty = document.createElement('div');
             empty.className = 'veteran-tab-empty';
-            empty.textContent = '출격 가능한 베테랑이 없습니다.';
+            if (veteranMode) {
+                const categoryLabel = (category === 'armored')
+                    ? '기갑'
+                    : ((category === 'air') ? '공중' : '보병');
+                empty.textContent = `${categoryLabel} 베테랑 유닛이 없습니다.`;
+            } else {
+                empty.textContent = '출격 가능한 베테랑이 없습니다.';
+            }
             container.appendChild(empty);
             return;
         }
@@ -851,6 +927,7 @@ const ui = {
         }
         const tab = document.getElementById(`tab-${nextCategory}`);
         if (tab && !tab.classList.contains('hidden')) tab.classList.add('active');
+        this.updateVeteranToggleButton();
         currentCategory = nextCategory;
 
         // 카테고리가 바뀌면 즉시 버튼 갱신 트리거

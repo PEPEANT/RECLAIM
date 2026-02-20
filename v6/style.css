@@ -1190,22 +1190,28 @@ input[type=range]::-webkit-slider-runnable-track {
 .unit-category-row {
     align-items: center;
     gap: 0.14rem;
+    padding-right: 30px;
 }
 
 .veteran-toggle-btn {
-    flex: 0 0 22px;
-    width: 22px;
-    height: 22px;
-    margin-left: 0.2rem;
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    z-index: 12;
+    width: 24px;
+    height: 24px;
     border: 1px solid rgba(250, 204, 21, 0.7);
     border-radius: 4px;
     background: rgba(113, 63, 18, 0.45);
     color: #fde68a;
-    font-size: 10px;
+    font-size: 12px;
     font-weight: 900;
     line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    transition: transform 0.16s ease, border-color 0.12s ease, box-shadow 0.12s ease;
+    transition: transform 0.16s ease, border-color 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
 }
 
 .veteran-toggle-btn:hover {
@@ -1214,7 +1220,10 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .veteran-toggle-btn.is-open {
-    transform: rotate(180deg);
+    transform: translateY(-1px);
+    border-color: rgba(250, 204, 21, 0.98);
+    background: rgba(113, 63, 18, 0.8);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.42);
 }
 
 .veteran-toggle-btn.hidden {
@@ -1298,15 +1307,15 @@ input[type=range]::-webkit-slider-runnable-track {
     flex-direction: column;
     align-items: center;
     justify-content: flex-start;
-    gap: 0.08rem;
-    min-width: 86px;
-    height: 64px;
-    padding: 0.2rem 0.34rem;
+    gap: 0.04rem;
+    min-width: 60px;
+    height: 46px;
+    padding: 0.08rem 0.18rem;
     border: 1px solid rgba(250, 204, 21, 0.6);
-    border-radius: 0.42rem;
+    border-radius: 0.32rem;
     background: linear-gradient(180deg, rgba(113, 63, 18, 0.35), rgba(30, 41, 59, 0.85));
     color: #f8fafc;
-    font-size: 0.56rem;
+    font-size: 0.48rem;
     font-weight: 700;
     white-space: nowrap;
     cursor: pointer;
@@ -1314,10 +1323,10 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .veteran-tab-unit-icon {
-    width: 56px;
-    height: 38px;
+    width: 36px;
+    height: 24px;
     display: block;
-    border-radius: 0.25rem;
+    border-radius: 0.2rem;
     background: rgba(2, 6, 23, 0.42);
 }
 
@@ -1338,20 +1347,17 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .veteran-tab-unit-name {
-    max-width: 82px;
-    width: 100%;
+    display: block;
+    max-width: 100%;
     text-align: center;
     overflow: hidden;
     text-overflow: ellipsis;
+    white-space: nowrap;
+    line-height: 1;
 }
 
 .veteran-tab-unit-footer {
-    width: 100%;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.24rem;
-    line-height: 1;
+    display: none;
 }
 
 .veteran-tab-unit-count {
@@ -1360,7 +1366,7 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .veteran-tab-empty {
     color: #94a3b8;
-    font-size: 0.72rem;
+    font-size: 0.58rem;
     padding: 0 0.25rem;
     white-space: nowrap;
 }
@@ -3135,11 +3141,11 @@ input[type=range]::-webkit-slider-runnable-track {
 /* 유닛 패널 모바일 최적화 */
 @media (max-width: 640px) {
     .veteran-toggle-btn {
-        flex-basis: 20px;
         width: 20px;
         height: 20px;
-        margin-left: 0.14rem;
         font-size: 9px;
+        top: 3px;
+        right: 3px;
     }
 
     .veteran-unit-row {
@@ -3158,20 +3164,18 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     .veteran-tab-unit-btn {
-        min-width: 74px;
-        height: 56px;
-        font-size: 0.5rem;
-        padding: 0.14rem 0.28rem;
+        min-width: 50px;
+        height: 38px;
+        font-size: 0.42rem;
+        padding: 0.06rem 0.12rem;
     }
 
     .veteran-tab-unit-icon {
-        width: 50px;
-        height: 32px;
+        width: 26px;
+        height: 16px;
     }
 
-    .veteran-tab-unit-name {
-        max-width: 68px;
-    }
+    .veteran-tab-unit-footer { display: none; }
 
     .unit-veteran-link-badge {
         top: 10px;
@@ -6411,6 +6415,38 @@ input[type=range]::-webkit-slider-runnable-track {
     z-index: 2;
 }
 
+.city-inventory-veteran-toggle {
+    position: absolute;
+    top: 0.3rem;
+    right: 2rem;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 1px solid rgba(250, 204, 21, 0.7);
+    background: rgba(120, 53, 15, 0.65);
+    color: #fde68a;
+    font-size: 0.68rem;
+    font-weight: 900;
+    line-height: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 2;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background 0.12s ease;
+}
+
+.city-inventory-veteran-toggle:hover,
+.city-inventory-veteran-toggle:focus-visible {
+    box-shadow: 0 0 8px rgba(250, 204, 21, 0.35);
+    border-color: rgba(250, 204, 21, 0.92);
+}
+
+.city-inventory-veteran-toggle.is-open {
+    transform: translateY(-1px);
+    background: rgba(120, 53, 15, 0.9);
+    box-shadow: 0 0 10px rgba(250, 204, 21, 0.42);
+}
+
 .city-screen.city-build-open .city-side-buttons,
 .city-screen.city-build-open #city-fab-inventory,
 .city-screen.city-build-open #city-fab-build,
@@ -7044,6 +7080,11 @@ input[type=range]::-webkit-slider-runnable-track {
     line-height: 1.2;
 }
 
+.city-unit-profile-name-row {
+    display: grid;
+    gap: 0.22rem;
+}
+
 .city-unit-profile-veteran-name {
     color: #fcd34d;
     font-size: 0.62rem;
@@ -7069,9 +7110,29 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-veteran-inline-name-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto auto;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
     gap: 0.24rem;
     align-items: center;
+}
+
+.city-veteran-inline-name-row-compact {
+    display: grid;
+    grid-template-columns: minmax(84px, 108px) minmax(0, 1fr);
+    align-items: center;
+    gap: 0.2rem;
+}
+
+.city-veteran-inline-name-row-compact .city-veteran-inline-name-input {
+    width: 100%;
+    min-width: 0;
+    max-width: 108px;
+}
+
+.city-veteran-inline-btn-row {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.16rem;
+    min-width: 0;
 }
 
 .city-veteran-inline-name-input {
@@ -7101,11 +7162,12 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-veteran-inline-btn {
     height: 30px;
-    min-width: 56px;
+    min-width: 44px;
     border-radius: 0.4rem;
     font-size: 0.6rem;
     font-weight: 800;
-    padding: 0 0.44rem;
+    padding: 0 0.3rem;
+    white-space: nowrap;
 }
 
 .city-veteran-inline-btn:disabled {
@@ -7302,6 +7364,39 @@ input[type=range]::-webkit-slider-runnable-track {
     line-height: 1.05;
 }
 
+.city-unit-profile-info-text {
+    margin: 0;
+    color: #cbd5e1;
+    font-size: 0.66rem;
+    line-height: 1.45;
+}
+
+.city-unit-profile-tag-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.2rem;
+}
+
+.city-unit-profile-tag {
+    display: inline-flex;
+    align-items: center;
+    min-height: 20px;
+    padding: 0.1rem 0.34rem;
+    border-radius: 999px;
+    border: 1px solid rgba(100, 116, 139, 0.64);
+    background: rgba(15, 23, 42, 0.72);
+    color: #e2e8f0;
+    font-size: 0.56rem;
+    font-weight: 700;
+    line-height: 1.2;
+}
+
+.city-unit-profile-tag.is-skill {
+    border-color: rgba(56, 189, 248, 0.58);
+    background: rgba(8, 47, 73, 0.56);
+    color: #bae6fd;
+}
+
 .city-unit-profile-stats {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -7409,6 +7504,17 @@ input[type=range]::-webkit-slider-runnable-track {
         line-height: 1.34;
     }
 
+    .city-unit-profile-info-text {
+        font-size: 0.6rem;
+        line-height: 1.32;
+    }
+
+    .city-unit-profile-tag {
+        min-height: 18px;
+        font-size: 0.5rem;
+        padding: 0.08rem 0.28rem;
+    }
+
     .city-unit-profile-skilltree {
         padding: 0.22rem 0.26rem;
         gap: 0.18rem;
@@ -7454,6 +7560,19 @@ input[type=range]::-webkit-slider-runnable-track {
     .city-veteran-inline-name-input,
     .city-veteran-inline-btn {
         height: 28px;
+    }
+
+    .city-veteran-inline-name-row-compact {
+        gap: 0.14rem;
+        grid-template-columns: minmax(80px, 96px) minmax(0, 1fr);
+    }
+
+    .city-veteran-inline-name-row-compact .city-veteran-inline-name-input {
+        max-width: 96px;
+    }
+
+    .city-veteran-inline-btn-row {
+        gap: 0.12rem;
     }
 }
 
@@ -7511,6 +7630,17 @@ input[type=range]::-webkit-slider-runnable-track {
 
     .city-unit-profile-info-title {
         font-size: 0.56rem;
+    }
+
+    .city-unit-profile-info-text {
+        font-size: 0.58rem;
+        line-height: 1.3;
+    }
+
+    .city-unit-profile-tag {
+        min-height: 17px;
+        font-size: 0.48rem;
+        padding: 0.07rem 0.24rem;
     }
 
     .city-unit-profile-name {
@@ -7597,9 +7727,22 @@ input[type=range]::-webkit-slider-runnable-track {
 
     .city-veteran-inline-btn {
         height: 26px;
-        min-width: 48px;
+        min-width: 42px;
         font-size: 0.54rem;
-        padding: 0 0.34rem;
+        padding: 0 0.24rem;
+    }
+
+    .city-veteran-inline-name-row-compact {
+        gap: 0.12rem;
+        grid-template-columns: minmax(74px, 88px) minmax(0, 1fr);
+    }
+
+    .city-veteran-inline-name-row-compact .city-veteran-inline-name-input {
+        max-width: 88px;
+    }
+
+    .city-veteran-inline-btn-row {
+        gap: 0.1rem;
     }
 
     .city-veteran-item-wrap {
@@ -9374,6 +9517,13 @@ input[type=range]::-webkit-slider-runnable-track {
         font-size: 8px;
     }
 
+    .city-inventory-veteran-toggle {
+        width: 20px;
+        height: 20px;
+        right: 1.9rem;
+        font-size: 0.62rem;
+    }
+
     .city-inventory-drawer .city-inventory-tabs .btn-category {
         font-size: 0.6rem;
         padding-top: 0.3rem;
@@ -10291,6 +10441,19 @@ input[type=range]::-webkit-slider-runnable-track {
         width: 30px !important;
         height: 26px !important;
     }
+
+    #unit-list-container .veteran-tab-unit-btn {
+        min-width: 50px !important;
+        height: 38px !important;
+        padding: 2px 3px !important;
+    }
+
+    #unit-list-container .veteran-tab-unit-icon {
+        width: 26px !important;
+        height: 16px !important;
+    }
+
+    #unit-list-container .veteran-tab-unit-footer { display: none !important; }
 }
 
 /* Mobile visual separation: minimap and production/command blocks should look independent */

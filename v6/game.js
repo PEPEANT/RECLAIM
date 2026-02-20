@@ -2766,6 +2766,7 @@ const game = {
         this.playMapSelectBgm();
 
         this.bindCampaignEvents();
+        this.activeCampaignTab = 'skirmish';
         this.ensureCampaignProgress();
         const data = this._activeCampaign();
         const stage = this._getCampaignSelectedStage(data);
@@ -3661,6 +3662,10 @@ const game = {
     },
 
     start() {
+        if (this.loopId) {
+            cancelAnimationFrame(this.loopId);
+            this.loopId = null;
+        }
         this._forceShowBattleViewport();
 
         // [FIX] ID 수정: start-screen은 존재하지 않으므로 loading-screen을 숨김

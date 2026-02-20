@@ -62,6 +62,7 @@
             this.playMapSelectBgm();
 
             this.bindCampaignEvents();
+            this.activeCampaignTab = 'skirmish';
             this.ensureCampaignProgress();
             const data = this._activeCampaign();
             const stage = this._getCampaignSelectedStage(data);
