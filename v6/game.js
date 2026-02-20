@@ -1,4 +1,5 @@
-﻿// [RULE] 인게임 안내/상태/채팅 메시지는 UI 토스트 금지. ChatPanel.push()로만 출력.
+﻿// [RULE] 신규 기능 로직은 game.js에 직접 추가하지 말고 src/* 모듈로 분리 후 연결 (docs/engineering/CODE_ORGANIZATION_RULES.md 참고).
+// [RULE] 인게임 안내/상태/채팅 메시지는 UI 토스트 금지. ChatPanel.push()로만 출력.
 const LOGICAL_HEIGHT = 720;
 
 function countAliveUnits(arr) {
@@ -283,17 +284,135 @@ const game = {
         });
     },
 
+    _ensureOperatorDroneList(operator) {
+        if (!operator || operator.stats?.operator !== true) return [];
+        if (!Array.isArray(operator.ownedDrones)) {
+            const seeded = [];
+            if (operator.ownedDrone && !operator.ownedDrone.dead) seeded.push(operator.ownedDrone);
+            operator.ownedDrones = seeded;
+        }
+        return operator.ownedDrones;
+    },
+
+    getAliveOperatorDrones(operator) {
+        const list = this._ensureOperatorDroneList(operator);
+        if (!list || list.length === 0) {
+            if (operator) operator.ownedDrone = null;
+            return [];
+        }
+        const alive = [];
+        const seen = new Set();
+        for (let i = 0; i < list.length; i++) {
+            const d = list[i];
+            if (!d || d.dead || seen.has(d)) continue;
+            seen.add(d);
+            alive.push(d);
+        }
+        operator.ownedDrones = alive;
+        operator.ownedDrone = alive.length > 0 ? alive[alive.length - 1] : null;
+        return alive;
+    },
+
+    addOperatorDrone(operator, drone) {
+        if (!operator || operator.dead || operator.stats?.operator !== true || !drone || drone.dead) return;
+        const alive = this.getAliveOperatorDrones(operator);
+        if (!alive.includes(drone)) alive.push(drone);
+        operator.ownedDrones = alive;
+        operator.ownedDrone = drone;
+        operator.opState = 'laptop';
+        drone.ownerRef = operator;
+    },
+
+    removeOperatorDrone(operator, drone) {
+        if (!operator || operator.stats?.operator !== true) return;
+        const alive = this.getAliveOperatorDrones(operator).filter(d => d && !d.dead && d !== drone);
+        operator.ownedDrones = alive;
+        operator.ownedDrone = alive.length > 0 ? alive[alive.length - 1] : null;
+        if (alive.length === 0 && operator.opState === 'laptop') {
+            operator.opState = 'rifle';
+        }
+    },
+
+    findDroneOwner(drone, includeEnemy = true) {
+        if (!drone || drone.dead) return null;
+        const pools = [this.players || []];
+        if (includeEnemy) pools.push(this.enemies || []);
+        for (let pi = 0; pi < pools.length; pi++) {
+            const arr = pools[pi];
+            for (let i = 0; i < arr.length; i++) {
+                const op = arr[i];
+                if (!op || op.dead || op.stats?.operator !== true) continue;
+                const drones = this.getAliveOperatorDrones(op);
+                if (drones.includes(drone)) {
+                    drone.ownerRef = op;
+                    return op;
+                }
+            }
+        }
+        return null;
+    },
+
+    getSelectedDronesForLockdown() {
+        const selected = this.getSelectedDrones();
+        if (selected.length > 0) return selected;
+        const out = [];
+        const seen = new Set();
+        const operators = this.getSelectedOperators ? this.getSelectedOperators() : [];
+        for (let i = 0; i < operators.length; i++) {
+            const drones = this.getAliveOperatorDrones(operators[i]);
+            for (let j = 0; j < drones.length; j++) {
+                const d = drones[j];
+                if (!d || d.dead || seen.has(d)) continue;
+                seen.add(d);
+                out.push(d);
+            }
+        }
+        return out;
+    },
+
     getDeployableOperators() {
         return this.getSelectedOperators().filter(u =>
-            u.droneChargesLeft > 0 && (!u.ownedDrone || u.ownedDrone.dead)
+            (u.droneChargesLeft || 0) > 0
+        );
+    },
+
+    operatorSupportsDroneKey(operator, droneKey) {
+        if (!operator || operator.dead || operator.stats?.operator !== true) return false;
+        if (droneKey === 'drone_suicide') return true;
+        if (droneKey === 'drone_at') {
+            const skillItemKeys = Array.isArray(operator.veteranLoadoutSkillItemKeys)
+                ? operator.veteranLoadoutSkillItemKeys
+                : [];
+            if (skillItemKeys.some((key) => String(key || '').trim() === 'drone_at_item')) return true;
+            return String(operator.veteranLoadoutItemKey || '').trim() === 'drone_at_item';
+        }
+        return false;
+    },
+
+    getSelectedOperatorsForDrone(droneKey) {
+        const operators = this.getSelectedOperators ? this.getSelectedOperators() : [];
+        return operators.filter(op => this.operatorSupportsDroneKey(op, droneKey));
+    },
+
+    getDeployableOperatorsForDrone(droneKey) {
+        const operators = this.getSelectedOperatorsForDrone
+            ? this.getSelectedOperatorsForDrone(droneKey)
+            : [];
+        return operators.filter(op =>
+            (op.droneChargesLeft || 0) > 0
         );
     },
 
     launchOperatorDroneFromCommand(droneKey) {
         if (droneKey !== 'drone_suicide' && droneKey !== 'drone_at') return false;
 
-        const operators = this.getDeployableOperators ? this.getDeployableOperators() : [];
         const allOperators = this.getSelectedOperators ? this.getSelectedOperators() : [];
+        const supportedOperators = this.getSelectedOperatorsForDrone
+            ? this.getSelectedOperatorsForDrone(droneKey)
+            : allOperators.filter(op => this.operatorSupportsDroneKey(op, droneKey));
+        const operators = this.getDeployableOperatorsForDrone
+            ? this.getDeployableOperatorsForDrone(droneKey)
+            : supportedOperators.filter(op => (op.droneChargesLeft || 0) > 0);
 
         if (allOperators.length === 0) {
             if (typeof ChatPanel !== 'undefined') {
@@ -302,9 +421,20 @@ const game = {
             return false;
         }
 
+        if (supportedOperators.length === 0) {
+            if (typeof ChatPanel !== 'undefined') {
+                if (droneKey === 'drone_at') {
+                    ChatPanel.push('[발진 불가] AT드론 장착 드론병 필요', 'WARN');
+                } else {
+                    ChatPanel.push('[발진 불가] 사용 가능한 드론병이 없습니다.', 'WARN');
+                }
+            }
+            return false;
+        }
+
         if (operators.length === 0) {
             if (typeof ChatPanel !== 'undefined') {
-                ChatPanel.push('[발진 불가] 드론 충전 없음 또는 이미 드론 운용중', 'WARN');
+                ChatPanel.push('[발진 불가] 드론 충전이 없습니다.', 'WARN');
             }
             return false;
         }
@@ -539,7 +669,7 @@ const game = {
 
     spawnDroneForOperator(op, droneKey) {
         if (!op || op.dead || op.stats?.operator !== true) return null;
-        if (op.droneChargesLeft <= 0 || op.ownedDrone) return null;
+        if ((op.droneChargesLeft || 0) <= 0) return null;
 
         const forwardOffset = 24;
         const facing = (op.facing != null) ? op.facing : ((op.team === 'player') ? 1 : -1);
@@ -553,11 +683,22 @@ const game = {
         drone.recallRequested = false;
         drone.recallTarget = null;
         drone.recallPhase = null;
-        drone.holdFrames = 60;
-        drone.launchTargetY = this.groundY - 110;
+        // 수동 발진 드론은 지상 대기 상태로 생성된다.
+        drone.holdFrames = 0;
+        drone.launchInit = false;
+        drone.autoSeekTarget = false;
+        drone.commandState = 'standby';
+        drone.y = this.groundY;
+        drone.attackCruiseY = this.groundY - 150;
+        drone.attackPhase = null;
 
-        op.opState = 'laptop';
-        op.ownedDrone = drone;
+        if (typeof this.addOperatorDrone === 'function') {
+            this.addOperatorDrone(op, drone);
+        } else {
+            op.ownedDrone = drone;
+            op.opState = 'laptop';
+            drone.ownerRef = op;
+        }
         op.droneChargesLeft = Math.max(0, (op.droneChargesLeft || 0) - 1);
         op.manualDeployRequested = false;
         op.manualDeployType = null;
@@ -568,17 +709,30 @@ const game = {
         if (!this.selectedUnits || this.selectedUnits.size !== 1) return null;
         const u = this.selectedUnits.values().next().value;
         if (!u || u.dead) return null;
-        if (u.stats?.id === 'drone_operator' && u.ownedDrone && !u.ownedDrone.dead) {
-            if (!u.ownedDrone.ownerRef) u.ownedDrone.ownerRef = u;
-            return u.ownedDrone;
+        if (u.stats?.id === 'drone_operator') {
+            const drones = (typeof this.getAliveOperatorDrones === 'function')
+                ? this.getAliveOperatorDrones(u)
+                : ((u.ownedDrone && !u.ownedDrone.dead) ? [u.ownedDrone] : []);
+            if (drones.length === 0) return null;
+            let pick = drones[0];
+            let bestDist = Math.abs((pick.x || 0) - (u.x || 0));
+            for (let i = 1; i < drones.length; i++) {
+                const d = drones[i];
+                const dist = Math.abs((d.x || 0) - (u.x || 0));
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    pick = d;
+                }
+            }
+            if (!pick.ownerRef) pick.ownerRef = u;
+            return pick;
         }
         const isDrone = (u.stats?.id === 'drone_suicide' || u.stats?.id === 'drone_at' || u.stats?.category === 'drone');
         if (!isDrone) return null;
         if (!u.ownerRef) {
-            const owner = (this.players || []).find(p => p && p.stats?.operator && p.ownedDrone === u);
+            const owner = (typeof this.findDroneOwner === 'function') ? this.findDroneOwner(u, false) : null;
             if (owner) u.ownerRef = owner;
         }
-        if (!u.ownerRef || u.ownerRef.dead) return null;
         return u;
     },
 
@@ -593,14 +747,16 @@ const game = {
 
         // 1차: 기존 ownerRef 확인
         if (!owner || owner.dead) {
-            owner = (this.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
+            owner = (typeof this.findDroneOwner === 'function')
+                ? this.findDroneOwner(drone, false)
+                : null;
             if (owner) drone.ownerRef = owner;
         }
 
         // 2차: 그래도 없으면 가장 가까운 operator를 강제 결속
         if (!owner || owner.dead) {
             const availableOps = (this.players || []).filter(p =>
-                p && !p.dead && p.stats?.operator && (!p.ownedDrone || p.ownedDrone.dead)
+                p && !p.dead && p.stats?.operator
             );
             if (availableOps.length > 0) {
                 // 가장 가까운 operator 찾기
@@ -615,7 +771,11 @@ const game = {
                 }
                 owner = nearest;
                 drone.ownerRef = owner;
-                owner.ownedDrone = drone;
+                if (typeof this.addOperatorDrone === 'function') {
+                    this.addOperatorDrone(owner, drone);
+                } else {
+                    owner.ownedDrone = drone;
+                }
                 if (typeof ChatPanel !== 'undefined') {
                     ChatPanel.push('[복귀] 드론병 재연결됨', 'INFO');
                 }
@@ -623,8 +783,12 @@ const game = {
         }
 
         // owner 결속 동기화
-        if (owner && !owner.dead && owner.ownedDrone !== drone) {
-            owner.ownedDrone = drone;
+        if (owner && !owner.dead) {
+            if (typeof this.addOperatorDrone === 'function') {
+                this.addOperatorDrone(owner, drone);
+            } else if (owner.ownedDrone !== drone) {
+                owner.ownedDrone = drone;
+            }
         }
 
         const wasRequested = !!drone.recallRequested;
@@ -639,6 +803,7 @@ const game = {
         drone.targetY = null;
         drone.lockedTarget = null;
         drone.attackTarget = null;
+        drone.attackPhase = null;
         drone.swarmTarget = null;
         drone.holdFrames = 0;
         drone.launchInit = false;
@@ -654,16 +819,23 @@ const game = {
         let recalled = 0;
         this.selectedUnits.forEach(u => {
             if (!u || u.dead || !u.stats) return;
-            if (u.stats.operator && u.ownedDrone && !u.ownedDrone.dead) {
-                if (!u.ownedDrone.ownerRef) u.ownedDrone.ownerRef = u;
-                if (this.requestDroneRecall(u.ownedDrone)) recalled++;
+            if (u.stats.operator) {
+                const drones = (typeof this.getAliveOperatorDrones === 'function')
+                    ? this.getAliveOperatorDrones(u)
+                    : ((u.ownedDrone && !u.ownedDrone.dead) ? [u.ownedDrone] : []);
+                for (let i = 0; i < drones.length; i++) {
+                    const d = drones[i];
+                    if (!d) continue;
+                    if (!d.ownerRef) d.ownerRef = u;
+                    if (this.requestDroneRecall(d)) recalled++;
+                }
                 return;
             }
 
             const isDrone = (u.stats.category === 'drone' || (u.stats.id && u.stats.id.includes('drone')));
             if (!isDrone || u.stats.operator) return;
             if (!u.ownerRef) {
-                const owner = (this.players || []).find(p => p && p.stats?.operator && p.ownedDrone === u);
+                const owner = (typeof this.findDroneOwner === 'function') ? this.findDroneOwner(u, false) : null;
                 if (owner) u.ownerRef = owner;
             }
             if (this.requestDroneRecall(u)) recalled++;
@@ -671,7 +843,7 @@ const game = {
         return recalled;
     },
 
-    getEnemyAt(wx, wy, radius = 32) {
+    getEnemyAt(wx, wy, radius = 64) {
         const maxDist = Math.max(6, radius);
         let best = null;
         let bestDist = maxDist;
@@ -719,15 +891,27 @@ const game = {
         return best;
     },
 
-    assignDroneLocks(target) {
+    assignDroneLocks(target, dronePool = null) {
         if (!target || target.dead) return false;
-        const drones = this.getSelectedDrones();
+        const drones = Array.isArray(dronePool)
+            ? dronePool
+            : ((typeof this.getSelectedDronesForLockdown === 'function')
+                ? this.getSelectedDronesForLockdown()
+                : this.getSelectedDrones());
         if (drones.length === 0) return false;
 
-        let chosen = drones.find(d => !d.lockedTarget || d.lockedTarget.dead);
+        const isAssignableDrone = (d) => !!(
+            d
+            && !d.dead
+            && !d.recallRequested
+        );
+        const isUnlockedDrone = (d) => !!(!d.lockedTarget || d.lockedTarget.dead);
+
+        // 1순위: 잠금 안 된 드론
+        let chosen = drones.find(d => isAssignableDrone(d) && isUnlockedDrone(d));
+        // 2순위: 이미 잠금된 드론이라도 재지정 허용(완전 무반응 방지)
         if (!chosen) {
-            const idx = (this.droneLockCursor || 0) % drones.length;
-            chosen = drones[idx];
+            chosen = drones.find(isAssignableDrone);
         }
         if (!chosen) return false;
 
@@ -739,6 +923,9 @@ const game = {
         chosen.attackTarget = null;
         chosen.holdFrames = 0;
         chosen.launchInit = false;
+        chosen.autoSeekTarget = false;
+        chosen.commandState = 'locked';
+        chosen.attackPhase = null;
 
         this.droneLockCursor = (this.droneLockCursor || 0) + 1;
 
@@ -749,11 +936,17 @@ const game = {
     },
 
     tryDroneLockdown(wx, wy) {
-        const drones = this.getSelectedDrones();
+        const drones = (typeof this.getSelectedDronesForLockdown === 'function')
+            ? this.getSelectedDronesForLockdown()
+            : this.getSelectedDrones();
         if (drones.length === 0) return false;
-        const enemy = this.getEnemyAt(wx, wy);
+        const enemy = this.getEnemyAt(wx, wy, 96);
         if (!enemy) return false;
-        return this.assignDroneLocks(enemy);
+        const assigned = this.assignDroneLocks(enemy, drones);
+        if (!assigned && typeof ChatPanel !== 'undefined') {
+            ChatPanel.push('[락다운] 대기 중인 드론이 없습니다.', 'WARN');
+        }
+        return assigned === true;
     },
 
     // Toast Wrapper
@@ -1714,7 +1907,10 @@ const game = {
                 name: String(entry?.name || '').trim().slice(0, 24),
                 createdAt: Math.max(0, Math.floor(Number(entry?.createdAt) || 0)),
                 loadout: {
-                    itemKey: String(entry?.loadout?.itemKey || '').trim()
+                    itemKey: String(entry?.loadout?.itemKey || '').trim(),
+                    skillItemKeys: Array.isArray(entry?.loadout?.skillItemKeys)
+                        ? entry.loadout.skillItemKeys.map((key) => String(key || '').trim())
+                        : []
                 },
                 _order: index
             };
@@ -1765,10 +1961,37 @@ const game = {
         unit.veteranId = String(veteranMeta.id || '').trim();
         unit.veteranLevel = level;
         unit.veteranName = String(veteranMeta.name || '').trim().slice(0, 24);
+        const supportedLoadoutItemKeys = new Set([
+            'rifle_d',
+            'body_armor_d',
+            'scope_d',
+            'smoke_grenade',
+            'medkit_c',
+            'drone_suicide_item',
+            'drone_at_item',
+            'bp_missile'
+        ]);
         const rawItemKey = String(veteranMeta?.loadout?.itemKey || '').trim();
-        const loadoutItemKey = (rawItemKey === 'drone_module')
-            ? rawItemKey
-            : '';
+        const rawSkillItemKeys = Array.isArray(veteranMeta?.loadout?.skillItemKeys)
+            ? veteranMeta.loadout.skillItemKeys
+            : [];
+        const isOperator = (unit.typeKey === 'drone_operator') || unit.stats?.operator === true;
+        const loadoutSkillItemKeys = ['', '', ''];
+        if (isOperator) {
+            for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
+                const key = String(rawSkillItemKeys[slotIndex] || '').trim();
+                if (key === 'drone_suicide_item' || key === 'drone_at_item') {
+                    loadoutSkillItemKeys[slotIndex] = key;
+                }
+            }
+            if (!loadoutSkillItemKeys[1] && (rawItemKey === 'drone_suicide_item' || rawItemKey === 'drone_at_item')) {
+                loadoutSkillItemKeys[1] = rawItemKey;
+            }
+        }
+        const loadoutItemKey = loadoutSkillItemKeys[1]
+            || loadoutSkillItemKeys[2]
+            || ((isOperator && supportedLoadoutItemKeys.has(rawItemKey)) ? rawItemKey : '');
+        unit.veteranLoadoutSkillItemKeys = loadoutSkillItemKeys;
         unit.veteranLoadoutItemKey = loadoutItemKey;
 
         const hpMult = 1.12;
@@ -1785,17 +2008,103 @@ const game = {
                 nextStats[field] = Math.max(1, Math.floor(base * damageMult));
             });
 
-            if (loadoutItemKey === 'drone_module' && unit.typeKey === 'drone_operator' && nextStats.operator === true) {
-                const baseCharges = Math.max(1, Math.floor(Number(nextStats.droneCharges) || 1));
-                nextStats.droneCharges = Math.max(3, baseCharges);
+            // [ITEM] 아이템별 추가 스탯 적용
+            const loadoutKey = unit.veteranLoadoutItemKey || '';
+            if (loadoutKey === 'rifle_d') {
+                // M249: 사거리 +25%, 데미지 +20% 추가, 총소리/탄속 플래그
+                nextStats.range = Math.floor((Number(nextStats.range) || 200) * 1.25);
+                const dmgKeys2 = ['damage', 'damageGround', 'damageAir'];
+                dmgKeys2.forEach((field) => {
+                    const base = Number(nextStats[field]);
+                    if (!Number.isFinite(base) || base <= 0) return;
+                    nextStats[field] = Math.max(1, Math.floor(base * 1.20));
+                });
+                unit.veteranGunType = 'rifle_d';
+            } else if (loadoutKey === 'scope_d') {
+                // 조준경: 사거리 +30%
+                nextStats.range = Math.floor((Number(nextStats.range) || 200) * 1.30);
             }
 
             unit.stats = nextStats;
-            if (loadoutItemKey === 'drone_module' && unit.typeKey === 'drone_operator' && nextStats.operator === true) {
-                const maxCharges = Math.max(3, Math.floor(Number(nextStats.droneCharges) || 3));
-                unit.droneChargesLeft = Math.max(0, maxCharges);
-            }
         }
+
+        // [ITEM] 방탄복: 기본 HP 부스트 이후 추가 +25%
+        if (unit.veteranLoadoutItemKey === 'body_armor_d') {
+            unit.maxHp = Math.max(1, Math.floor(unit.maxHp * 1.25));
+            unit.hp = unit.maxHp;
+        }
+
+        // [ITEM] 연막탄: 스킬 장전 (special_forces 기본값 제거됨, 아이템으로만 부여)
+        if (unit.veteranLoadoutItemKey === 'smoke_grenade') {
+            unit.smokeChargesLeft = 2;
+            unit.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
+        }
+
+        // [ITEM] 의료 키트: 스킬 장전
+        if (unit.veteranLoadoutItemKey === 'medkit_c') {
+            unit.medkitChargesLeft = 2;
+        }
+    },
+
+    // [ITEM] 의료 키트 스킬 — 자신 + 반경 내 아군 보병 즉시 치유
+    useMedkitCommand() {
+        if (!this.selectedUnits) return false;
+        let used = false;
+        this.selectedUnits.forEach((unit) => {
+            if (!unit || unit.dead) return;
+            if ((unit.medkitChargesLeft || 0) <= 0) return;
+            unit.medkitChargesLeft -= 1;
+            used = true;
+
+            // 자신 치유 +40% maxHp
+            const selfHeal = Math.floor((unit.maxHp || 1) * 0.40);
+            unit.hp = Math.min(unit.maxHp, (unit.hp || 0) + selfHeal);
+
+            // 반경 150px 내 아군 보병 치유 +30% maxHp
+            const healRadius = 150;
+            if (this.units && Array.isArray(this.units)) {
+                this.units.forEach((ally) => {
+                    if (!ally || ally.dead || ally === unit) return;
+                    if (ally.team !== unit.team) return;
+                    if (!ally.stats || String(ally.stats.category || '').trim().toLowerCase() !== 'infantry') return;
+                    const dx = ally.x - unit.x;
+                    if (Math.abs(dx) > healRadius) return;
+                    const allyHeal = Math.floor((ally.maxHp || 1) * 0.30);
+                    ally.hp = Math.min(ally.maxHp, (ally.hp || 0) + allyHeal);
+                    // 치유 파티클
+                    if (typeof this.createParticles === 'function') {
+                        this.createParticles(ally.x, ally.y - 8, 5, '#4ade80');
+                    }
+                });
+            }
+            // 자신 치유 파티클
+            if (typeof this.createParticles === 'function') {
+                this.createParticles(unit.x, unit.y - 8, 8, '#4ade80');
+            }
+        });
+        if (used && typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
+            ui.showToast('의료 키트 사용! 주변 보병 치유');
+        }
+        if (used && typeof this.updateHUDSelection === 'function') {
+            this.updateHUDSelection();
+        }
+        return used;
+    },
+
+    // [ITEM] 활성 연막 구름 위치 목록 반환 (데미지 감소 판정용)
+    getSmokeZones() {
+        if (!Array.isArray(this.particles)) return [];
+        const zones = [];
+        this.particles.forEach((p) => {
+            if (!p || typeof p !== 'object') return;
+            if (typeof SmokeCloudFX !== 'undefined' && !(p instanceof SmokeCloudFX)) return;
+            if (p.age == null || p.maxFrames == null) return;
+            if (p.age >= p.maxFrames) return;
+            // 연막이 실제로 보이는 구간(emitFrames 이내 또는 그 직후)만 유효
+            if (p.age > (p.emitFrames || 220) + 80) return;
+            zones.push({ x: p.x, y: p.y, radius: 90 });
+        });
+        return zones;
     },
 
     queueVeteranUnit(veteranId) {
@@ -4047,15 +4356,16 @@ const game = {
         }
         if (this.targetingType) return; // 이미 타겟팅 중
 
-        let hasSpecial = false;
+        // [ITEM] smoke_grenade 아이템 포함 — smokeChargesLeft > 0 이면 모든 유닛 허용
+        let hasSmoke = false;
         for (const u of this.selectedUnits) {
-            if (u && !u.dead && u.stats?.id === 'special_forces' && (u.smokeChargesLeft || 0) > 0) {
-                hasSpecial = true;
+            if (u && !u.dead && (u.smokeChargesLeft || 0) > 0) {
+                hasSmoke = true;
                 break;
             }
         }
-        if (!hasSpecial) {
-            ui.showToast('연막탄 사용 가능한 보병이 없습니다');
+        if (!hasSmoke) {
+            ui.showToast('연막탄 사용 가능한 유닛이 없습니다');
             return;
         }
 
@@ -4180,21 +4490,31 @@ const game = {
     handleSmokeTargeting(x, y) {
         if (!this.selectedUnits || this.selectedUnits.size === 0) return;
 
+        // [ITEM] smoke_grenade 아이템 포함 — smokeChargesLeft > 0 인 모든 유닛 허용
         let usedUnit = null;
         for (const u of this.selectedUnits) {
-            if (u && !u.dead && u.stats?.id === 'special_forces' && (u.smokeChargesLeft || 0) > 0) {
+            if (u && !u.dead && (u.smokeChargesLeft || 0) > 0) {
                 usedUnit = u;
                 break;
             }
         }
         if (!usedUnit) {
-            ui.showToast('연막탄을 사용할 보병이 없습니다');
+            ui.showToast('연막탄을 사용할 유닛이 없습니다');
             return;
         }
 
+        // [ITEM] 연막탄 사거리 제한: 유닛으로부터 최대 350px
+        const SMOKE_THROW_RANGE = 350;
+        const clampedX = Math.max(
+            usedUnit.x - SMOKE_THROW_RANGE,
+            Math.min(usedUnit.x + SMOKE_THROW_RANGE, x)
+        );
+
+        // [ITEM] 연막탄은 항상 지면(groundY)에서 터짐
+        const groundLevel = Number.isFinite(this.groundY) ? this.groundY : y;
+
         usedUnit.smokeChargesLeft = Math.max(0, (usedUnit.smokeChargesLeft || 0) - 1);
-        const ty = Number.isFinite(this.groundY) ? Math.min(y, this.groundY) : y;
-        this.spawnSmokeAt(x, ty, { team: usedUnit.team });
+        this.spawnSmokeAt(clampedX, groundLevel, { team: usedUnit.team });
         ui.showToast('연막탄 투척!');
         if (typeof this.updateHUDSelection === 'function') this.updateHUDSelection();
     },
@@ -4703,21 +5023,39 @@ const game = {
     },
 
     commandDrones(x, y) {
+        const pool = (typeof this.getSelectedDronesForLockdown === 'function')
+            ? this.getSelectedDronesForLockdown()
+            : this.getSelectedDrones();
+        if (!Array.isArray(pool) || pool.length === 0) return 0;
+
         let count = 0;
-        this.players.forEach(u => {
-            if (u.stats.operator) return;
-            if (u.stats.category === 'drone' || (u.stats.id && u.stats.id.startsWith('drone'))) {
-                if (['drone_suicide', 'drone_at'].includes(u.stats.id)) {
-                    u.swarmTarget = { x: x, y: y };
-                    u.lockedTarget = null;
-                    count++;
-                }
-            }
-        });
+        const seen = new Set();
+        for (let i = 0; i < pool.length; i++) {
+            const u = pool[i];
+            if (!u || u.dead || !u.stats || seen.has(u)) continue;
+            seen.add(u);
+            if (u.stats.operator) continue;
+            const isDrone = (u.stats.category === 'drone' || (u.stats.id && u.stats.id.startsWith('drone')));
+            if (!isDrone) continue;
+            if (!['drone_suicide', 'drone_at'].includes(u.stats.id)) continue;
+
+            u.swarmTarget = { x, y };
+            u.lockedTarget = null;
+            u.attackTarget = null;
+            u.attackPhase = null;
+            u.recallRequested = false;
+            u.recallPhase = null;
+            u.recallTarget = null;
+            u.commandState = 'move';
+            u.autoSeekTarget = false;
+            count++;
+        }
+
         if (count > 0) {
             ui.showToast(`드론 ${count}기 이동 명령!`);
             this.createParticles(x, y, 10, '#facc15');
         }
+        return count;
     },
 
     createParticles(x, y, count, color) {

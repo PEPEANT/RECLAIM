@@ -15,12 +15,18 @@ const DroneBehavior = {
         if (typeof game !== 'undefined') {
             let owner = drone.ownerRef || drone.recallTarget || null;
             if (!owner || owner.dead) {
-                owner = (game.players || []).find(p => p && p.stats?.operator && p.ownedDrone === drone) ||
-                    (game.enemies || []).find(p => p && p.stats?.operator && p.ownedDrone === drone) ||
-                    null;
+                owner = (typeof game.findDroneOwner === 'function')
+                    ? game.findDroneOwner(drone, true)
+                    : ((game.players || []).find(p => p && p.stats?.operator && p.ownedDrone === drone) ||
+                        (game.enemies || []).find(p => p && p.stats?.operator && p.ownedDrone === drone) ||
+                        null);
             }
             if (owner && owner.dead) {
-                if (owner.ownedDrone === drone) owner.ownedDrone = null;
+                if (typeof game.removeOperatorDrone === 'function') {
+                    game.removeOperatorDrone(owner, drone);
+                } else if (owner.ownedDrone === drone) {
+                    owner.ownedDrone = null;
+                }
                 drone.dead = true;
                 return;
             }
@@ -34,11 +40,17 @@ const DroneBehavior = {
             // owner 연결이 순간 끊겨도 복귀요청을 취소하지 말고 매 프레임 복구 시도
             let owner = drone.ownerRef || drone.recallTarget;
             if ((!owner || owner.dead) && typeof game !== 'undefined') {
-                owner = (game.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
+                owner = (typeof game.findDroneOwner === 'function')
+                    ? game.findDroneOwner(drone, false)
+                    : (game.players || []).find(p => p && !p.dead && p.stats?.operator && p.ownedDrone === drone);
                 if (owner) {
                     drone.ownerRef = owner;
                     drone.recallTarget = owner;
-                    if (owner.ownedDrone !== drone) owner.ownedDrone = drone;
+                    if (typeof game.addOperatorDrone === 'function') {
+                        game.addOperatorDrone(owner, drone);
+                    } else if (owner.ownedDrone !== drone) {
+                        owner.ownedDrone = drone;
+                    }
                 }
             }
 
@@ -100,8 +112,12 @@ const DroneBehavior = {
             }
 
             if (drone.recallPhase === 'pickup') {
-                if (owner.ownedDrone === drone) owner.ownedDrone = null;
-                owner.opState = 'rifle';
+                if (typeof game !== 'undefined' && typeof game.removeOperatorDrone === 'function') {
+                    game.removeOperatorDrone(owner, drone);
+                } else if (owner.ownedDrone === drone) {
+                    owner.ownedDrone = null;
+                    owner.opState = 'rifle';
+                }
                 const maxCharges = owner.stats?.droneCharges || owner.droneChargesLeft || 1;
                 owner.droneChargesLeft = Math.min((owner.droneChargesLeft || 0) + 1, maxCharges);
                 drone.dead = true;
@@ -263,19 +279,21 @@ const DroneBehavior = {
         drone.y += ny * drone.diveSpeed;
     },
     updateHoming(drone, enemies, buildings) {
+        const baseSpeed = Math.max(0.1, (drone.stats?.speed || 1) * (Number.isFinite(drone.launchSpeedMul) ? drone.launchSpeedMul : 1));
+
         // [수정] 플레어 맞아서 혼란 상태일 때 (타겟팅 불가, 직진)
         if (drone.confusedTimer > 0) {
             drone.confusedTimer--;
             // 그냥 현재 방향(혹은 앞으로) 쭉 날아감
             const dir = drone.team === 'player' ? 1 : -1;
-            drone.x += drone.stats.speed * dir;
+            drone.x += baseSpeed * dir;
             // 회전/동요 효과
             drone.y += Math.sin(game.frame * 0.5) * 2;
             return;
         }
 
-        // Swarm Move Logic
-        if (drone.swarmTarget) {
+        // Swarm Move Logic (명시적 move 상태에서만)
+        if (drone.swarmTarget && drone.commandState === 'move') {
             const dx = drone.swarmTarget.x - drone.x;
             const dy = drone.swarmTarget.y - drone.y;
             const distSq = dx * dx + dy * dy;
@@ -284,45 +302,113 @@ const DroneBehavior = {
                 drone.swarmTarget = null;
             } else {
                 const angle = Math.atan2(dy, dx);
-                drone.x += Math.cos(angle) * drone.stats.speed;
-                drone.y += Math.sin(angle) * drone.stats.speed;
+                drone.x += Math.cos(angle) * baseSpeed;
+                drone.y += Math.sin(angle) * baseSpeed;
                 return;
             }
         }
+        if (drone.commandState !== 'move') {
+            drone.swarmTarget = null;
+        }
+
+        const groundY = (typeof game !== 'undefined' && Number.isFinite(game.groundY))
+            ? game.groundY
+            : null;
 
         // 타겟 유효성 체크
         if (drone.lockedTarget && drone.lockedTarget.dead) {
             drone.lockedTarget = null;
+            drone.attackPhase = null;
         }
 
         if (drone.lockedTarget) {
+            drone.commandState = 'locked';
             drone.attackTarget = drone.lockedTarget;
             const tx = drone.lockedTarget.x;
             const tH = drone.lockedTarget.height || 20;
             const ty = drone.lockedTarget.y - tH / 2;
+            const attackCruiseY = Number.isFinite(drone.attackCruiseY)
+                ? drone.attackCruiseY
+                : ((groundY !== null) ? (groundY - 150) : (drone.y - 80));
+            drone.attackCruiseY = attackCruiseY;
+
+            if (!drone.attackPhase) {
+                const highEnough = (groundY === null) ? true : (drone.y <= attackCruiseY + 6);
+                drone.attackPhase = highEnough ? 'cruise' : 'climb';
+            }
+
+            if (groundY !== null && drone.y > groundY) {
+                drone.y = groundY;
+            }
+
+            if (drone.attackPhase === 'climb') {
+                const climbSpeed = Math.max(1.2, baseSpeed * 1.1);
+                if (drone.y > attackCruiseY + 2) {
+                    drone.y = Math.max(attackCruiseY, drone.y - climbSpeed);
+                    const dxClimb = tx - drone.x;
+                    if (Math.abs(dxClimb) > 12) {
+                        drone.x += Math.sign(dxClimb) * Math.min(baseSpeed * 0.8, Math.abs(dxClimb));
+                    }
+                    return;
+                }
+                drone.attackPhase = 'cruise';
+            }
+
+            if (drone.attackPhase === 'cruise') {
+                const dxCruise = tx - drone.x;
+                const diveTriggerDist = 120;
+                if (Math.abs(dxCruise) > diveTriggerDist) {
+                    drone.x += Math.sign(dxCruise) * Math.min(baseSpeed, Math.abs(dxCruise));
+                    const settle = attackCruiseY - drone.y;
+                    drone.y += Math.max(-1.5, Math.min(1.5, settle * 0.2));
+                    return;
+                }
+                drone.attackPhase = 'dive';
+            }
 
             const dx = tx - drone.x;
             const dy = ty - drone.y;
             const distSq = dx * dx + dy * dy;
-
             if (distSq < 900) {
                 drone.explode(drone.lockedTarget);
                 return;
             }
 
             const angle = Math.atan2(dy, dx);
-            drone.x += Math.cos(angle) * drone.stats.speed;
-            drone.y += Math.sin(angle) * drone.stats.speed;
+            const diveSpeed = Math.max(baseSpeed * 1.2, baseSpeed + 1.4);
+            drone.x += Math.cos(angle) * diveSpeed;
+            drone.y += Math.sin(angle) * diveSpeed;
+            if (groundY !== null && drone.y > groundY - 2) {
+                drone.y = groundY - 2;
+            }
             return;
         } else {
-            // 새 타겟 찾기
-            const newTarget = this.findNearestEnemy(drone, enemies, buildings);
-            if (newTarget) {
-                drone.lockedTarget = newTarget;
-            } else {
-                drone.x += (drone.team === 'player' ? 1 : -1) * drone.stats.speed * 0.5;
-                if (drone.x < -100 || drone.x > CONFIG.mapWidth + 100) drone.dead = true;
+            // 자동 추적이 켜진 드론만 신규 타겟을 획득한다.
+            if (drone.autoSeekTarget === true && drone.team !== 'player') {
+                const newTarget = this.findNearestEnemy(drone, enemies, buildings);
+                if (newTarget) {
+                    drone.lockedTarget = newTarget;
+                    drone.commandState = 'locked';
+                    drone.attackPhase = null;
+                    return;
+                }
             }
+
+            // 기본 상태: 지상 대기 (수동 락다운 또는 이동 명령 대기)
+            drone.attackTarget = null;
+            drone.attackPhase = null;
+            if (drone.commandState !== 'move') {
+                drone.commandState = 'standby';
+            }
+            if (groundY !== null) {
+                const settleSpeed = Math.max(0.8, baseSpeed * 0.6);
+                if (drone.y < groundY) {
+                    drone.y = Math.min(groundY, drone.y + settleSpeed);
+                } else if (drone.y > groundY) {
+                    drone.y = groundY;
+                }
+            }
+            return;
         }
     },
     findNearestEnemy(drone, enemies, buildings) {
@@ -378,9 +464,6 @@ const DroneBehavior = {
         return t;
     }
 };
-
-
-
 
 
 

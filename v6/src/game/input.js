@@ -254,8 +254,8 @@
                     return;
                 }
 
-                const p = getScaledPos(e.clientX, e.clientY);
-                this.commandDrones(p.x + this.cameraX, p.y);
+                // Right-click movement is already handled in mousedown(right button).
+                // Do not issue extra drone orders here (prevents duplicate/global drone commands).
             });
 
             this.canvas.addEventListener('wheel', e => {

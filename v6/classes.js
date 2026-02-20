@@ -117,17 +117,19 @@ class Unit extends Entity {
             this.opState = 'rifle';  // [FIX] 기본: 소총 모드 전진
             this.coverTarget = null;
             this.ownedDrone = null;
+            this.ownedDrones = [];
             this.droneChargesLeft = stats.droneCharges || 1;
             this.launchPrepTimer = 0;
             // 수동 발진 지원
             this.manualDeployRequested = false;
             this.manualDeployType = null;  // 'drone_suicide' | 'drone_at'
-            this.autoDeploy = true;  // 자동 발진 활성화
+            this.autoDeploy = (team !== 'player');  // 플레이어는 수동 발진만, AI는 자동 발진 유지
         }
 
-        // [NEW] 특수부대 연막탄 (1회)
+        // [NEW] 특수부대 연막탄 — 기본 지급 제거됨
+        // smoke_grenade 아이템 장착 베테랑에게만 applyVeteranStats()에서 부여
         if (stats.id === 'special_forces') {
-            this.smokeChargesLeft = 1;
+            this.smokeChargesLeft = 0;
             this.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
         }
 
@@ -286,7 +288,22 @@ class Unit extends Entity {
             hitVy: cleanHitVy
         };
 
-        const dmg = Number(damage) || 0;
+        let dmg = Number(damage) || 0;
+        // [ITEM] 연막탄 존 데미지 감소: 연막 안에 있는 유닛은 피해 감소
+        if (dmg > 0 && typeof game !== 'undefined' && game && typeof game.getSmokeZones === 'function') {
+            const smokeZones = game.getSmokeZones();
+            if (smokeZones.length > 0) {
+                const inSmoke = smokeZones.some((zone) => Math.abs(this.x - zone.x) < zone.radius);
+                if (inSmoke) {
+                    const isSplash = (
+                        attackType === 'explosion' ||
+                        attackType === 'splash' ||
+                        attackType === 'drone_explosion'
+                    );
+                    dmg = Math.max(1, Math.floor(dmg * (isSplash ? 0.45 : 0.60)));
+                }
+            }
+        }
         if (!Number.isFinite(this.hp)) this.hp = this.maxHp;
         this.hp -= dmg;
         if (this.hp < 0) this.hp = 0;
@@ -462,9 +479,22 @@ class Unit extends Entity {
             if (this.team === 'player' && typeof ChatPanel !== 'undefined') {
                 ChatPanel.push(`[유닛 파괴] ${this.stats.name}`, 'WARN');
             }
-            // [R 4.2] 드론병 사망 시 ownedDrone 동반 파괴
-            if (this.stats.operator && this.ownedDrone && !this.ownedDrone.dead) {
-                this.ownedDrone.dead = true;
+            // [R 4.2] 드론병 사망 시 소유 드론 전체 동반 파괴
+            if (this.stats.operator) {
+                const owned = [];
+                if (Array.isArray(this.ownedDrones)) {
+                    for (let i = 0; i < this.ownedDrones.length; i++) {
+                        const d = this.ownedDrones[i];
+                        if (d && !d.dead) owned.push(d);
+                    }
+                }
+                if (this.ownedDrone && !this.ownedDrone.dead && !owned.includes(this.ownedDrone)) {
+                    owned.push(this.ownedDrone);
+                }
+                for (let i = 0; i < owned.length; i++) {
+                    owned[i].dead = true;
+                }
+                this.ownedDrones = [];
                 this.ownedDrone = null;
             }
         }
@@ -1483,13 +1513,15 @@ class Unit extends Entity {
         const stats = this.stats;
         const isPlayer = this.team === 'player';
         const moveDir = isPlayer ? 1 : -1;
+        if (isPlayer && this.autoDeploy) this.autoDeploy = false;
 
         // === RIFLE: 소총 모드 (기본 상태) - 전진/사격 + 발진 트리거 ===
         if (this.opState === 'rifle') {
             // 1. 발진 트리거 체크
-            const canDeploy = this.droneChargesLeft > 0 && !this.ownedDrone;
+            const canDeploy = this.droneChargesLeft > 0;
             let shouldDeploy = false;
             let deployType = null;
+            let autoLockTarget = null;
 
             if (canDeploy) {
                 // 수동 발진 요청
@@ -1525,6 +1557,7 @@ class Unit extends Entity {
 
                     if (nearestTarget && nearestDist <= detectRange) {
                         shouldDeploy = true;
+                        autoLockTarget = nearestTarget;
                         // 타겟 타입에 따라 드론 종류 자동 선택
                         const target = nearestTarget;
                         // [NEW] 건물은 항상 AT 드론으로 공격
@@ -1551,10 +1584,27 @@ class Unit extends Entity {
                     const drone = game.spawnUnitDirect(deployType, droneX, droneY, this.team, true);
                     if (drone) {
                         drone.ownerRef = this;  // Owner 링크
-                        drone.holdFrames = stats.launchPrepFrames || 90;
-                        drone.launchTargetY = game.groundY - 110;  // [FIX v3] 상승 목표
-                        this.ownedDrone = drone;
-                        this.droneChargesLeft--;
+                        // 기본은 지상 대기. 자동 발진 경로에서만 타겟을 즉시 부여한다.
+                        drone.holdFrames = 0;
+                        drone.launchInit = false;
+                        drone.y = game.groundY;
+                        drone.commandState = 'standby';
+                        if (autoLockTarget && !autoLockTarget.dead) {
+                            drone.lockedTarget = autoLockTarget;
+                            drone.autoSeekTarget = true;
+                            drone.commandState = 'attack';
+                        } else {
+                            drone.lockedTarget = null;
+                            drone.autoSeekTarget = false;
+                        }
+                        if (game && typeof game.addOperatorDrone === 'function') {
+                            game.addOperatorDrone(this, drone);
+                        } else {
+                            this.ownedDrone = drone;
+                            if (!Array.isArray(this.ownedDrones)) this.ownedDrones = [];
+                            if (!this.ownedDrones.includes(drone)) this.ownedDrones.push(drone);
+                        }
+                        this.droneChargesLeft = Math.max(0, (this.droneChargesLeft || 0) - 1);
 
                         if (typeof ChatPanel !== 'undefined' && this.team === 'player') {
                             ChatPanel.push(`[드론 발진] ${CONFIG.units[deployType]?.name || deployType}`, 'INFO');
@@ -1608,9 +1658,22 @@ class Unit extends Entity {
         if (this.opState === 'laptop') {
             // Guard: laptop 상태는 이동/공격 완전 차단
             // 드론 생존 체크
-            if (!this.ownedDrone || this.ownedDrone.dead) {
+            let aliveCount = 0;
+            if (game && typeof game.getAliveOperatorDrones === 'function') {
+                aliveCount = game.getAliveOperatorDrones(this).length;
+            } else {
+                if (Array.isArray(this.ownedDrones)) {
+                    this.ownedDrones = this.ownedDrones.filter(d => d && !d.dead);
+                    aliveCount = this.ownedDrones.length;
+                }
+                if (this.ownedDrone && !this.ownedDrone.dead && (!Array.isArray(this.ownedDrones) || !this.ownedDrones.includes(this.ownedDrone))) {
+                    aliveCount = Math.max(1, aliveCount);
+                }
+            }
+            if (aliveCount <= 0) {
                 // 드론 죽음 → rifle 모드 복귀
                 this.ownedDrone = null;
+                this.ownedDrones = [];
                 this.opState = 'rifle';
             }
             // laptop 상태 유지 (정지)
@@ -1771,7 +1834,9 @@ class Unit extends Entity {
 
             // [R 4.2] Owner 링크 처리: 드론 death 시 드론병 rifle 전환
             if (this.ownerRef && !this.ownerRef.dead) {
-                if (this.ownerRef.ownedDrone === this) {
+                if (typeof game !== 'undefined' && typeof game.removeOperatorDrone === 'function') {
+                    game.removeOperatorDrone(this.ownerRef, this);
+                } else if (this.ownerRef.ownedDrone === this) {
                     this.ownerRef.ownedDrone = null;
                     this.ownerRef.opState = 'rifle';
                 }
@@ -2013,7 +2078,9 @@ class Unit extends Entity {
         const skipGunSFX = (id === 'mbt' && type === 'shell');
         const shouldPlayGunSFX = (id === 'sniper' || id === 'special_ops') ? true : (Math.random() < 0.3);
         if (!skipGunSFX && typeof AudioSystem !== 'undefined' && shouldPlayGunSFX) {
-            if (id === 'infantry') AudioSystem.playGun('infantry', this.x);
+            // [ITEM] M249 장착 베테랑: gun4.mp3 총소리
+            if (this.veteranGunType === 'rifle_d') AudioSystem.playGun('rifle_d', this.x);
+            else if (id === 'infantry') AudioSystem.playGun('infantry', this.x);
             else if (id === 'special_forces') AudioSystem.playGun('special', this.x);
             else if (id === 'special_ops') AudioSystem.playGun('special_ops', this.x);
             else if (id === 'sniper') AudioSystem.playGun('sniper', this.x);
@@ -2045,6 +2112,16 @@ class Unit extends Entity {
             }
             const finalOpts = shotOpts ? Object.assign({ source: this }, shotOpts) : { source: this };
             game.projectiles.push(new Projectile(this.x, spawnY, target, dmg, this.team, type, finalOpts));
+            // [ITEM] M249 장착 베테랑: 탄속 +35%
+            if (this.veteranGunType === 'rifle_d' && game.projectiles.length > 0) {
+                const lastProj = game.projectiles[game.projectiles.length - 1];
+                if (lastProj && !lastProj.ballistic) {
+                    const speedMult = 1.35;
+                    lastProj.vx *= speedMult;
+                    lastProj.vy *= speedMult;
+                    lastProj.speed = (lastProj.speed || 18) * speedMult;
+                }
+            }
         } catch (e) { }
     }
 
