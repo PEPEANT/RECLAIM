@@ -1,6 +1,120 @@
 ﻿(function (global) {
     'use strict';
 
+    const LOGIN_DEBUG_KEY = 'reclaim_login_debug';
+
+    function isLoginDebugEnabled() {
+        if (global && global.__RECLAIM_LOGIN_DEBUG__ === true) return true;
+        try {
+            return localStorage.getItem(LOGIN_DEBUG_KEY) === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function summarizeStagePack(pack) {
+        const stages = Array.isArray(pack && pack.stages) ? pack.stages : [];
+        let cleared = 0;
+        let current = 0;
+        let locked = 0;
+        let other = 0;
+        for (let i = 0; i < stages.length; i += 1) {
+            const status = String(stages[i] && stages[i].status || '').trim();
+            if (status === 'cleared') cleared += 1;
+            else if (status === 'current') current += 1;
+            else if (status === 'locked') locked += 1;
+            else other += 1;
+        }
+        const selectedStageId = Number(pack && pack.selectedStageId);
+        return {
+            count: stages.length,
+            selectedStageId: Number.isFinite(selectedStageId) ? Math.floor(selectedStageId) : null,
+            status: { cleared, current, locked, other }
+        };
+    }
+
+    function summarizeQuestMission(mission) {
+        if (!mission || typeof mission !== 'object') {
+            return { exists: false };
+        }
+        const quests = (mission.quests && typeof mission.quests === 'object') ? mission.quests : {};
+        const ids = Object.keys(quests);
+        let claimed = 0;
+        let claimable = 0;
+        let inProgress = 0;
+        let other = 0;
+        for (let i = 0; i < ids.length; i += 1) {
+            const status = String(quests[ids[i]] && quests[ids[i]].status || '').trim();
+            if (status === 'claimed') claimed += 1;
+            else if (status === 'claimable') claimable += 1;
+            else if (status === 'in_progress') inProgress += 1;
+            else other += 1;
+        }
+        const counters = (mission.counters && typeof mission.counters === 'object') ? mission.counters : {};
+        const meta = (mission.meta && typeof mission.meta === 'object') ? mission.meta : {};
+        return {
+            exists: true,
+            questCount: ids.length,
+            status: { claimed, claimable, inProgress, other },
+            counters: {
+                kill: Math.max(0, Math.floor(Number(counters.kill) || 0)),
+                win: Math.max(0, Math.floor(Number(counters.win) || 0)),
+                levelUp: Math.max(0, Math.floor(Number(counters.levelUp) || 0))
+            },
+            meta: {
+                loginSupplyClaimed: meta.loginSupplyClaimed === true,
+                skirmishFirstWinClaimed: meta.skirmishFirstWinClaimed === true
+            }
+        };
+    }
+
+    function summarizeProgress(progress) {
+        const p = (progress && typeof progress === 'object') ? progress : {};
+        const occupation = summarizeStagePack(p.campaignOccupation || {});
+        const skirmish = summarizeStagePack(p.campaignSkirmish || {});
+        const clearedMaps = Array.isArray(p.clearedMaps) ? p.clearedMaps : [];
+        return {
+            activeCampaignTab: String(p.activeCampaignTab || ''),
+            clearedMapsCount: clearedMaps.length,
+            campaignThreatLevel: Number.isFinite(Number(p.campaignThreatLevel))
+                ? Math.max(1, Math.min(10, Math.floor(Number(p.campaignThreatLevel))))
+                : null,
+            occupation,
+            skirmish,
+            cityQuestMission: summarizeQuestMission(p.cityQuestMission)
+        };
+    }
+
+    function summarizeGameProgress() {
+        return summarizeProgress({
+            activeCampaignTab: game.activeCampaignTab || 'skirmish',
+            clearedMaps: Array.isArray(game.clearedMaps) ? game.clearedMaps : [],
+            campaignThreatLevel: Number(game.campaignThreatLevel),
+            campaignOccupation: game.campaignOccupation || {},
+            campaignSkirmish: game.campaignSkirmish || {},
+            cityQuestMission: (game.cityQuestMission && typeof game.cityQuestMission === 'object')
+                ? game.cityQuestMission
+                : null
+        });
+    }
+
+    function logLoginDebug(eventName, payload) {
+        if (!isLoginDebugEnabled()) return;
+        try {
+            console.info('[LoginDebug][MainSave]', String(eventName || ''), payload || {});
+        } catch (_) { }
+    }
+
+    function readLocalOwnerUidForDebug(localKey) {
+        const key = `${String(localKey || '').trim()}__owner_uid`;
+        if (!key || key === '__owner_uid') return '';
+        try {
+            return String(localStorage.getItem(key) || '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
     const appPersistence = {
     _makeState() {
         const diff = 'elite';
@@ -211,15 +325,36 @@
 
         const fb = (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB) ? RECLAIM_FB : null;
         const saveBridge = (typeof RECLAIM_SAVE !== 'undefined' && RECLAIM_SAVE) ? RECLAIM_SAVE : null;
+        const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
         const user = (fb && typeof fb.getUser === 'function') ? fb.getUser() : null;
+        const isAnonAuthUser = !!(user && user.uid && user.isAnonymous === true);
+        const rawGuestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const guestSession = isAnonAuthUser || (rawGuestSession && !user);
         const uid = user && user.uid ? String(user.uid) : '';
         const hasUid = uid.length > 0;
-        // Boot race fix:
-        // When auth is not ready yet (uid === ''), do not reject local save by owner check.
-        // Otherwise startup may load defaults and overwrite valid progress.
-        const localOwnedByUid = (!saveBridge || typeof saveBridge.isLocalOwnedBy !== 'function')
-            ? true
-            : (!hasUid ? true : !!saveBridge.isLocalOwnedBy('main', uid));
+        const authTransitioning = !!(authApi && typeof authApi.isAuthTransitioning === 'function' && authApi.isAuthTransitioning());
+        const firebaseReady = !!(fb && typeof fb.isReady === 'function' && fb.isReady());
+        const localOwnerUid = readLocalOwnerUidForDebug(this.STORAGE_KEY);
+        const unresolvedUidBootFallbackAllowed = (!hasUid
+            && !guestSession
+            && !authTransitioning
+            && (!firebaseReady || !localOwnerUid));
+        const localOwnedByUid = guestSession
+            ? false
+            : ((!saveBridge || typeof saveBridge.isLocalOwnedBy !== 'function')
+                ? true
+                : (!hasUid ? unresolvedUidBootFallbackAllowed : !!saveBridge.isLocalOwnedBy('main', uid)));
+        logLoginDebug('load.guard', {
+            uid,
+            hasUid,
+            guestSession,
+            storageKey: this.STORAGE_KEY,
+            localOwnerUid,
+            localOwnedByUid,
+            authTransitioning,
+            firebaseReady,
+            unresolvedUidBootFallbackAllowed
+        });
 
         if (uid && saveBridge && typeof saveBridge.getCachedMain === 'function') {
             const cachedMain = saveBridge.getCachedMain(uid);
@@ -229,6 +364,25 @@
         }
 
         if (!localOwnedByUid) {
+            if (guestSession) {
+                logLoginDebug('load.skip.guest_session', {
+                    uid,
+                    hasUid,
+                    guestSession,
+                    storageKey: this.STORAGE_KEY
+                });
+            }
+            if (!hasUid) {
+                logLoginDebug('load.skip.uid_unresolved_guard', {
+                    uid,
+                    hasUid,
+                    guestSession,
+                    storageKey: this.STORAGE_KEY,
+                    localOwnerUid,
+                    authTransitioning,
+                    firebaseReady
+                });
+            }
             return this.migrate(null);
         }
 
@@ -262,9 +416,23 @@
         const fb = (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB) ? RECLAIM_FB : null;
         const saveBridge = (typeof RECLAIM_SAVE !== 'undefined' && RECLAIM_SAVE) ? RECLAIM_SAVE : null;
         const user = (fb && typeof fb.getUser === 'function') ? fb.getUser() : null;
+        const isAnonAuthUser = !!(user && user.uid && user.isAnonymous === true);
         const uid = user && user.uid ? String(user.uid) : '';
         const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
-        const guestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const rawGuestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const guestSession = isAnonAuthUser || (rawGuestSession && !user);
+        const authTransitioning = !!(authApi && typeof authApi.isAuthTransitioning === 'function' && authApi.isAuthTransitioning());
+        const blockLocalWriteForUidTransition = (!guestSession && !uid && authTransitioning);
+        let mainCloudMode = 'none';
+        logLoginDebug('save.snapshot', {
+            requireCloud,
+            uid,
+            hasUid: uid.length > 0,
+            guestSession,
+            authTransitioning,
+            blockLocalWriteForUidTransition,
+            summary: summarizeProgress(state.progress)
+        });
         let cloudSavePromise = Promise.resolve(true);
 
         if (!guestSession && uid && saveBridge && typeof saveBridge.saveMain === 'function') {
@@ -302,15 +470,19 @@
             };
 
             if (isReady) {
+                mainCloudMode = 'direct';
                 cloudSavePromise = enqueueCloudSave();
             } else if (requireCloud) {
                 if (this._pendingMainCloudSave && this._pendingMainCloudUid === uid) {
+                    mainCloudMode = 'reuse_pending';
                     cloudSavePromise = this._pendingMainCloudSave;
                 } else {
+                    mainCloudMode = 'ensure_then_save';
                     cloudSavePromise = ensureAndSaveMain();
                 }
             } else {
                 // 로그인 직후에도 1개의 pending 작업으로 클라우드 저장을 끝까지 재시도한다.
+                mainCloudMode = 'pending_background';
                 this._dirty = true;
                 if (!this._pendingMainCloudSave || this._pendingMainCloudUid !== uid) {
                     this._pendingMainCloudUid = uid;
@@ -330,6 +502,28 @@
             }
         }
 
+        if (guestSession) {
+            logLoginDebug('save.local.skip.guest_session', {
+                uid,
+                guestSession,
+                requireCloud,
+                authTransitioning,
+                storageKey: this.STORAGE_KEY
+            });
+            return cloudSavePromise;
+        }
+
+        if (blockLocalWriteForUidTransition) {
+            logLoginDebug('save.local.skip.transition_uid_unresolved', {
+                uid,
+                guestSession,
+                requireCloud,
+                authTransitioning,
+                storageKey: this.STORAGE_KEY
+            });
+            return cloudSavePromise;
+        }
+
         try {
             // 롤링 백업: 현재 BAK1 → BAK2로, 현재 STATE → BAK1으로
             const currentBak1 = localStorage.getItem(this.BACKUP_KEY_1);
@@ -347,12 +541,32 @@
                 saveBridge.setLocalOwner('main', guestSession ? '' : (uid || ''));
             }
             this._lastSaveAt = performance.now ? performance.now() : Date.now();
+            logLoginDebug('save.local.done', {
+                uid,
+                guestSession,
+                requireCloud,
+                mainCloudMode,
+                storageKey: this.STORAGE_KEY
+            });
         } catch (e) {
             if (uid) {
                 this._lastSaveAt = performance.now ? performance.now() : Date.now();
             }
             // localStorage 불가 환경이면 조용히 무시
+            logLoginDebug('save.local.error', {
+                uid,
+                guestSession,
+                requireCloud,
+                mainCloudMode,
+                message: String(e && e.message || '')
+            });
         }
+        logLoginDebug('save.return', {
+            uid,
+            guestSession,
+            requireCloud,
+            mainCloudMode
+        });
         return cloudSavePromise;
     },
 
@@ -360,6 +574,9 @@
 
     loadIntoGame() {
         const st = this.load();
+        logLoginDebug('load.snapshot', {
+            summary: summarizeProgress(st && st.progress ? st.progress : null)
+        });
 
         // speed 적용
         if (st.settings && Number.isFinite(st.settings.speed)) {
@@ -617,6 +834,9 @@
         }
 
         this._dirty = true;
+        logLoginDebug('load.applied', {
+            summary: summarizeGameProgress()
+        });
     },
 
     };

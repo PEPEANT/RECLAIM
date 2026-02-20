@@ -10025,15 +10025,15 @@ input[type=range]::-webkit-slider-runnable-track {
 
 @media (max-width: 768px) {
     #hud-footer {
-        --hud-main-height: clamp(92px, 18vh, 132px);
-        --hud-cmd-gap: 8px;
-        --hud-cmd-min-h: 62px;
-        --hud-cmd-font: 11px;
-        --hud-cmd-icon: 20px;
-        --hud-cmd-col-min: 72px;
-        --hud-cmd-col-max: 96px;
-        --hud-cmd-pad-y: 7px;
-        --hud-cmd-pad-x: 5px;
+        --hud-main-height: clamp(100px, 20vh, 144px);
+        --hud-cmd-gap: 6px;
+        --hud-cmd-min-h: 64px;
+        --hud-cmd-font: 10px;
+        --hud-cmd-icon: 18px;
+        --hud-cmd-col-min: 30px;
+        --hud-cmd-col-max: 42px;
+        --hud-cmd-pad-y: 5px;
+        --hud-cmd-pad-x: 3px;
         --hud-sheet-open-ms: 180ms;
         --hud-sheet-close-ms: 150ms;
         --hud-sheet-fade-in-ms: 145ms;
@@ -10042,11 +10042,12 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     #hud-left {
-        flex-basis: clamp(80px, 18vw, 108px) !important;
+        flex-basis: clamp(104px, 24vw, 134px) !important;
     }
 
     #hud-right {
         max-width: none;
+        overflow: auto;
     }
 
     #hud-footer.hud-skirmish-predeploy #hud-left {
@@ -10153,6 +10154,72 @@ input[type=range]::-webkit-slider-runnable-track {
 
     #hud-production-area {
         max-height: min(50vh, 240px);
+    }
+}
+
+/* Compact mobile viewport: shrink command keys from 603x292 and below */
+@media (pointer: coarse) and (max-width: 603px) and (max-height: 292px) {
+    #hud-footer {
+        --hud-cmd-gap: 4px;
+        --hud-cmd-min-h: 40px;
+        --hud-cmd-font: 9px;
+        --hud-cmd-icon: 15px;
+        --hud-cmd-col-min: 30px;
+        --hud-cmd-col-max: 42px;
+        --hud-cmd-btn-min: 32px;
+        --hud-cmd-pad-y: 3px;
+        --hud-cmd-pad-x: 2px;
+    }
+
+    #hud-command-grid {
+        gap: 5px !important;
+        padding-bottom: 0 !important;
+    }
+
+    #hud-command-grid .hud-cmd-group {
+        gap: var(--hud-cmd-gap) !important;
+        padding: 2px !important;
+        border-radius: 8px;
+    }
+
+    #hud-command-grid .hud-cmd-group-move {
+        margin-left: 5px;
+    }
+}
+
+/* Ultra-compact viewport keeps icon-only command keys for touch safety */
+@media (pointer: coarse) and (max-width: 450px) and (max-height: 215px) {
+    #hud-footer {
+        --hud-cmd-gap: 3px;
+        --hud-cmd-min-h: 34px;
+        --hud-cmd-font: 8px;
+        --hud-cmd-icon: 13px;
+        --hud-cmd-col-min: 26px;
+        --hud-cmd-col-max: 36px;
+        --hud-cmd-btn-min: 30px;
+        --hud-cmd-pad-y: 2px;
+        --hud-cmd-pad-x: 2px;
+    }
+
+    #hud-command-grid {
+        gap: 4px !important;
+    }
+
+    #hud-command-grid .hud-cmd-group {
+        gap: var(--hud-cmd-gap) !important;
+        padding: 2px !important;
+    }
+
+    #hud-command-grid .hud-cmd-group-move {
+        margin-left: 4px;
+    }
+
+    #hud-command-grid .hud-cmd-btn > span:last-child {
+        display: none;
+    }
+
+    .hud-cmd-btn .cmd-icon {
+        margin: 0 auto;
     }
 }
 

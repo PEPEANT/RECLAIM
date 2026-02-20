@@ -3,6 +3,7 @@
     const VERIFY_DURATION_MS = 3 * 60 * 1000;
     const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const ACCOUNT_STORAGE_KEY = 'reclaim_auth_accounts_v1';
+    const LOGIN_DEBUG_KEY = 'reclaim_login_debug';
 
     let activeGame = null;
     let initialized = false;
@@ -13,6 +14,9 @@
     let syncInFlight = null;
     let syncInFlightUid = '';
     let syncTicket = 0;
+    let authFlowToken = 0;
+    let forceSignOutArmedUntil = 0;
+    const FORCE_SIGNOUT_ARM_MS = 10 * 1000;
 
     // Google pre-login verification state
     let googleVerificationCode = '';
@@ -28,6 +32,71 @@
 
     function byId(id) {
         return document.getElementById(id);
+    }
+
+    function isLoginDebugEnabled() {
+        if (global && global.__RECLAIM_LOGIN_DEBUG__ === true) return true;
+        try {
+            return localStorage.getItem(LOGIN_DEBUG_KEY) === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function getAuthDebugState() {
+        return {
+            guestSessionActive: guestSessionActive === true,
+            authBusy: authBusy === true,
+            authTransitioning: isAuthTransitioning(),
+            lastSyncedUid: String(lastSyncedUid || ''),
+            lastLoginQuestGrantUid: String(lastLoginQuestGrantUid || ''),
+            hasSyncInFlight: !!syncInFlight,
+            syncInFlightUid: String(syncInFlightUid || ''),
+            syncTicket: Math.max(0, Math.floor(Number(syncTicket) || 0)),
+            authFlowToken: Math.max(0, Math.floor(Number(authFlowToken) || 0)),
+            forceSignOutArmed: isForceSignOutArmed()
+        };
+    }
+
+    function isAuthTransitioning() {
+        return authBusy === true || !!syncInFlight;
+    }
+
+    function beginAuthFlow(reason) {
+        authFlowToken += 1;
+        const token = Math.max(1, Math.floor(Number(authFlowToken) || 1));
+        logLoginDebug('flow.begin', {
+            reason: String(reason || '').trim() || 'unknown',
+            flowToken: token,
+            state: getAuthDebugState()
+        });
+        return token;
+    }
+
+    function isAuthFlowTokenCurrent(flowToken) {
+        const token = Math.max(0, Math.floor(Number(flowToken) || 0));
+        if (token <= 0) return true;
+        return token === authFlowToken;
+    }
+
+    function isForceSignOutArmed() {
+        return forceSignOutArmedUntil > Date.now();
+    }
+
+    function armForceSignOut() {
+        forceSignOutArmedUntil = Date.now() + FORCE_SIGNOUT_ARM_MS;
+        return forceSignOutArmedUntil;
+    }
+
+    function clearForceSignOutArm() {
+        forceSignOutArmedUntil = 0;
+    }
+
+    function logLoginDebug(eventName, payload) {
+        if (!isLoginDebugEnabled()) return;
+        try {
+            console.info('[LoginDebug][Auth]', String(eventName || ''), payload || {});
+        } catch (_) { }
     }
 
     function showToast(msg) {
@@ -365,31 +434,109 @@
         }
     }
 
-    async function syncCloudState(uid, gameRef, force) {
-        if (!uid) return;
+    async function syncCloudState(uid, gameRef, force, reason, flowToken) {
+        const syncReason = String(reason || '').trim() || 'unknown';
+        const syncFlowToken = Math.max(0, Math.floor(Number(flowToken) || 0));
+        const isStaleFlow = () => (syncFlowToken > 0 && !isAuthFlowTokenCurrent(syncFlowToken));
+        const logStaleFlowAndAbort = (phase) => {
+            if (!isStaleFlow()) return false;
+            logLoginDebug('sync.skip.stale_flow', {
+                phase: String(phase || 'unknown'),
+                force: force === true,
+                reason: syncReason,
+                flowToken: syncFlowToken,
+                currentAuthFlowToken: Math.max(0, Math.floor(Number(authFlowToken) || 0)),
+                state: getAuthDebugState()
+            });
+            return true;
+        };
+        if (logStaleFlowAndAbort('before_start')) return;
+        if (!uid) {
+            logLoginDebug('sync.skip.no_uid', {
+                force: force === true,
+                reason: syncReason,
+                flowToken: syncFlowToken,
+                state: getAuthDebugState()
+            });
+            return;
+        }
         const liveUser = getCurrentUser();
-        if (guestSessionActive === true || isAnonymousUser(liveUser)) return;
-        if (!force && lastSyncedUid === uid) return;
+        if (guestSessionActive === true || isAnonymousUser(liveUser)) {
+            logLoginDebug('sync.skip.guest_or_anon', {
+                uid: String(uid || ''),
+                force: force === true,
+                reason: syncReason,
+                flowToken: syncFlowToken,
+                state: getAuthDebugState()
+            });
+            return;
+        }
+        if (!force && lastSyncedUid === uid) {
+            logLoginDebug('sync.skip.already_synced', {
+                uid: String(uid || ''),
+                force: force === true,
+                reason: syncReason,
+                flowToken: syncFlowToken,
+                state: getAuthDebugState()
+            });
+            return;
+        }
         if (syncInFlight && syncInFlightUid === uid) {
+            logLoginDebug('sync.wait.inflight', {
+                uid: String(uid || ''),
+                force: force === true,
+                reason: syncReason,
+                flowToken: syncFlowToken,
+                state: getAuthDebugState()
+            });
             await syncInFlight;
+            if (logStaleFlowAndAbort('after_wait')) return;
+            logLoginDebug('sync.wait.inflight.done', {
+                uid: String(uid || ''),
+                force: force === true,
+                reason: syncReason,
+                flowToken: syncFlowToken,
+                state: getAuthDebugState()
+            });
             return;
         }
 
         const targetGame = gameRef || activeGame || global.game;
         const save = getSaveBridge();
         const ticket = ++syncTicket;
+        logLoginDebug('sync.start', {
+            uid: String(uid || ''),
+            force: force === true,
+            reason: syncReason,
+            ticket,
+            flowToken: syncFlowToken,
+            state: getAuthDebugState()
+        });
         const task = (async () => {
+            const shouldAbortByTicketOrFlow = (phase) => {
+                if (ticket !== syncTicket) return true;
+                if (logStaleFlowAndAbort(phase)) return true;
+                return false;
+            };
             if (!save || typeof save.migrateOnce !== 'function') {
-                if (ticket !== syncTicket) return;
+                if (shouldAbortByTicketOrFlow('no_save_bridge.before_profile_sync')) return;
                 await syncCommunityProfile(targetGame);
-                if (ticket !== syncTicket) return;
+                if (shouldAbortByTicketOrFlow('no_save_bridge.after_profile_sync')) return;
                 lastSyncedUid = uid;
+                logLoginDebug('sync.done.no_save_bridge', {
+                    uid: String(uid || ''),
+                    force: force === true,
+                    reason: syncReason,
+                    ticket,
+                    flowToken: syncFlowToken,
+                    state: getAuthDebugState()
+                });
                 return;
             }
 
             try {
                 await save.migrateOnce(uid, { seedFromLocal: false });
-                if (ticket !== syncTicket) return;
+                if (shouldAbortByTicketOrFlow('after_migrate')) return;
                 if (typeof app !== 'undefined' && app && typeof app.loadIntoGame === 'function') {
                     app.loadIntoGame();
                 }
@@ -401,10 +548,28 @@
                     targetGame.renderCityScreen();
                 }
                 await syncCommunityProfile(targetGame);
-                if (ticket !== syncTicket) return;
+                if (shouldAbortByTicketOrFlow('after_profile_sync')) return;
                 lastSyncedUid = uid;
+                logLoginDebug('sync.done', {
+                    uid: String(uid || ''),
+                    force: force === true,
+                    reason: syncReason,
+                    ticket,
+                    flowToken: syncFlowToken,
+                    state: getAuthDebugState()
+                });
             } catch (err) {
                 console.warn('[CitySimAuth] 클라우드 상태 동기화 실패:', err);
+                logLoginDebug('sync.fail', {
+                    uid: String(uid || ''),
+                    force: force === true,
+                    reason: syncReason,
+                    ticket,
+                    flowToken: syncFlowToken,
+                    code: String(err && err.code || ''),
+                    message: String(err && err.message || ''),
+                    state: getAuthDebugState()
+                });
             }
         })();
 
@@ -417,6 +582,14 @@
                 syncInFlight = null;
                 syncInFlightUid = '';
             }
+            logLoginDebug('sync.finally', {
+                uid: String(uid || ''),
+                force: force === true,
+                reason: syncReason,
+                ticket,
+                flowToken: syncFlowToken,
+                state: getAuthDebugState()
+            });
         }
     }
 
@@ -441,7 +614,7 @@
         if (guestSessionActive === true || isAnonymousUser(liveUser)) return false;
         if (isCloudSyncReady(targetUid)) return true;
         try {
-            await syncCloudState(targetUid, gameRef || activeGame || global.game || null, false);
+            await syncCloudState(targetUid, gameRef || activeGame || global.game || null, false, 'ensureCloudReadyForSave');
         } catch (_) { }
         return isCloudSyncReady(targetUid);
     }
@@ -450,11 +623,61 @@
         return gameRef || activeGame || global.game || null;
     }
 
+    async function finalizeAuthenticatedEntry(user, options) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        const targetGame = getTargetGameRef(opts.game);
+        const reason = String(opts.reason || '').trim() || 'finalizeAuthenticatedEntry';
+        const successToast = String(opts.successToast || '').trim();
+        const failureToast = opts.failureToast === false
+            ? ''
+            : String(opts.failureToast || '로그인에 성공했지만 시티 화면 진입에 실패했습니다.').trim();
+        const forceSync = opts.forceSync !== false;
+        const flowToken = Math.max(0, Math.floor(Number(opts.flowToken) || 0));
+        const uid = (user && user.uid) ? String(user.uid) : '';
+        if (!uid) return false;
+
+        if (flowToken > 0 && !isAuthFlowTokenCurrent(flowToken)) {
+            logLoginDebug('login.finalize.skip.stale_before_sync', {
+                uid,
+                reason,
+                flowToken,
+                currentAuthFlowToken: Math.max(0, Math.floor(Number(authFlowToken) || 0)),
+                state: getAuthDebugState()
+            });
+            return false;
+        }
+
+        guestSessionActive = false;
+        cancelAuth();
+        await syncCloudState(uid, targetGame, forceSync, reason, flowToken);
+
+        if (flowToken > 0 && !isAuthFlowTokenCurrent(flowToken)) {
+            logLoginDebug('login.finalize.skip.stale_after_sync', {
+                uid,
+                reason,
+                flowToken,
+                currentAuthFlowToken: Math.max(0, Math.floor(Number(authFlowToken) || 0)),
+                state: getAuthDebugState()
+            });
+            return false;
+        }
+
+        if (enterCity(targetGame)) {
+            if (successToast) showToast(successToast);
+            return true;
+        }
+        if (failureToast) showToast(failureToast);
+        return false;
+    }
+
     async function persistSessionProgress(gameRef) {
         const targetGame = getTargetGameRef(gameRef);
         const tasks = [];
+        let citySaveEnqueued = false;
+        let mainSaveEnqueued = false;
 
         if (targetGame && typeof targetGame.saveCitySimState === 'function') {
+            citySaveEnqueued = true;
             try {
                 const citySaveResult = targetGame.saveCitySimState({ requireCloud: true });
                 tasks.push(
@@ -472,6 +695,7 @@
         }
 
         if (typeof app !== 'undefined' && app && typeof app.saveNow === 'function') {
+            mainSaveEnqueued = true;
             try {
                 const mainSaveResult = app.saveNow({ requireCloud: true });
                 tasks.push(
@@ -488,9 +712,29 @@
             }
         }
 
-        if (!tasks.length) return true;
+        if (!tasks.length) {
+            logLoginDebug('persist.skip', {
+                citySaveEnqueued,
+                mainSaveEnqueued,
+                state: getAuthDebugState()
+            });
+            return true;
+        }
         const settled = await Promise.allSettled(tasks);
-        return settled.every((entry) => entry.status === 'fulfilled' && entry.value === true);
+        const okAll = settled.every((entry) => entry.status === 'fulfilled' && entry.value === true);
+        logLoginDebug('persist.result', {
+            citySaveEnqueued,
+            mainSaveEnqueued,
+            settled: settled.map((entry) => {
+                if (entry.status === 'fulfilled') {
+                    return { status: 'fulfilled', value: entry.value === true };
+                }
+                return { status: 'rejected' };
+            }),
+            okAll,
+            state: getAuthDebugState()
+        });
+        return okAll;
     }
 
     function reloadSessionState(gameRef) {
@@ -681,6 +925,16 @@
         activeGame = game || null;
         const user = getCurrentUser();
         if (user && user.uid) {
+            if (isGoogleSession(user)) {
+                logLoginDebug('login.blocked.google_session', {
+                    userUid: String(user.uid || ''),
+                    email: String(user.email || ''),
+                    state: getAuthDebugState()
+                });
+                showToast('이미 구글 로그인 상태입니다. 일반 로그인 전환은 먼저 로그아웃 후 진행해주세요.');
+                updateSessionUi(user);
+                return;
+            }
             if (user.providerData && Array.isArray(user.providerData)) {
                 const hasPasswordProvider = user.providerData.some((p) => p && p.providerId === 'password');
                 if (hasPasswordProvider && !user.emailVerified) {
@@ -690,12 +944,13 @@
                 }
             }
 
-            guestSessionActive = false;
-            await syncCloudState(String(user.uid), activeGame, true);
-            if (enterCity(activeGame)) {
-                showToast('진행사항을 불러왔습니다.');
-                return;
-            }
+            const flowToken = beginAuthFlow('loginAndEnter.existingSession');
+            if (await finalizeAuthenticatedEntry(user, {
+                game: activeGame,
+                reason: 'loginAndEnter.existingSession',
+                successToast: '진행사항을 불러왔습니다.',
+                flowToken
+            })) return;
         }
         openLoginModal(activeGame);
     }
@@ -740,17 +995,18 @@
             // 이미 구글 로그인된 세션이면 다시 로그인 절차를 막지 않고 바로 진입한다.
             if (isGoogleSession(currentUser)) {
                 activeGame = game || activeGame || global.game || null;
-                guestSessionActive = false;
                 clearAllErrors();
                 closeAllModals();
                 clearGoogleVerifyState();
 
-                await syncCloudState(String(currentUser.uid), activeGame, true);
-                if (enterCity(activeGame)) {
-                    showToast('구글 로그인 세션으로 시티에 접속했습니다.');
-                    return;
-                }
-                showToast('로그인 상태지만 시티 화면 진입에 실패했습니다.');
+                const flowToken = beginAuthFlow('startGoogle.existingGoogleSession');
+                await finalizeAuthenticatedEntry(currentUser, {
+                    game: activeGame,
+                    reason: 'startGoogle.existingGoogleSession',
+                    successToast: '구글 로그인 세션으로 시티에 접속했습니다.',
+                    failureToast: '로그인 상태지만 시티 화면 진입에 실패했습니다.',
+                    flowToken
+                });
                 return;
             }
 
@@ -781,16 +1037,13 @@
                 }
 
                 const gameRef = activeGame || global.game || null;
-                guestSessionActive = false;
-                cancelAuth();
-                await syncCloudState(user.uid, gameRef, true);
-
-                if (enterCity(gameRef)) {
-                    showToast('Google 로그인 성공. 클라우드 저장 데이터를 불러왔습니다.');
-                    return;
-                }
-
-                showToast('로그인에 성공했지만 시티 화면 진입에 실패했습니다.');
+                const flowToken = beginAuthFlow('startGoogle.firebaseSignIn');
+                await finalizeAuthenticatedEntry(user, {
+                    game: gameRef,
+                    reason: 'startGoogle.firebaseSignIn',
+                    successToast: 'Google 로그인 성공. 클라우드 저장 데이터를 불러왔습니다.',
+                    flowToken
+                });
                 return;
             } catch (err) {
                 const code = String(err && err.code || '');
@@ -928,16 +1181,13 @@
                 }
 
                 const gameRef = activeGame || global.game || null;
-                guestSessionActive = false;
-                cancelAuth();
-                await syncCloudState(user.uid, gameRef, true);
-
-                if (enterCity(gameRef)) {
-                    showToast('로그인 성공. 클라우드 저장 데이터를 불러왔습니다.');
-                    return;
-                }
-
-                showToast('로그인에 성공했지만 시티 화면 진입에 실패했습니다.');
+                const flowToken = beginAuthFlow('onLoginSubmit.emailSignIn');
+                await finalizeAuthenticatedEntry(user, {
+                    game: gameRef,
+                    reason: 'onLoginSubmit.emailSignIn',
+                    successToast: '로그인 성공. 클라우드 저장 데이터를 불러왔습니다.',
+                    flowToken
+                });
                 return;
             } catch (err) {
                 setError('auth-login-error', mapAuthError(err, '로그인에 실패했습니다.'));
@@ -1122,16 +1372,13 @@
                 }
 
                 const gameRef = activeGame || global.game || null;
-                guestSessionActive = false;
-                cancelAuth();
-                await syncCloudState(user.uid, gameRef, true);
-
-                if (enterCity(gameRef)) {
-                    showToast('Google 로그인 성공. 클라우드 저장 데이터를 불러왔습니다.');
-                    return;
-                }
-
-                showToast('로그인에 성공했지만 시티 화면 진입에 실패했습니다.');
+                const flowToken = beginAuthFlow('onGoogleSubmit.googleSignIn');
+                await finalizeAuthenticatedEntry(user, {
+                    game: gameRef,
+                    reason: 'onGoogleSubmit.googleSignIn',
+                    successToast: 'Google 로그인 성공. 클라우드 저장 데이터를 불러왔습니다.',
+                    flowToken
+                });
                 return;
             } catch (err) {
                 console.error('[CitySimAuth] onGoogleSubmit 에러:', err && err.code, err);
@@ -1206,17 +1453,34 @@
         const opts = (options && typeof options === 'object') ? options : {};
         const silent = opts.silent === true;
         const persist = opts.persist !== false;
+        const force = opts.force === true;
         const targetGame = getTargetGameRef(opts.game);
+        let signOutInvoked = false;
+        let saveOk = null;
 
         const fb = getFirebaseBridge();
         if (!fb || typeof fb.signOut !== 'function') {
+            logLoginDebug('signout.no_bridge', {
+                silent,
+                persist,
+                force,
+                state: getAuthDebugState()
+            });
             if (!silent) showToast('현재 로그인 세션이 없습니다.');
             return false;
         }
 
         try {
             const user = getCurrentUser();
+            logLoginDebug('signout.start', {
+                silent,
+                persist,
+                force,
+                userUid: user && user.uid ? String(user.uid) : '',
+                state: getAuthDebugState()
+            });
             if (!user || !user.uid) {
+                clearForceSignOutArm();
                 guestSessionActive = false;
                 lastSyncedUid = '';
                 lastLoginQuestGrantUid = '';
@@ -1225,15 +1489,52 @@
                 syncInFlightUid = '';
                 updateSessionUi(null);
                 reloadSessionState(targetGame);
+                logLoginDebug('signout.no_user', {
+                    silent,
+                    persist,
+                    force,
+                    signOutInvoked,
+                    state: getAuthDebugState()
+                });
                 if (!silent) showToast('현재 로그인 세션이 없습니다.');
                 return false;
             }
 
             if (persist) {
-                const saveOk = await persistSessionProgress(targetGame);
+                logLoginDebug('signout.persist.begin', {
+                    userUid: String(user.uid || ''),
+                    state: getAuthDebugState()
+                });
+                saveOk = await persistSessionProgress(targetGame);
+                logLoginDebug('signout.persist.result', {
+                    userUid: String(user.uid || ''),
+                    saveOk: saveOk === true,
+                    force,
+                    state: getAuthDebugState()
+                });
                 if (!saveOk) {
-                    if (!silent) showToast('저장에 실패해 로그아웃을 중단했습니다. 네트워크를 확인한 뒤 다시 시도해주세요.');
-                    return false;
+                    if (!force) {
+                        const armedUntil = armForceSignOut();
+                        logLoginDebug('signout.abort_save_failed', {
+                            userUid: String(user.uid || ''),
+                            signOutInvoked,
+                            force,
+                            armedUntil,
+                            state: getAuthDebugState()
+                        });
+                        if (!silent) showToast('저장에 실패해 로그아웃을 중단했습니다. 10초 내에 다시 로그아웃을 누르면 강제 로그아웃합니다.');
+                        return false;
+                    }
+                    clearForceSignOutArm();
+                    logLoginDebug('signout.force_continue_after_save_fail', {
+                        userUid: String(user.uid || ''),
+                        signOutInvoked,
+                        force,
+                        state: getAuthDebugState()
+                    });
+                    if (!silent) showToast('저장에 실패했지만 강제 로그아웃을 진행합니다.');
+                } else {
+                    clearForceSignOutArm();
                 }
             }
 
@@ -1241,7 +1542,15 @@
                 await removeGuestRankingEntry(String(user.uid));
             }
 
+            signOutInvoked = true;
+            logLoginDebug('signout.firebase_signout.call', {
+                userUid: String(user.uid || ''),
+                saveOk: saveOk === true,
+                force,
+                state: getAuthDebugState()
+            });
             await fb.signOut();
+            clearForceSignOutArm();
             lastSyncedUid = '';
             lastLoginQuestGrantUid = '';
             guestSessionActive = false;
@@ -1250,9 +1559,24 @@
             syncInFlightUid = '';
             updateSessionUi(null);
             reloadSessionState(targetGame);
+            logLoginDebug('signout.success', {
+                userUid: String(user.uid || ''),
+                signOutInvoked,
+                saveOk: saveOk === true || saveOk == null,
+                force,
+                state: getAuthDebugState()
+            });
             if (!silent) showToast('로그아웃되었습니다.');
             return true;
         } catch (err) {
+            logLoginDebug('signout.error', {
+                signOutInvoked,
+                saveOk: saveOk === true,
+                force,
+                code: String(err && err.code || ''),
+                message: String(err && err.message || ''),
+                state: getAuthDebugState()
+            });
             if (!silent) showToast(mapAuthError(err, '로그아웃에 실패했습니다.'));
             return false;
         }
@@ -1265,7 +1589,8 @@
         }
         authBusy = true;
         try {
-            await signOutSession({ silent: false });
+            const force = isForceSignOutArmed();
+            await signOutSession({ silent: false, force });
         } finally {
             authBusy = false;
         }
@@ -1356,13 +1681,21 @@
         if (fb && typeof fb.handleRedirectResult === 'function') {
             fb.handleRedirectResult().then(function (result) {
                 if (result && result.user && result.user.uid) {
+                    const flowToken = beginAuthFlow('redirectResult');
+                    logLoginDebug('redirect.result', {
+                        userUid: String(result.user.uid || ''),
+                        email: String(result.user.email || ''),
+                        flowToken
+                    });
                     console.log('[CitySimAuth] Redirect 로그인 성공:', result.user.email);
-                    guestSessionActive = false;
                     const gameRef = activeGame || global.game || null;
-                    syncCloudState(String(result.user.uid), gameRef, true).then(function () {
-                        if (enterCity(gameRef)) {
-                            showToast('Google 로그인 성공. 클라우드 저장 데이터를 불러왔습니다.');
-                        }
+                    finalizeAuthenticatedEntry(result.user, {
+                        game: gameRef,
+                        reason: 'redirectResult',
+                        successToast: 'Google 로그인 성공. 클라우드 저장 데이터를 불러왔습니다.',
+                        flowToken
+                    }).catch(function (err) {
+                        console.warn('[CitySimAuth] Redirect 후 상태 정리 실패:', err);
                     });
                 }
             });
@@ -1370,9 +1703,17 @@
 
         if (fb && typeof fb.onAuth === 'function') {
             fb.onAuth(async (user) => {
+                const callbackUid = (user && user.uid) ? String(user.uid) : '';
+                const liveUser = getCurrentUser();
+                const liveUid = (liveUser && liveUser.uid) ? String(liveUser.uid) : '';
+                logLoginDebug('onAuth.event', {
+                    callbackUid,
+                    liveUid,
+                    isNullEvent: !(user && user.uid),
+                    state: getAuthDebugState()
+                });
                 // 빠른 계정 전환 시 늦게 도착한 null 이벤트가 상태를 덮어쓰는 것을 방지.
                 if ((!user || !user.uid)) {
-                    const liveUser = getCurrentUser();
                     if (liveUser && liveUser.uid) return;
                 }
 
@@ -1384,6 +1725,7 @@
                 if (user && user.uid) {
                     const authUid = String(user.uid);
                     const gameRef = activeGame || global.game || null;
+                    const flowToken = Math.max(0, Math.floor(Number(authFlowToken) || 0));
 
                     if (isGuestAuthUser) {
                         lastSyncedUid = '';
@@ -1398,7 +1740,8 @@
                         return;
                     }
 
-                    await syncCloudState(authUid, gameRef, false);
+                    await syncCloudState(authUid, gameRef, false, 'onAuth', flowToken);
+                    if (flowToken > 0 && !isAuthFlowTokenCurrent(flowToken)) return;
 
                     // [FIX] 로그인 시 프로필 자동 동기화 (랭킹/방문 시스템용)
                     if (typeof CitySimChat !== 'undefined' && CitySimChat && typeof CitySimChat.syncMyProfile === 'function') {
@@ -1408,6 +1751,7 @@
                             console.warn('[CitySimAuth] Profile sync failed:', err);
                         }
                     }
+                    if (flowToken > 0 && !isAuthFlowTokenCurrent(flowToken)) return;
 
                     const grantLoginQuestReward = () => {
                         const targetGame = activeGame || global.game || null;
@@ -1467,7 +1811,9 @@
         loginAndEnter,
         startGoogle,
         startGuest,
-        signOut: function signOutPublic() { return signOutSession({ silent: false }); },
+        signOut: function signOutPublic() {
+            return signOutSession({ silent: false, force: isForceSignOutArmed() });
+        },
         cancelAuth,
         getCurrentUser: function getCurrentUserPublic() { return getCurrentUser(); },
         isAuthenticated: function isAuthenticated() {
@@ -1479,6 +1825,9 @@
         },
         ensureCloudReadyForSave: function ensureCloudReadyForSavePublic(uid, gameRef) {
             return ensureCloudReadyForSave(uid, gameRef);
+        },
+        isAuthTransitioning: function isAuthTransitioningPublic() {
+            return isAuthTransitioning();
         },
         isGuestSession: function isGuestSession() { return guestSessionActive === true; },
         clearGuestProgress

@@ -10,6 +10,7 @@
         drone_module: new Set(['drone_operator'])
     };
     const VETERAN_ITEM_KEYS = Object.keys(VETERAN_ITEM_COMPAT);
+    const LOGIN_DEBUG_KEY = 'reclaim_login_debug';
     let pendingCityCloudSave = null;
     let pendingCityCloudUid = '';
 
@@ -27,6 +28,32 @@
     function parseNumber(value, fallback) {
         const n = Number(value);
         return Number.isFinite(n) ? n : fallback;
+    }
+
+    function isLoginDebugEnabled() {
+        if (global && global.__RECLAIM_LOGIN_DEBUG__ === true) return true;
+        try {
+            return localStorage.getItem(LOGIN_DEBUG_KEY) === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function logLoginDebug(eventName, payload) {
+        if (!isLoginDebugEnabled()) return;
+        try {
+            console.info('[LoginDebug][CitySave]', String(eventName || ''), payload || {});
+        } catch (_) { }
+    }
+
+    function readLocalOwnerUidForDebug(localKey) {
+        const key = `${String(localKey || '').trim()}__owner_uid`;
+        if (!key || key === '__owner_uid') return '';
+        try {
+            return String(localStorage.getItem(key) || '').trim();
+        } catch (_) {
+            return '';
+        }
     }
 
     function sanitizeTaxAuto(rawAuto) {
@@ -573,22 +600,75 @@
 
         const fb = (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB) ? RECLAIM_FB : null;
         const saveBridge = (typeof RECLAIM_SAVE !== 'undefined' && RECLAIM_SAVE) ? RECLAIM_SAVE : null;
+        const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
         const user = (fb && typeof fb.getUser === 'function') ? fb.getUser() : null;
+        const isAnonAuthUser = !!(user && user.uid && user.isAnonymous === true);
+        const rawGuestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const guestSession = isAnonAuthUser || (rawGuestSession && !user);
         const uid = user && user.uid ? String(user.uid) : '';
         const hasUid = uid.length > 0;
-        // Boot race fix: allow local load while auth uid is unresolved.
-        const localOwnedByUid = (!saveBridge || typeof saveBridge.isLocalOwnedBy !== 'function')
-            ? true
-            : (!hasUid ? true : !!saveBridge.isLocalOwnedBy('city', uid));
+        const localOwnerUid = readLocalOwnerUidForDebug(STORAGE_KEY);
+        let loadedSource = 'none';
+        const authTransitioning = !!(authApi && typeof authApi.isAuthTransitioning === 'function' && authApi.isAuthTransitioning());
+        const firebaseReady = !!(fb && typeof fb.isReady === 'function' && fb.isReady());
+        // UID 미확정일 때:
+        // 1) owner가 비어있으면(게스트 로컬) 허용
+        // 2) owner가 있으면 cold boot(아직 firebase 미준비)에서만 허용
+        // 계정 전환 중에는 항상 차단해 교차 계정 노출을 막는다.
+        const unresolvedUidBootFallbackAllowed = (!hasUid
+            && !guestSession
+            && !authTransitioning
+            && (!firebaseReady || !localOwnerUid));
+        const localOwnedByUid = guestSession
+            ? false
+            : ((!saveBridge || typeof saveBridge.isLocalOwnedBy !== 'function')
+                ? true
+                : (!hasUid ? unresolvedUidBootFallbackAllowed : !!saveBridge.isLocalOwnedBy('city', uid)));
+        logLoginDebug('load.start', {
+            uid,
+            hasUid,
+            guestSession,
+            STORAGE_KEY,
+            localOwnerUid,
+            localOwnedByUid,
+            authTransitioning,
+            firebaseReady,
+            unresolvedUidBootFallbackAllowed,
+            hasSaveBridge: !!saveBridge,
+            hasOwnerCheck: !!(saveBridge && typeof saveBridge.isLocalOwnedBy === 'function')
+        });
 
-        if (uid && saveBridge && typeof saveBridge.getCachedCity === 'function') {
+        if (!guestSession && uid && saveBridge && typeof saveBridge.getCachedCity === 'function') {
             loaded = saveBridge.getCachedCity(uid);
+            if (loaded) loadedSource = 'cache';
+        }
+
+        if (!loaded && !hasUid && !unresolvedUidBootFallbackAllowed) {
+            logLoginDebug('load.skip.uid_unresolved_guard', {
+                uid,
+                hasUid,
+                STORAGE_KEY,
+                localOwnerUid,
+                authTransitioning,
+                firebaseReady
+            });
+        }
+        if (guestSession) {
+            logLoginDebug('load.skip.guest_session', {
+                uid,
+                hasUid,
+                guestSession,
+                STORAGE_KEY
+            });
         }
 
         if (!loaded && localOwnedByUid) {
             try {
                 const raw = localStorage.getItem(STORAGE_KEY);
-                if (raw) loaded = JSON.parse(raw);
+                if (raw) {
+                    loaded = JSON.parse(raw);
+                    if (loaded) loadedSource = 'local';
+                }
             } catch (_) { }
         }
 
@@ -735,6 +815,33 @@
                 game.cityQuestMission = mergedQuestMission;
             }
         }
+        const finalLoadedSource = loadedSource === 'none' ? 'default' : loadedSource;
+        const uidUnresolvedLocalFallback = (!hasUid && finalLoadedSource === 'local');
+        logLoginDebug('load.result', {
+            uid,
+            hasUid,
+            guestSession,
+            STORAGE_KEY,
+            localOwnerUid,
+            localOwnedByUid,
+            authTransitioning,
+            firebaseReady,
+            unresolvedUidBootFallbackAllowed,
+            loadedSource: finalLoadedSource,
+            loadedModeVersion: loaded && loaded.modeVersion ? String(loaded.modeVersion) : null,
+            isCompatible,
+            uidUnresolvedLocalFallback
+        });
+        if (uidUnresolvedLocalFallback) {
+            logLoginDebug('risk.uid_unresolved_local_fallback', {
+                uid,
+                hasUid,
+                STORAGE_KEY,
+                localOwnerUid,
+                localOwnedByUid,
+                loadedSource: finalLoadedSource
+            });
+        }
     }
 
     function save(game, options) {
@@ -804,9 +911,13 @@
         const fb = (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB) ? RECLAIM_FB : null;
         const saveBridge = (typeof RECLAIM_SAVE !== 'undefined' && RECLAIM_SAVE) ? RECLAIM_SAVE : null;
         const user = (fb && typeof fb.getUser === 'function') ? fb.getUser() : null;
+        const isAnonAuthUser = !!(user && user.uid && user.isAnonymous === true);
         const uid = user && user.uid ? String(user.uid) : '';
         const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
-        const guestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const rawGuestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const guestSession = isAnonAuthUser || (rawGuestSession && !user);
+        const authTransitioning = !!(authApi && typeof authApi.isAuthTransitioning === 'function' && authApi.isAuthTransitioning());
+        const blockLocalWriteForUidTransition = (!guestSession && !uid && authTransitioning);
 
         let cloudSavePromise = Promise.resolve(true);
         if (!guestSession && uid && saveBridge && typeof saveBridge.saveCity === 'function') {
@@ -864,6 +975,28 @@
                 }
                 cloudSavePromise = Promise.resolve(true);
             }
+        }
+
+        if (guestSession) {
+            logLoginDebug('save.local.skip.guest_session', {
+                uid,
+                guestSession,
+                requireCloud,
+                authTransitioning,
+                STORAGE_KEY
+            });
+            return cloudSavePromise;
+        }
+
+        if (blockLocalWriteForUidTransition) {
+            logLoginDebug('save.local.skip.transition_uid_unresolved', {
+                uid,
+                guestSession,
+                requireCloud,
+                authTransitioning,
+                STORAGE_KEY
+            });
+            return cloudSavePromise;
         }
 
         try {

@@ -1283,6 +1283,8 @@ const ui = {
             : null;
         const authed = !!(hasAuthApi && typeof CitySimAuth.isAuthenticated === 'function' && CitySimAuth.isAuthenticated());
         const guest = !!(hasAuthApi && typeof CitySimAuth.isGuestSession === 'function' && CitySimAuth.isGuestSession());
+        const anonUser = !!(user && user.uid && user.isAnonymous === true);
+        const guestLikeSession = guest || anonUser;
         const localAlias = this.getOptionProfileAlias();
         const localAvatar = this.getOptionProfileAvatar();
 
@@ -1290,16 +1292,16 @@ const ui = {
         let statusText = '로그아웃 상태';
         let profileAvatar = localAvatar;
 
-        if (authed && user) {
+        if (guestLikeSession) {
+            displayName = localAlias || '게스트';
+            statusText = '게스트 세션';
+        } else if (authed && user) {
             const emailName = user.email ? String(user.email).split('@')[0] : '';
             displayName = String(user.displayName || emailName || localAlias || '지휘관');
             statusText = user.email ? `로그인됨 (${user.email})` : '로그인됨';
             if (!profileAvatar) {
                 profileAvatar = this.sanitizeOptionProfileAvatarDataUrl(user.photoURL || '');
             }
-        } else if (guest) {
-            displayName = localAlias || '게스트';
-            statusText = '게스트 세션';
         } else if (localAlias) {
             displayName = localAlias;
             statusText = '로컬 프로필';
