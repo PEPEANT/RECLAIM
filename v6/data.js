@@ -222,10 +222,11 @@
             id: 'drone_operator', name: '드론병', cost: 80, cooldown: 120, maxCount: 6,
             hp: 100, damage: 12, range: 150, speed: 0.9,
             width: 18, height: 28, color: '#64748b', type: 'bio', category: 'infantry',
-            role: '드론 운용', description: '아군 건물 뒤에서 정지해 적을 감지하면 드론을 최대 3회 발진한다. 드론이 모두 소진되면 소총 모드로 전투에 참여한다.',
+            role: '드론 운용', description: '아군 건물 뒤에서 정지해 적을 감지하면 드론을 1회 발진한다. 회수에 성공하면 1회 추가 발진할 수 있다.',
             // 드론병 전용 필드
             operator: true,
-            droneCharges: 3,
+            droneCharges: 1,
+            droneRecallRefunds: 1,
             detectRange: 650,        // [FIX v3] 더 멀리서 판단
             coverOffset: 70,         // [FIX v3] 건물 뒤 자리 넉넉히
             frontSpawnOffset: 140,   // [FIX v3] 스폰 위치 더 앞으로

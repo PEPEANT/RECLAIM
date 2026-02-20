@@ -358,6 +358,18 @@
         return '';
     }
 
+    function sanitizeVeteranPassiveLoadoutItemKey(rawLoadout, unitKey) {
+        const unit = String(unitKey || '').trim();
+        if (!unit) return '';
+        const loadout = (rawLoadout && typeof rawLoadout === 'object' && !Array.isArray(rawLoadout))
+            ? rawLoadout
+            : {};
+        const key = sanitizeVeteranItemKey(loadout.itemKey || '', unit);
+        if (!key) return '';
+        if (sanitizeVeteranSkillLoadoutItemKey(key, unit)) return '';
+        return key;
+    }
+
     function sanitizeVeteranEntry(rawEntry, index, allowedUnitKeys) {
         if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) return null;
         const unitKey = String(rawEntry.unitKey || rawEntry.key || '').trim();
@@ -371,7 +383,7 @@
             ? rawEntry.loadout
             : { itemKey: rawEntry.itemKey || '' };
         const skillItemKeys = sanitizeVeteranSkillItemKeys(rawLoadout, unitKey);
-        const itemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
+        const itemKey = sanitizeVeteranPassiveLoadoutItemKey(rawLoadout, unitKey);
         return {
             id,
             unitKey,

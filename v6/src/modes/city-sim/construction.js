@@ -4454,6 +4454,47 @@
         return 'veteranItems';
     }
 
+    function getVeteranItemStoreCandidates(itemKey) {
+        const key = normalizeVeteranItemKey(itemKey);
+        const primaryStoreKey = getVeteranItemStoreKey(key);
+        if (primaryStoreKey === 'items') return ['items', 'veteranItems'];
+        if (primaryStoreKey === 'veteranItems') return ['veteranItems', 'items'];
+        return [primaryStoreKey];
+    }
+
+    function getVeteranItemStoreCount(state, storeKey, itemKey) {
+        if (!state || typeof state !== 'object') return 0;
+        const key = normalizeVeteranItemKey(itemKey);
+        if (!key) return 0;
+        const store = (state[storeKey] && typeof state[storeKey] === 'object') ? state[storeKey] : {};
+        return Math.max(0, Math.floor(Number(store[key]) || 0));
+    }
+
+    function getVeteranItemCountFromState(state, itemKey) {
+        const key = normalizeVeteranItemKey(itemKey);
+        if (!key) return 0;
+        const storeKeys = getVeteranItemStoreCandidates(key);
+        let total = 0;
+        storeKeys.forEach((storeKey) => {
+            total += getVeteranItemStoreCount(state, storeKey, key);
+        });
+        return total;
+    }
+
+    function resolveVeteranItemDebitStore(state, itemKey) {
+        const key = normalizeVeteranItemKey(itemKey);
+        if (!key) {
+            return { storeKey: getVeteranItemStoreKey(itemKey), count: 0 };
+        }
+        const storeKeys = getVeteranItemStoreCandidates(key);
+        for (let i = 0; i < storeKeys.length; i += 1) {
+            const storeKey = storeKeys[i];
+            const count = getVeteranItemStoreCount(state, storeKey, key);
+            if (count > 0) return { storeKey, count };
+        }
+        return { storeKey: storeKeys[0] || getVeteranItemStoreKey(key), count: 0 };
+    }
+
     function isInfantryCategoryUnit(unitKey) {
         const unitDef = getUnitDefByKey(unitKey);
         return !!(unitDef && String(unitDef.category || '').trim().toLowerCase() === 'infantry');
@@ -4501,9 +4542,8 @@
     function getVeteranItemCount(game, itemKey) {
         const key = normalizeVeteranItemKey(itemKey);
         if (!key) return 0;
-        const storeKey = getVeteranItemStoreKey(key);
         const state = CitySimState.ensure(game);
-        return Math.max(0, Math.floor(Number(state?.[storeKey]?.[key]) || 0));
+        return getVeteranItemCountFromState(state, key);
     }
 
     function getVeteranItemEntries(game) {
@@ -4602,6 +4642,19 @@
         return false;
     }
 
+    function normalizeVeteranLoadoutPassiveItemKey(unitKey, rawLoadout, skillItemKeysInput = []) {
+        const normalizedUnitKey = normalizeUnitKey(unitKey);
+        if (!normalizedUnitKey) return '';
+        const loadout = (rawLoadout && typeof rawLoadout === 'object' && !Array.isArray(rawLoadout))
+            ? rawLoadout
+            : {};
+        const key = normalizeVeteranItemKey(loadout.itemKey || '');
+        if (!key) return '';
+        if (!isVeteranItemCompatible(key, normalizedUnitKey)) return '';
+        if (isVeteranSkillLoadoutItem(normalizedUnitKey, key)) return '';
+        return key;
+    }
+
     function getDefaultVeteranSkillItemKeys() {
         return Array.from({ length: VETERAN_SKILL_SLOT_COUNT }, () => '');
     }
@@ -4642,7 +4695,7 @@
         return '';
     }
 
-    function buildVeteranLoadoutFromSkillItemKeys(veteran, nextSkillItemKeys) {
+    function buildVeteranLoadoutFromSkillItemKeys(veteran, nextSkillItemKeys, nextPassiveItemKey) {
         const prevLoadout = (veteran?.loadout && typeof veteran.loadout === 'object' && !Array.isArray(veteran.loadout))
             ? veteran.loadout
             : {};
@@ -4653,7 +4706,14 @@
                 skillItemKeys: Array.isArray(nextSkillItemKeys) ? nextSkillItemKeys : []
             }
         );
-        const itemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
+        const itemKey = normalizeVeteranLoadoutPassiveItemKey(
+            veteran?.unitKey || '',
+            {
+                ...prevLoadout,
+                itemKey: nextPassiveItemKey != null ? nextPassiveItemKey : prevLoadout.itemKey
+            },
+            skillItemKeys
+        );
         return {
             ...prevLoadout,
             itemKey,
@@ -4717,10 +4777,16 @@
     }
 
     function getVeteranLoadoutItemKey(veteran) {
-        const fromSkillSlots = getPrimaryVeteranLoadoutItemKey(getVeteranLoadoutSkillItemKeys(veteran));
-        if (fromSkillSlots) return fromSkillSlots;
-        const legacy = normalizeVeteranItemKey(veteran?.loadout?.itemKey || '');
-        return isVeteranSkillLoadoutItem(veteran?.unitKey || '', legacy) ? legacy : '';
+        const unitKey = normalizeUnitKey(veteran?.unitKey || '');
+        if (!unitKey) return '';
+        const loadout = (veteran?.loadout && typeof veteran.loadout === 'object' && !Array.isArray(veteran.loadout))
+            ? veteran.loadout
+            : {};
+        const skillItemKeys = getVeteranLoadoutSkillItemKeys(veteran);
+        const passive = normalizeVeteranLoadoutPassiveItemKey(unitKey, loadout, skillItemKeys);
+        if (passive) return passive;
+        const legacy = normalizeVeteranItemKey(loadout.itemKey || '');
+        return isVeteranSkillLoadoutItem(unitKey, legacy) ? legacy : '';
     }
 
     function getVeteranLoadoutItemDef(veteran) {
@@ -4733,7 +4799,6 @@
         const slotIndex = Math.max(0, Math.floor(Number(slotNo) || 0) - 1);
         const nextItemKey = normalizeVeteranItemKey(itemKey);
         if (!targetId || !nextItemKey) return { ok: false, reason: '적용 아이템 정보가 올바르지 않습니다.' };
-        const nextStoreKey = getVeteranItemStoreKey(nextItemKey);
 
         let result = { ok: false, reason: '적용에 실패했습니다.' };
         CitySimState.mutate(game, (draft) => {
@@ -4766,13 +4831,14 @@
                 return;
             }
 
-            if (!draft[nextStoreKey] || typeof draft[nextStoreKey] !== 'object') {
-                draft[nextStoreKey] = {};
-            }
-            const nextCount = Math.max(0, Math.floor(Number(draft[nextStoreKey][nextItemKey]) || 0));
-            if (nextCount <= 0) {
+            const nextDebit = resolveVeteranItemDebitStore(draft, nextItemKey);
+            if (nextDebit.count <= 0) {
                 result = { ok: false, reason: '아이템 수량이 부족합니다.' };
                 return;
+            }
+            const nextStoreKey = nextDebit.storeKey;
+            if (!draft[nextStoreKey] || typeof draft[nextStoreKey] !== 'object') {
+                draft[nextStoreKey] = {};
             }
 
             const skillItemKeys = getVeteranLoadoutSkillItemKeys(veteran);
@@ -4782,7 +4848,7 @@
                 return;
             }
 
-            draft[nextStoreKey][nextItemKey] = nextCount - 1;
+            draft[nextStoreKey][nextItemKey] = Math.max(0, nextDebit.count - 1);
             if (prevItemKey) {
                 const prevStoreKey = getVeteranItemStoreKey(prevItemKey);
                 if (!draft[prevStoreKey] || typeof draft[prevStoreKey] !== 'object') {
@@ -4905,10 +4971,140 @@
         return result;
     }
 
+    function setVeteranPassiveLoadoutItem(game, veteranId, itemKey) {
+        const targetId = String(veteranId || '').trim();
+        const nextItemKey = normalizeVeteranItemKey(itemKey);
+        if (!targetId || !nextItemKey) return { ok: false, reason: '적용 아이템 정보가 올바르지 않습니다.' };
+
+        let result = { ok: false, reason: '적용에 실패했습니다.' };
+        CitySimState.mutate(game, (draft) => {
+            if (!Array.isArray(draft.veterans) || draft.veterans.length <= 0) {
+                result = { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
+                return;
+            }
+            const idx = draft.veterans.findIndex((entry) => entry && String(entry.id || '').trim() === targetId);
+            if (idx < 0) {
+                result = { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
+                return;
+            }
+            const veteran = draft.veterans[idx] || null;
+            const unitKey = normalizeUnitKey(veteran?.unitKey);
+            if (!unitKey) {
+                result = { ok: false, reason: '유닛 정보를 찾을 수 없습니다.' };
+                return;
+            }
+            if (isVeteranSkillLoadoutItem(unitKey, nextItemKey)) {
+                result = { ok: false, reason: '드론 스킬 아이템은 스킬 슬롯에 장착하세요.' };
+                return;
+            }
+            if (!isVeteranItemCompatible(nextItemKey, unitKey)) {
+                result = { ok: false, reason: '이 유닛은 해당 아이템을 적용할 수 없습니다.' };
+                return;
+            }
+            const nextDebit = resolveVeteranItemDebitStore(draft, nextItemKey);
+            if (nextDebit.count <= 0) {
+                result = { ok: false, reason: '아이템 수량이 부족합니다.' };
+                return;
+            }
+            const nextStoreKey = nextDebit.storeKey;
+            if (!draft[nextStoreKey] || typeof draft[nextStoreKey] !== 'object') {
+                draft[nextStoreKey] = {};
+            }
+
+            const skillItemKeys = getVeteranLoadoutSkillItemKeys(veteran);
+            const prevItemKey = normalizeVeteranLoadoutPassiveItemKey(unitKey, veteran?.loadout || {}, skillItemKeys);
+            if (prevItemKey === nextItemKey) {
+                result = { ok: true, noChange: true, mode: 'passive', itemKey: nextItemKey };
+                return;
+            }
+
+            draft[nextStoreKey][nextItemKey] = Math.max(0, nextDebit.count - 1);
+            if (prevItemKey) {
+                const prevStoreKey = getVeteranItemStoreKey(prevItemKey);
+                if (!draft[prevStoreKey] || typeof draft[prevStoreKey] !== 'object') {
+                    draft[prevStoreKey] = {};
+                }
+                const prevCount = Math.max(0, Math.floor(Number(draft[prevStoreKey][prevItemKey]) || 0));
+                draft[prevStoreKey][prevItemKey] = prevCount + 1;
+            }
+
+            draft.veterans[idx] = {
+                ...veteran,
+                loadout: buildVeteranLoadoutFromSkillItemKeys(veteran, skillItemKeys, nextItemKey)
+            };
+            result = { ok: true, mode: 'passive', itemKey: nextItemKey, prevItemKey };
+        });
+        return result;
+    }
+
+    function clearVeteranPassiveLoadoutItem(game, veteranId, preferredItemKey = '') {
+        const targetId = String(veteranId || '').trim();
+        const targetItemKey = normalizeVeteranItemKey(preferredItemKey || '');
+        if (!targetId) return { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
+
+        let result = { ok: false, reason: '해제에 실패했습니다.' };
+        CitySimState.mutate(game, (draft) => {
+            if (!Array.isArray(draft.veterans) || draft.veterans.length <= 0) {
+                result = { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
+                return;
+            }
+            const idx = draft.veterans.findIndex((entry) => entry && String(entry.id || '').trim() === targetId);
+            if (idx < 0) {
+                result = { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
+                return;
+            }
+            const veteran = draft.veterans[idx] || null;
+            const unitKey = normalizeUnitKey(veteran?.unitKey);
+            if (!unitKey) {
+                result = { ok: false, reason: '유닛 정보를 찾을 수 없습니다.' };
+                return;
+            }
+            if (targetItemKey && isVeteranSkillLoadoutItem(unitKey, targetItemKey)) {
+                result = { ok: false, reason: '드론 스킬 아이템은 스킬 슬롯에서 해제하세요.' };
+                return;
+            }
+
+            const skillItemKeys = getVeteranLoadoutSkillItemKeys(veteran);
+            const equippedItemKey = normalizeVeteranLoadoutPassiveItemKey(unitKey, veteran?.loadout || {}, skillItemKeys);
+            if (!equippedItemKey) {
+                result = { ok: false, reason: '장착된 아이템이 없습니다.' };
+                return;
+            }
+            if (targetItemKey && targetItemKey !== equippedItemKey) {
+                result = { ok: false, reason: '요청한 아이템이 장착되어 있지 않습니다.' };
+                return;
+            }
+
+            const prevStoreKey = getVeteranItemStoreKey(equippedItemKey);
+            if (!draft[prevStoreKey] || typeof draft[prevStoreKey] !== 'object') {
+                draft[prevStoreKey] = {};
+            }
+            const prevCount = Math.max(0, Math.floor(Number(draft[prevStoreKey][equippedItemKey]) || 0));
+            draft[prevStoreKey][equippedItemKey] = prevCount + 1;
+
+            draft.veterans[idx] = {
+                ...veteran,
+                loadout: buildVeteranLoadoutFromSkillItemKeys(veteran, skillItemKeys, '')
+            };
+            result = { ok: true, mode: 'passive', prevItemKey: equippedItemKey };
+        });
+        return result;
+    }
+
     function equipVeteranItem(game, veteranId, itemKey) {
         const veteran = findVeteranEntryById(game, veteranId);
         if (!veteran) return { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
         const unitKey = normalizeUnitKey(veteran.unitKey);
+        const targetItemKey = normalizeVeteranItemKey(itemKey);
+        if (!targetItemKey) return { ok: false, reason: '적용 아이템 정보가 올바르지 않습니다.' };
+        if (!isVeteranItemCompatible(targetItemKey, unitKey)) {
+            return { ok: false, reason: '이 유닛은 해당 아이템을 적용할 수 없습니다.' };
+        }
+
+        if (!isVeteranSkillLoadoutItem(unitKey, targetItemKey)) {
+            return setVeteranPassiveLoadoutItem(game, veteranId, targetItemKey);
+        }
+
         const skillItemKeys = getVeteranLoadoutSkillItemKeys(veteran);
         const editableSlotIndexes = getVeteranEditableSkillSlotIndexes(unitKey);
         if (editableSlotIndexes.length <= 0) {
@@ -4916,20 +5112,32 @@
         }
         const firstEmptySlotIndex = editableSlotIndexes.find((slotIndex) => !skillItemKeys[slotIndex]);
         const targetSlotIndex = (firstEmptySlotIndex != null) ? firstEmptySlotIndex : editableSlotIndexes[0];
-        return setVeteranSkillSlotItem(game, veteranId, targetSlotIndex + 1, itemKey);
+        return setVeteranSkillSlotItem(game, veteranId, targetSlotIndex + 1, targetItemKey);
     }
 
     function unequipVeteranItem(game, veteranId, preferredItemKey = '') {
         const veteran = findVeteranEntryById(game, veteranId);
         if (!veteran) return { ok: false, reason: '베테랑 정보를 찾을 수 없습니다.' };
         const unitKey = normalizeUnitKey(veteran.unitKey);
+        const rawTargetItemKey = String(preferredItemKey || '').trim();
+        const targetItemKey = normalizeVeteranItemKey(rawTargetItemKey);
+        if (rawTargetItemKey && !targetItemKey) {
+            return { ok: false, reason: '해제 아이템 정보가 올바르지 않습니다.' };
+        }
+        if (targetItemKey && !isVeteranSkillLoadoutItem(unitKey, targetItemKey)) {
+            return clearVeteranPassiveLoadoutItem(game, veteranId, targetItemKey);
+        }
+        if (!targetItemKey) {
+            const passiveResult = clearVeteranPassiveLoadoutItem(game, veteranId, '');
+            if (passiveResult.ok === true) return passiveResult;
+        }
+
         const skillItemKeys = getVeteranLoadoutSkillItemKeys(veteran);
         const editableSlotIndexes = getVeteranEditableSkillSlotIndexes(unitKey);
         if (editableSlotIndexes.length <= 0) {
-            return { ok: false, reason: '해당 유닛은 아이템 스킬 슬롯을 지원하지 않습니다.' };
+            return { ok: false, reason: '장착된 아이템이 없습니다.' };
         }
 
-        const targetItemKey = normalizeVeteranItemKey(preferredItemKey || '');
         let targetSlotIndex = -1;
         if (targetItemKey) {
             for (let i = editableSlotIndexes.length - 1; i >= 0; i--) {
@@ -5957,23 +6165,35 @@
 
     function getVeteranProfileItemDefs(game, unitKey, equippedItemKeysInput = []) {
         const normalizedUnitKey = normalizeUnitKey(unitKey);
-        if (normalizedUnitKey !== 'drone_operator') return [];
+        if (!normalizedUnitKey) return [];
         const keys = [];
         const seen = new Set();
+        const state = CitySimState.ensure(game);
+        const storedItems = (state.items && typeof state.items === 'object') ? state.items : {};
+        const storedVeteranItems = (state.veteranItems && typeof state.veteranItems === 'object')
+            ? state.veteranItems
+            : {};
         const pushKey = (value) => {
             const key = normalizeVeteranItemKey(value);
             if (!key || seen.has(key)) return;
-            if (!isVeteranSkillLoadoutItem(normalizedUnitKey, key)) return;
+            if (!isVeteranItemCompatible(key, normalizedUnitKey)) return;
             seen.add(key);
             keys.push(key);
         };
 
-        VETERAN_DRONE_OPERATOR_ITEM_ORDER.forEach(pushKey);
+        CITY_ITEM_EQUIPPABLE_KEYS.forEach((key) => {
+            const count = getVeteranItemCountFromState(state, key);
+            if (count <= 0) return;
+            pushKey(key);
+        });
 
-        const state = CitySimState.ensure(game);
-        const storedItems = (state.items && typeof state.items === 'object') ? state.items : {};
         Object.keys(storedItems).forEach((key) => {
             const count = Math.max(0, Math.floor(Number(storedItems[key]) || 0));
+            if (count <= 0) return;
+            pushKey(key);
+        });
+        Object.keys(storedVeteranItems).forEach((key) => {
+            const count = Math.max(0, Math.floor(Number(storedVeteranItems[key]) || 0));
             if (count <= 0) return;
             pushKey(key);
         });
@@ -6047,7 +6267,7 @@
             : getDefaultVeteranSkillItemKeys();
         const equippedItemKey = isVeteranProfile ? getVeteranLoadoutItemKey(veteranEntry) : '';
         const compatibleItemDefs = isVeteranProfile
-            ? getVeteranProfileItemDefs(game, unitKey, equippedSkillItemKeys)
+            ? getVeteranProfileItemDefs(game, unitKey, [...equippedSkillItemKeys, equippedItemKey])
             : [];
         let displayDesc = String(unit.description || '설명 정보가 없습니다.');
         if (typeof Lang !== 'undefined' && Lang && typeof Lang.getText === 'function') {
@@ -6086,7 +6306,7 @@
                 `</div>`
             )
             : `<div class="city-unit-profile-name">${escapeHtml(displayName)}</div>`;
-        const veteranItemHtml = isVeteranProfile && normalizeUnitKey(unitKey) === 'drone_operator'
+        const veteranItemHtml = isVeteranProfile && isInfantryCategoryUnit(unitKey)
             ? (
                 `<div class="city-veteran-item-wrap">` +
                 `<div class="city-veteran-item-head">아이템 보관함</div>` +
@@ -6095,12 +6315,16 @@
                     compatibleItemDefs.length > 0
                         ? compatibleItemDefs.map((itemDef) => {
                             const count = getVeteranItemCount(game, itemDef.id);
-                            const equippedCount = equippedSkillItemKeys.reduce((acc, key) => (
+                            const isSkillItem = isVeteranSkillLoadoutItem(unitKey, itemDef.id);
+                            const skillEquippedCount = equippedSkillItemKeys.reduce((acc, key) => (
                                 normalizeVeteranItemKey(key || '') === itemDef.id ? acc + 1 : acc
                             ), 0);
+                            const passiveEquippedCount = (!isSkillItem && equippedItemKey === itemDef.id) ? 1 : 0;
+                            const equippedCount = isSkillItem ? skillEquippedCount : passiveEquippedCount;
                             const isCurrent = equippedCount > 0;
                             const canEquip = count > 0;
                             const canUnequip = equippedCount > 0;
+                            const canDrag = isSkillItem && count > 0;
                             const actionLabel = canUnequip ? '해제하기' : '장착하기';
                             const actionDisabled = !canUnequip && !canEquip;
                             const badge = canUnequip
@@ -6109,8 +6333,8 @@
                             const hasAsset = String(itemDef.asset || '').trim().length > 0;
                             return (
                                 `<div class="city-veteran-item-row">` +
-                                `<div class="city-veteran-item-btn${isCurrent ? ' is-current' : ''}${count > 0 ? ' is-draggable' : ''}" ` +
-                                `data-city-veteran-item-key="${escapeHtml(itemDef.id)}"${count > 0 ? ` data-city-veteran-drag-item="${escapeHtml(itemDef.id)}"` : ''}>` +
+                                `<div class="city-veteran-item-btn${isCurrent ? ' is-current' : ''}${canDrag ? ' is-draggable' : ''}" ` +
+                                `data-city-veteran-item-key="${escapeHtml(itemDef.id)}"${canDrag ? ` data-city-veteran-drag-item="${escapeHtml(itemDef.id)}"` : ''}>` +
                                 `<span class="city-veteran-item-btn-left">` +
                                 (
                                     hasAsset
@@ -6339,9 +6563,17 @@
             const bindDrag = (sourceEl, sourceResolver) => {
                 if (!sourceEl || typeof sourceResolver !== 'function') return;
                 sourceEl.addEventListener('pointerdown', (event) => {
-                    if (event.button != null && event.button !== 0) return;
+                    const pointerType = String(event.pointerType || '').trim().toLowerCase();
+                    if (pointerType === 'mouse' && event.button != null && event.button !== 0) return;
+                    if (event.cancelable) event.preventDefault();
                     const source = sourceResolver(sourceEl);
                     if (!source) return;
+                    const pointerId = Number(event.pointerId);
+                    if (Number.isFinite(pointerId) && typeof sourceEl.setPointerCapture === 'function') {
+                        try {
+                            sourceEl.setPointerCapture(pointerId);
+                        } catch (_) { }
+                    }
                     const startX = Number(event.clientX) || 0;
                     const startY = Number(event.clientY) || 0;
                     let activated = false;
@@ -6357,6 +6589,11 @@
                         window.removeEventListener('pointermove', onMove);
                         window.removeEventListener('pointerup', onUp);
                         window.removeEventListener('pointercancel', onCancel);
+                        if (Number.isFinite(pointerId) && typeof sourceEl.releasePointerCapture === 'function') {
+                            try {
+                                sourceEl.releasePointerCapture(pointerId);
+                            } catch (_) { }
+                        }
                         clearDropState();
                         if (ghost.parentNode) ghost.parentNode.removeChild(ghost);
                     };
@@ -6369,6 +6606,7 @@
                             activated = true;
                             ghost.style.display = 'inline-flex';
                         }
+                        if (moveEvent.cancelable) moveEvent.preventDefault();
                         ghost.style.left = `${(Number(moveEvent.clientX) || 0) + 12}px`;
                         ghost.style.top = `${(Number(moveEvent.clientY) || 0) + 12}px`;
 
@@ -6390,9 +6628,9 @@
 
                     const onCancel = () => cleanup();
 
-                    window.addEventListener('pointermove', onMove, { passive: true });
-                    window.addEventListener('pointerup', onUp, { passive: true });
-                    window.addEventListener('pointercancel', onCancel, { passive: true });
+                    window.addEventListener('pointermove', onMove, { passive: false });
+                    window.addEventListener('pointerup', onUp);
+                    window.addEventListener('pointercancel', onCancel);
                 });
             };
 
@@ -6504,12 +6742,13 @@
                 }
                 const result = equipVeteranItem(game, veteranId, itemKey);
                 if (result.noChange === true) {
-                    showToast('이미 스킬 트리에 적용중입니다.');
+                    showToast('이미 적용중입니다.');
                     return;
                 }
                 applyVeteranLoadoutResult(result, (next) => {
                     const itemDef = getVeteranItemDef(itemKey);
                     const itemName = itemDef ? itemDef.name : itemKey;
+                    if (next?.mode === 'passive') return `${itemName} 장착`;
                     const slotLabel = next?.slotNo ? `스킬 ${formatNumber(next.slotNo)}` : '스킬 슬롯';
                     return `${itemName} ${slotLabel} 적용`;
                 });

@@ -119,6 +119,10 @@ class Unit extends Entity {
             this.ownedDrone = null;
             this.ownedDrones = [];
             this.droneChargesLeft = stats.droneCharges || 1;
+            this.maxDroneCharges = stats.droneCharges || 1;
+            this.droneRecallRefundsLeft = Number.isFinite(Number(stats.droneRecallRefunds))
+                ? Math.max(0, Math.floor(Number(stats.droneRecallRefunds)))
+                : 0;
             this.launchPrepTimer = 0;
             // 수동 발진 지원
             this.manualDeployRequested = false;
@@ -1571,9 +1575,9 @@ class Unit extends Entity {
                 }
             }
 
-            // 2. 발진 실행 → laptop 모드 전환
+            // 2. 발진 실행 (스폰 성공 시에만 laptop 모드 전환)
             if (shouldDeploy && deployType) {
-                this.opState = 'laptop';
+                let spawned = false;
 
                 // [R 4.2 FIX v4] 드론 생성 위치: 드론병 바로 아래 (발밑)
                 const droneX = this.x;  // 드론병 바로 아래
@@ -1584,18 +1588,16 @@ class Unit extends Entity {
                     const drone = game.spawnUnitDirect(deployType, droneX, droneY, this.team, true);
                     if (drone) {
                         drone.ownerRef = this;  // Owner 링크
-                        // 기본은 지상 대기. 자동 발진 경로에서만 타겟을 즉시 부여한다.
                         drone.holdFrames = 0;
                         drone.launchInit = false;
                         drone.y = game.groundY;
-                        drone.commandState = 'standby';
+                        drone.commandState = 'attack';
                         if (autoLockTarget && !autoLockTarget.dead) {
                             drone.lockedTarget = autoLockTarget;
                             drone.autoSeekTarget = true;
-                            drone.commandState = 'attack';
                         } else {
                             drone.lockedTarget = null;
-                            drone.autoSeekTarget = false;
+                            drone.autoSeekTarget = true;
                         }
                         if (game && typeof game.addOperatorDrone === 'function') {
                             game.addOperatorDrone(this, drone);
@@ -1603,15 +1605,19 @@ class Unit extends Entity {
                             this.ownedDrone = drone;
                             if (!Array.isArray(this.ownedDrones)) this.ownedDrones = [];
                             if (!this.ownedDrones.includes(drone)) this.ownedDrones.push(drone);
+                            this.opState = 'laptop';
                         }
                         this.droneChargesLeft = Math.max(0, (this.droneChargesLeft || 0) - 1);
+                        spawned = true;
 
                         if (typeof ChatPanel !== 'undefined' && this.team === 'player') {
                             ChatPanel.push(`[드론 발진] ${CONFIG.units[deployType]?.name || deployType}`, 'INFO');
                         }
                     }
                 }
-                return;  // laptop 모드로 전환 후 이번 프레임 종료
+                if (spawned) {
+                    return;
+                }
             }
 
             // 3. 일반 보병처럼 전진/사격

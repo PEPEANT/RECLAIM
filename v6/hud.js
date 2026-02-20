@@ -542,6 +542,18 @@ const HUD = {
                     iconImageUnitKey: 'drone_at',
                     iconImageClass: 'cmd-icon-img-drone'
                 };
+            case 'drone_manual':
+                return {
+                    key: 'cmd_drone_manual',
+                    fallback: 'MANUAL',
+                    icon: 'fa-solid fa-hand-pointer'
+                };
+            case 'drone_auto':
+                return {
+                    key: 'cmd_drone_auto',
+                    fallback: 'AUTO',
+                    icon: 'fa-solid fa-robot'
+                };
             case 'icbm_tactical':
                 return {
                     key: 'cmd_icbm_tactical',
@@ -744,6 +756,20 @@ const HUD = {
             case 'eject': return !!ctx.canEject;
             case 'drone_suicide': return !!ctx.canDroneSuicide;
             case 'drone_at': return !!ctx.canDroneAt;
+            case 'drone_manual': {
+                if (!ctx.hasOperatorSelection) return false;
+                const mode = (typeof game.getDroneControlMode === 'function')
+                    ? game.getDroneControlMode()
+                    : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
+                return mode !== 'manual';
+            }
+            case 'drone_auto': {
+                if (!ctx.hasOperatorSelection) return false;
+                const mode = (typeof game.getDroneControlMode === 'function')
+                    ? game.getDroneControlMode()
+                    : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
+                return mode === 'manual';
+            }
             case 'icbm_tactical': return !!ctx.canIcbmTactical;
             case 'icbm_emp': return !!ctx.canIcbmEmp;
             case 'icbm_nuke': return !!ctx.canIcbmNuke;
@@ -791,7 +817,10 @@ const HUD = {
                 map.skill2 = pick(['smoke', 'missile', 'recon', 'news']);
             }
             map.skill3 = pick(['smoke', 'missile', 'recon', 'news']);
-            map.interact = pick(['drop', 'eject', 'news', 'recon']);
+            const mode = (typeof game.getDroneControlMode === 'function')
+                ? game.getDroneControlMode()
+                : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
+            map.interact = (mode === 'manual') ? 'drone_auto' : 'drone_manual';
             return map;
         }
 
@@ -1022,6 +1051,16 @@ const HUD = {
             case 'drone_at':
                 if (typeof game.launchOperatorDroneFromCommand === 'function') {
                     return game.launchOperatorDroneFromCommand('drone_at') === true;
+                }
+                return false;
+            case 'drone_manual':
+                if (typeof game.setDroneControlMode === 'function') {
+                    return game.setDroneControlMode('manual') === true;
+                }
+                return false;
+            case 'drone_auto':
+                if (typeof game.setDroneControlMode === 'function') {
+                    return game.setDroneControlMode('auto') === true;
                 }
                 return false;
             case 'icbm_tactical':

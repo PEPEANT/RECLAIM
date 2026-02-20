@@ -1,4 +1,4 @@
-﻿// [RULE] 인게임 안내/상태/채팅 메시지는 UI 토스트 금지. ChatPanel.push()로만 출력.
+// [RULE] 인게임 안내/상태/채팅 메시지는 UI 토스트 금지. ChatPanel.push()로만 출력.
 const DroneBehavior = {
     update(drone, enemies, buildings) {
         if (drone.dead) return;
@@ -118,8 +118,19 @@ const DroneBehavior = {
                     owner.ownedDrone = null;
                     owner.opState = 'rifle';
                 }
-                const maxCharges = owner.stats?.droneCharges || owner.droneChargesLeft || 1;
-                owner.droneChargesLeft = Math.min((owner.droneChargesLeft || 0) + 1, maxCharges);
+                // Allow only one refund launch after successful recall.
+                const refundsLeftRaw = Number(owner.droneRecallRefundsLeft);
+                const refundsLeft = Number.isFinite(refundsLeftRaw) ? Math.max(0, Math.floor(refundsLeftRaw)) : 0;
+                if (refundsLeft > 0) {
+                    const maxChargesRaw = Number(owner.maxDroneCharges);
+                    const maxCharges = Number.isFinite(maxChargesRaw) && maxChargesRaw > 0
+                        ? Math.floor(maxChargesRaw)
+                        : 1;
+                    owner.droneChargesLeft = Math.min(maxCharges, (owner.droneChargesLeft || 0) + 1);
+                    owner.droneRecallRefundsLeft = refundsLeft - 1;
+                } else {
+                    owner.droneChargesLeft = Math.max(0, owner.droneChargesLeft || 0);
+                }
                 drone.dead = true;
                 if (typeof ChatPanel !== 'undefined') {
                     ChatPanel.push('[복귀 완료]', 'INFO');
@@ -384,7 +395,7 @@ const DroneBehavior = {
             return;
         } else {
             // 자동 추적이 켜진 드론만 신규 타겟을 획득한다.
-            if (drone.autoSeekTarget === true && drone.team !== 'player') {
+            if (drone.autoSeekTarget === true) {
                 const newTarget = this.findNearestEnemy(drone, enemies, buildings);
                 if (newTarget) {
                     drone.lockedTarget = newTarget;
@@ -464,8 +475,3 @@ const DroneBehavior = {
         return t;
     }
 };
-
-
-
-
-

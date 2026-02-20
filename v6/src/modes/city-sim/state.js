@@ -354,6 +354,18 @@
         return '';
     }
 
+    function normalizeVeteranPassiveLoadoutItemKey(rawLoadout, unitKey = '') {
+        const unit = String(unitKey || '').trim();
+        if (!unit) return '';
+        const loadout = (rawLoadout && typeof rawLoadout === 'object' && !Array.isArray(rawLoadout))
+            ? rawLoadout
+            : {};
+        const key = normalizeVeteranItemKey(loadout.itemKey || '', unit);
+        if (!key) return '';
+        if (normalizeVeteranSkillLoadoutItemKey(key, unit)) return '';
+        return key;
+    }
+
     function normalizeVeteranItems(rawItems) {
         const out = {};
         VETERAN_ITEM_KEYS.forEach((key) => {
@@ -387,7 +399,7 @@
             ? rawEntry.loadout
             : { itemKey: rawEntry.itemKey || '' };
         const skillItemKeys = normalizeVeteranSkillItemKeys(rawLoadout, unitKey);
-        const itemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
+        const itemKey = normalizeVeteranPassiveLoadoutItemKey(rawLoadout, unitKey);
         return {
             id,
             unitKey,
@@ -976,11 +988,9 @@
             if (!unitKey) return;
             const id = String(payload?.id || '').trim()
                 || `vet_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-            const skillItemKeys = normalizeVeteranSkillItemKeys(
-                payload?.loadout || { itemKey: payload?.itemKey || '' },
-                unitKey
-            );
-            const loadoutItemKey = getPrimaryVeteranLoadoutItemKey(skillItemKeys);
+            const loadoutInput = payload?.loadout || { itemKey: payload?.itemKey || '' };
+            const skillItemKeys = normalizeVeteranSkillItemKeys(loadoutInput, unitKey);
+            const loadoutItemKey = normalizeVeteranPassiveLoadoutItemKey(loadoutInput, unitKey);
             const entry = normalizeVeteranEntry({
                 id,
                 unitKey,
@@ -1012,20 +1022,31 @@
             const current = state.veterans[idx];
             const unitKey = String(current?.unitKey || '').trim();
             if (!unitKey) return;
-            const normalizedItemKey = normalizeVeteranSkillLoadoutItemKey(nextItemKey, unitKey);
+            const rawNextItemKey = String(nextItemKey || '').trim();
+            const normalizedItemKey = rawNextItemKey
+                ? normalizeVeteranItemKey(rawNextItemKey, unitKey)
+                : '';
+            if (rawNextItemKey && !normalizedItemKey) return;
+            const normalizedSkillItemKey = normalizedItemKey
+                ? normalizeVeteranSkillLoadoutItemKey(normalizedItemKey, unitKey)
+                : '';
             const currentLoadout = normalizeVeteranEntry(current)?.loadout || {
                 itemKey: '',
                 skillItemKeys: getDefaultVeteranSkillItemKeys()
             };
             const currentSkillItemKeys = normalizeVeteranSkillItemKeys(currentLoadout, unitKey);
-            const currentItemKey = getPrimaryVeteranLoadoutItemKey(currentSkillItemKeys);
-            if (normalizedItemKey === currentItemKey) return;
-            currentSkillItemKeys[1] = normalizedItemKey;
+            const currentItemKey = normalizeVeteranPassiveLoadoutItemKey(currentLoadout, unitKey);
+            if (normalizedSkillItemKey) {
+                if (currentSkillItemKeys[1] === normalizedSkillItemKey) return;
+                currentSkillItemKeys[1] = normalizedSkillItemKey;
+            } else {
+                if (normalizedItemKey === currentItemKey) return;
+            }
             state.veterans[idx] = {
                 ...current,
                 loadout: {
                     ...currentLoadout,
-                    itemKey: getPrimaryVeteranLoadoutItemKey(currentSkillItemKeys),
+                    itemKey: normalizedSkillItemKey ? currentItemKey : normalizedItemKey,
                     skillItemKeys: currentSkillItemKeys
                 }
             };
