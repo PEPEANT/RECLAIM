@@ -1,10 +1,10 @@
-// src/game/input.js - Input handling
+﻿// src/game/input.js - Input handling
 (function () {
     'use strict';
 
     window.GameInput = {
         setup() {
-            // [R 2.4] ?袁⑹읈 ??苑뺞④쑬留???낆젾 ??뽯뮞??
+            // [R 2.4] ????썹땟??????얜????影??낄癲?????怨몄７ ??嶺?筌??
             const getScaledPos = (clientX, clientY) => {
                 return Camera.screenToView(this, clientX, clientY);
             };
@@ -88,19 +88,19 @@
                 ArrowRight: 'arrowRight'
             };
 
-            // ======== ?怨밴묶 癰궰??========
-            // 燁삳?李????뺤삋域?(PC ?怨좉깻??/ 筌뤴뫀而?????癒???
+            // ======== ????븐뻤????⑤슢堉???========
+            // ??⑤㈇??癲????嶺뚮Ĳ?됪뤃??(PC ???關履숂뭐??/ ?꿔꺂??袁ㅻ븶???????????
             let cameraDrag = false;
             let cameraLastX = 0;
 
-            // ?醫뤾문 獄쏅벡????뺤삋域?(PC ?ル슦寃®뵳?/ 筌뤴뫀而?????癒???
+            // ????ｋ???熬곣뫖利당뵓????嶺뚮Ĳ?됪뤃??(PC ????裕?濡ろ떟???/ ?꿔꺂??袁ㅻ븶???????????
             this.selectDragActive = false;
             this.selectStartX = 0;
             this.selectStartY = 0;
             this.selectEndX = 0;
             this.selectEndY = 0;
 
-            // 筌뤴뫀而???袁⑹뒠 ?怨밴묶
+            // ?꿔꺂??袁ㅻ븶????????썹땟??????븐뻤??
             let isMobileSelecting = false;
             let isMobileCameraMove = false;
             let pinchActive = false;
@@ -109,25 +109,25 @@
             let pinchAnchorClientX = 0;
             let pinchAnchorClientY = 0;
 
-            // [MOBILE TAP FIX] ????뺤삋域??癒?젟?? ?遺얜굡?ル슦紐닷첎? ?袁⑤빍??"???" 疫꿸퀣???곗쨮 ??뺣뼄
+            // [MOBILE TAP FIX] ????嶺뚮Ĳ?됪뤃???????? ???됰Ŧ??????裕∽┼??뀖?節뤵럸? ????썹땟????"???" ???뚯???????Β????嶺뚮㉡???
             let tapStartClientX = 0, tapStartClientY = 0;
             let tapLastClientX = 0, tapLastClientY = 0;
-            const TAP_THRESHOLD_PX = 14; // 12~18 ?????띯뫂堉? 14 ?곕뗄荑?
+            const TAP_THRESHOLD_PX = 14; // 12~18 ?????????? 14 ???ㅻ쿋驪??
 
-            // [MODIFIED] 椰꾨?窺 ?醫뤾문 (???쟿??곷선 椰꾨똻苑?椰꾨?窺 ??釉?
+            // [MODIFIED] ?꿸쑨?????????ｋ??(????????ㅿ폎???꿸쑨?????鍮??꿸쑨?????????
             const selectBuildingAt = (wx, wy) => {
-                // ?醫뤾문 揶쎛?館釉?椰꾨?窺 ????낅굶
+                // ????ｋ????醫딆쓧??嚥싳쇎紐???꿸쑨???????????猿딅즴
                 const selectableTypes = [
                     'hq_player', 'hq_enemy', 'fortress_player', 'fortress_enemy',
-                    'watchtower',  // [3.8] ???쟿??곷선 椰꾨똻苑?揶쏅Ŋ???
+                    'watchtower',  // [3.8] ????????ㅿ폎???꿸쑨?????鍮???醫딆┫????
                     'spawn_flag_player'
                 ];
 
                 for (let b of this.buildings) {
                     if (b.dead) continue;
-                    // 疫꿸퀣???????癒?뮉 canProduce ???삋域밸㈇? ??덈뮉 椰꾨?窺筌??醫뤾문 揶쎛??
+                    // ???뚯?????????????canProduce ?????關?븀뛾?끘?? ?????됲닓 ?꿸쑨????꿎뫖???????ｋ????醫딆쓧???
                     if (!selectableTypes.includes(b.type) && !b.canProduce && !b.canShoot) continue;
-                    // [FIX] ????甕곕뗄???類? (?ル슣??+20px, ?怨밸릭 +15px)
+                    // [FIX] ??????筌??????癲? (????裕??+20px, ????브컯??+15px)
                     const padX = 20;
                     const padY = 15;
                     if (wx > b.x - b.width / 2 - padX && wx < b.x + b.width / 2 + padX &&
@@ -221,6 +221,25 @@
                 if (Number.isFinite(this.frame)) tank.manualAimFrame = this.frame;
             };
 
+            const updateDirectControlAimFromClient = (clientX, clientY) => {
+                if (typeof this.getDirectControlUnit !== 'function') return false;
+                const directUnit = this.getDirectControlUnit();
+                if (!directUnit || directUnit.dead || !directUnit.stats) return false;
+                if (this.buildMode.active || this.targetingType) return false;
+                if (!isInsideCanvasClient(clientX, clientY)) return false;
+
+                const pAim = getScaledPos(clientX, clientY);
+                const worldX = pAim.x + this.cameraX;
+                const worldY = pAim.y;
+                updateManualTankAim(directUnit, worldX, worldY);
+
+                const dx = worldX - Number(directUnit.x || 0);
+                if (Math.abs(dx) > 4) {
+                    directUnit.facing = (dx >= 0) ? 1 : -1;
+                }
+                return true;
+            };
+
             const clearManualTankMgHold = () => {
                 if (!this.selectedUnits || this.selectedUnits.size <= 0) return;
                 this.selectedUnits.forEach(u => {
@@ -244,26 +263,7 @@
 
             const mobileDirectUi = (() => {
                 const root = document.getElementById('mobile-direct-ui');
-                const stickZone = document.getElementById('mobile-direct-stick-zone');
-                const stick = document.getElementById('mobile-direct-stick');
-                const statusEl = document.getElementById('mobile-direct-status');
                 const footer = document.getElementById('hud-footer');
-                if (!root || !stickZone || !stick) {
-                    return {
-                        refresh() { },
-                        release() { }
-                    };
-                }
-
-                let stickPointerId = null;
-                let centerX = 0;
-                let centerY = 0;
-                let radius = 1;
-                let fireTimer = 0;
-                let firing = false;
-                let subActive = false;
-                let aimNx = 1;
-                let aimNy = -0.2;
 
                 const isMobileViewport = () => {
                     const coarse = (typeof window.matchMedia === 'function')
@@ -273,149 +273,6 @@
                     return window.innerWidth <= 1024;
                 };
 
-                const getDirectUnit = () => {
-                    if (typeof game.getDirectControlUnit !== 'function') return null;
-                    return game.getDirectControlUnit();
-                };
-
-                const getMobileProfile = (unit) => {
-                    if (typeof game.getDirectControlMobileProfile !== 'function') return null;
-                    return game.getDirectControlMobileProfile(unit);
-                };
-
-                const setStatus = (text) => {
-                    if (!statusEl) return;
-                    statusEl.textContent = text;
-                };
-
-                const stopSubFire = () => {
-                    if (typeof game.mobileDirectSubFireStop === 'function') {
-                        game.mobileDirectSubFireStop();
-                    }
-                };
-
-                const clearFireTimer = () => {
-                    if (!fireTimer) return;
-                    window.clearInterval(fireTimer);
-                    fireTimer = 0;
-                };
-
-                const stopFiring = () => {
-                    firing = false;
-                    clearFireTimer();
-                    stopSubFire();
-                    subActive = false;
-                };
-
-                const getAimRange = (unit) => {
-                    const raw = Number(unit && unit.getEffectiveRange ? unit.getEffectiveRange() : (unit && unit.stats && unit.stats.range));
-                    if (!Number.isFinite(raw) || raw <= 0) return 520;
-                    return Math.max(260, Math.min(1400, raw * 0.95));
-                };
-
-                const updateUnitAim = (unit) => {
-                    if (!unit || unit.dead) return;
-                    let nx = Number(aimNx);
-                    let ny = Number(aimNy);
-                    const mag = Math.hypot(nx, ny);
-                    if (!Number.isFinite(nx) || !Number.isFinite(ny) || mag < 0.02) {
-                        const facingRaw = Number(unit.facing);
-                        const facing = Number.isFinite(facingRaw) && facingRaw < 0 ? -1 : 1;
-                        nx = facing;
-                        ny = -0.2;
-                    } else {
-                        nx /= mag;
-                        ny /= mag;
-                    }
-                    const range = getAimRange(unit);
-                    unit.manualAimX = Number(unit.x) + (nx * range);
-                    unit.manualAimY = Number(unit.y) + (ny * range);
-                    if (Number.isFinite(game.frame)) unit.manualAimFrame = game.frame;
-                };
-
-                const updateFireStatus = (unit, mode) => {
-                    const unitLabel = String((unit && unit.stats && (unit.stats.name || unit.stats.id)) || 'UNIT');
-                    const weaponLabel = (mode === 'sub') ? '기관총' : '포탑';
-                    setStatus(`${unitLabel} | ${weaponLabel}`);
-                };
-
-                const fireTick = () => {
-                    const unit = getDirectUnit();
-                    if (!unit || unit.dead) {
-                        stopFiring();
-                        return;
-                    }
-
-                    updateUnitAim(unit);
-                    const profile = getMobileProfile(unit);
-                    const selectedMode = (typeof game.getDirectControlWeaponMode === 'function')
-                        ? game.getDirectControlWeaponMode()
-                        : 'main';
-                    const mode = (selectedMode === 'sub') ? 'sub' : 'main';
-                    updateFireStatus(unit, mode);
-
-                    if (mode === 'sub' && profile && profile.hasSub && typeof game.mobileDirectSubFireStart === 'function') {
-                        if (profile.subHold) {
-                            if (!subActive) {
-                                game.mobileDirectSubFireStart();
-                                subActive = true;
-                            }
-                        } else {
-                            game.mobileDirectSubFireStart();
-                        }
-                        return;
-                    }
-
-                    if (subActive) {
-                        stopSubFire();
-                        subActive = false;
-                    }
-                    if (typeof game.mobileDirectMainFire === 'function') {
-                        game.mobileDirectMainFire();
-                    }
-                };
-
-                const startFiring = () => {
-                    if (firing) return;
-                    firing = true;
-                    fireTick();
-                    fireTimer = window.setInterval(fireTick, 95);
-                };
-
-                const updateStickGeometry = () => {
-                    const rect = stickZone.getBoundingClientRect();
-                    centerX = rect.left + (rect.width / 2);
-                    centerY = rect.top + (rect.height / 2);
-                    radius = Math.max(20, (Math.min(rect.width, rect.height) * 0.5) - 16);
-                };
-
-                const updateStickByPointer = (clientX, clientY) => {
-                    updateStickGeometry();
-                    const dx = clientX - centerX;
-                    const dy = clientY - centerY;
-                    const dist = Math.hypot(dx, dy) || 0;
-                    const clamped = Math.min(radius, dist);
-                    const nx = dist > 0 ? (dx / dist) : 0;
-                    const ny = dist > 0 ? (dy / dist) : 0;
-                    const sx = nx * clamped;
-                    const sy = ny * clamped;
-
-                    stick.style.transform = `translate(${sx}px, ${sy}px)`;
-                    aimNx = nx;
-                    aimNy = ny;
-                };
-
-                const releaseStick = () => {
-                    if (stickPointerId !== null) {
-                        try { stickZone.releasePointerCapture(stickPointerId); } catch (_) { }
-                    }
-                    stickPointerId = null;
-                    stick.style.transform = 'translate(0px, 0px)';
-                    aimNx = 0;
-                    aimNy = 0;
-                    stopFiring();
-                };
-
                 const refresh = () => {
                     const active = isMobileViewport()
                         && !!game.running
@@ -423,71 +280,25 @@
                         && (typeof game.isDirectControlActive === 'function')
                         && game.isDirectControlActive();
 
-                    root.classList.toggle('hidden', !active);
-                    root.setAttribute('aria-hidden', active ? 'false' : 'true');
-                    if (footer) footer.classList.toggle('hud-mobile-direct-active', active);
-
-                    if (!active) {
-                        releaseStick();
-                        return;
+                    if (root) {
+                        // Fire is now HUD-skill-only during direct control.
+                        root.classList.add('hidden');
+                        root.setAttribute('aria-hidden', 'true');
                     }
-
-                    const unit = getDirectUnit();
-                    if (!unit || unit.dead || !unit.stats) {
-                        setStatus('조종 유닛 없음');
-                        return;
-                    }
-                    const mode = (typeof game.getDirectControlWeaponMode === 'function')
-                        ? game.getDirectControlWeaponMode()
-                        : 'main';
-                    updateFireStatus(unit, mode);
+                    if (footer) footer.classList.remove('hud-mobile-direct-active');
                 };
-
-                const onStickPointerDown = (e) => {
-                    if (e.button !== undefined && e.button !== 0) return;
-                    if (stickPointerId !== null) return;
-                    e.preventDefault();
-                    e.stopPropagation();
-                    stickPointerId = e.pointerId;
-                    try { stickZone.setPointerCapture(e.pointerId); } catch (_) { }
-                    updateStickByPointer(e.clientX, e.clientY);
-                    startFiring();
-                };
-
-                const onGlobalPointerMove = (e) => {
-                    if (stickPointerId === null || e.pointerId !== stickPointerId) return;
-                    e.preventDefault();
-                    updateStickByPointer(e.clientX, e.clientY);
-                };
-
-                const onGlobalPointerUp = (e) => {
-                    if (stickPointerId === null || e.pointerId !== stickPointerId) return;
-                    e.preventDefault();
-                    releaseStick();
-                };
-
-                root.addEventListener('contextmenu', (e) => e.preventDefault());
-                stickZone.addEventListener('pointerdown', onStickPointerDown, { passive: false });
-                window.addEventListener('pointermove', onGlobalPointerMove, { passive: false });
-                window.addEventListener('pointerup', onGlobalPointerUp, { passive: false });
-                window.addEventListener('pointercancel', onGlobalPointerUp, { passive: false });
-                window.addEventListener('blur', () => {
-                    releaseStick();
-                });
 
                 const onViewportChange = () => { refresh(); };
                 window.addEventListener('resize', onViewportChange);
                 window.addEventListener('orientationchange', () => { setTimeout(onViewportChange, 80); });
 
                 const syncTimer = window.setInterval(refresh, 180);
-                root.__mobileDirectSyncTimer = syncTimer;
+                if (root) root.__mobileDirectSyncTimer = syncTimer;
                 refresh();
 
                 return {
                     refresh,
-                    release: () => {
-                        releaseStick();
-                    }
+                    release: () => { }
                 };
             })();
             this.mobileDirectUi = mobileDirectUi;
@@ -495,7 +306,7 @@
                 window.MobileDirectControlUI = mobileDirectUi;
             }
 
-            // ======== PC 筌띾뜆?????源??========
+            // ======== PC ?꿔꺂?????????嚥??========
             this.canvas.addEventListener('mousedown', e => {
                 // [NEW] Block if inside HUD area
                 if (isInsideHUD(e.clientX, e.clientY)) return;
@@ -516,7 +327,7 @@
                         return;
                     }
 
-                    // [NEW] PC ?怨좉깻?? ?醫뤾문 ?醫딅뻺 ??猷?(疫꿸퀡??RTS 獄쎻뫗??
+                    // [NEW] PC ???關履숂뭐?? ????ｋ??????ル뒇嶺??????(???뚯????RTS ?熬곣뫖?삥납??
                     if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
                         return;
                     }
@@ -527,7 +338,7 @@
                         this.selectedUnits.forEach(u => {
                             if (!u || u.dead) return;
                             u.commandMode = 'move';
-                            u.commandTargetX = worldX; // ??獄쏆꼶諭??揶쏄퉮??(facing??
+                            u.commandTargetX = worldX; // ???熬곣뫖利??レ벁?????醫딆┣???(facing??
                             u.targetX = worldX;
                             u.targetY = null;
                             u.lockedTarget = null;
@@ -545,21 +356,21 @@
                         return;
                     }
 
-                    // (?醫뤾문 ?醫딅뻺 ??곸몵筌? ?怨좉깻?? 燁삳?李????뺤삋域??醫?
+                    // (????ｋ??????ル뒇嶺?????ㅼ굡?類㎮뵾? ???關履숂뭐?? ??⑤㈇??癲????嶺뚮Ĳ?됪뤃?????
                     cameraDrag = true;
                     cameraLastX = p.x;
                 } else if (e.button === 0) {
-                    // [NEW] 椰꾨똻苑?筌뤴뫀諭?餓λ쵐?좑쭖?獄쏄퀣??筌ｌ꼶??
+                    // [NEW] ?꿸쑨?????鍮??꿔꺂??袁ㅻ븶???嚥싳쉶瑗??꾧틡???レ탳???熬곣뫖利????꿔꺂??節뉖き??
                     if (this.buildMode.active) {
                         this.handleBuildPlacement(p.x + this.cameraX);
                         return;
                     }
-                    // ?ル슦寃®뵳? ??野껋옖??餓λ쵐?좑쭖???野껋옖??筌ｌ꼶??
+                    // ????裕?濡ろ떟??? ???嚥▲굧????嚥싳쉶瑗??꾧틡???レ탳?????嚥▲굧?????꿔꺂??節뉖き??
                     if (this.targetingType) {
                         this.handleTargeting(p.x + this.cameraX, p.y);
                         return;
                     }
-                    // ?醫뤾문 獄쏅벡????뺤삋域???뽰삂
+                    // ????ｋ???熬곣뫖利당뵓????嶺뚮Ĳ?됪뤃????嶺뚮??ｆ뤃?
                     const directControlUnit = (typeof this.getDirectControlUnit === 'function')
                         ? this.getDirectControlUnit()
                         : null;
@@ -621,12 +432,12 @@
                 const worldX = p.x + this.cameraX;
                 const worldY = p.y;
 
-                // [NEW] 椰꾨똻苑?筌뤴뫀諭??袁ⓥ봺????낅쑓??꾨뱜
+                // [NEW] ?꿸쑨?????鍮??꿔꺂??袁ㅻ븶???????썼キ?κ괌???????욍걛???ш끽維??
                 if (this.buildMode.active) {
                     this.updateBuildPreview(p.x + this.cameraX, p.y);
                 }
 
-                // 燁삳?李????뺤삋域?(?怨좉깻??
+                // ??⑤㈇??癲????嶺뚮Ĳ?됪뤃??(???關履숂뭐??
                 const manualArmor = getSingleSelectedPlayerManualArmor();
                 if (manualArmor && !this.buildMode.active && !this.targetingType && isInsideCanvasClient(e.clientX, e.clientY)) {
                     updateManualTankAim(manualArmor, worldX, worldY);
@@ -644,7 +455,7 @@
                     cameraLastX = p.x;
                 }
 
-                // ?醫뤾문 獄쏅벡??揶쏄퉮??(?ル슦寃®뵳?
+                // ????ｋ???熬곣뫖利당뵓????醫딆┣???(????裕?濡ろ떟???
                 if (this.selectDragActive) {
                     this.selectEndX = p.x + this.cameraX;
                     this.selectEndY = p.y;
@@ -657,11 +468,11 @@
                     clearManualTankMgHold();
                 } else if (e.button === 0 && this.selectDragActive) {
                     this.selectDragActive = false;
-                    // ?醫뤾문 獄쏅벡?ゅ첎? ??댭??臾믪몵筌???μ뵬 ?????곗쨮 筌ｌ꼶??
+                    // ????ｋ???熬곣뫖利당뵓????곸?? ????????嶺뚮ㅏ諭븀빊?????뮻?????????Β???꿔꺂??節뉖き??
                     const dx = Math.abs(this.selectEndX - this.selectStartX);
                     const dy = Math.abs(this.selectEndY - this.selectStartY);
                     if (dx < 10 && dy < 10) {
-                        // ??μ뵬 ???? 疫꿸퀣??????嚥≪뮇彛?
+                        // ????뮻?????? ???뚯??????????汝??吏?癒곕㎦?
                         const clickX = this.selectStartX;
                         const clickY = this.selectStartY;
                         if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
@@ -672,14 +483,14 @@
                         if (this.clearAllSelection) this.clearAllSelection();
                         this.selectedBuilding = null;
                     } else {
-                        // ??뺤삋域??醫뤾문: 獄쏅벡?????醫딅뻺 ?醫뤾문
+                        // ??嶺뚮Ĳ?됪뤃??????ｋ?? ?熬곣뫖利당뵓????????ル뒇嶺?????ｋ??
                         if (this.selectUnitsInRect) this.selectUnitsInRect();
                         this.selectedBuilding = null;
                     }
                 }
             });
 
-            // ?怨좉깻??筌롫뗀??筌△뫀??+ ??뺤쨴 筌뤿굝議?+ 椰꾨똻苑??띯뫁??
+            // ???關履숂뭐???꿔꺂???????꿔꺂?볟젆怨곷븶???+ ??嶺뚮Ĳ????꿔꺂??琉몃쨨???+ ?꿸쑨?????鍮???????
             window.addEventListener('blur', () => {
                 cameraDrag = false;
                 clearManualTankMgHold();
@@ -697,7 +508,7 @@
                 // [NEW] Block if inside HUD area
                 if (isInsideHUD(e.clientX, e.clientY)) return;
 
-                // [NEW] 椰꾨똻苑?筌뤴뫀諭??띯뫁??
+                // [NEW] ?꿸쑨?????鍮??꿔꺂??袁ㅻ븶?????????
                 if (this.buildMode.active) {
                     this.cancelBuildMode();
                     ui.showToast('嫄댁꽕 痍⑥냼');
@@ -717,7 +528,7 @@
                 if (Camera.zoom !== prevZoom) this.updateZoomUI();
             }, { passive: false });
 
-            // ======== 筌뤴뫀而???怨쀭뒄 ??源??========
+            // ======== ?꿔꺂??袁ㅻ븶???????????????嚥??========
             this.canvas.addEventListener('touchstart', e => {
                 e.preventDefault();
 
@@ -727,7 +538,7 @@
                 }
 
                 if (e.touches.length === 1) {
-                    // ??μ뵬 ?怨쀭뒄: ?醫딅뻺 ?醫뤾문 筌뤴뫀諭?(燁삳?李????猷?疫뀀뜆?)
+                    // ????뮻????????? ????ル뒇嶺?????ｋ???꿔꺂??袁ㅻ븶???(??⑤㈇??癲??????????궰???)
                     isMobileSelecting = true;
                     isMobileCameraMove = false;
                     pinchActive = false;
@@ -735,7 +546,7 @@
                     const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
                     if (!isInsideCanvasClient(e.touches[0].clientX, e.touches[0].clientY)) return;
 
-                    // [NEW] 椰꾨똻苑?筌뤴뫀諭?餓λ쵐?좑쭖?獄쏄퀣??筌ｌ꼶??
+                    // [NEW] ?꿸쑨?????鍮??꿔꺂??袁ㅻ븶???嚥싳쉶瑗??꾧틡???レ탳???熬곣뫖利????꿔꺂??節뉖き??
                     if (this.buildMode.active) {
                         this.updateBuildPreview(p.x + this.cameraX, p.y);
                         this.handleBuildPlacement(p.x + this.cameraX);
@@ -743,26 +554,33 @@
                         return;
                     }
 
-                    // ??野껋옖??餓λ쵐?좑쭖???野껋옖??筌ｌ꼶??
+                    // ???嚥▲굧????嚥싳쉶瑗??꾧틡???レ탳?????嚥▲굧?????꿔꺂??節뉖き??
                     if (this.targetingType) {
                         this.handleTargeting(p.x + this.cameraX, p.y);
                         isMobileSelecting = false;
                         return;
                     }
 
-                    // ?醫뤾문 獄쏅벡????뽰삂
+                    if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
+                        updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
+                        isMobileSelecting = false;
+                        this.selectDragActive = false;
+                        return;
+                    }
+
+                    // ????ｋ???熬곣뫖利당뵓????嶺뚮??ｆ뤃?
                     this.selectDragActive = true;
                     this.selectStartX = p.x + this.cameraX;
                     this.selectStartY = p.y;
                     this.selectEndX = this.selectStartX;
                     this.selectEndY = this.selectStartY;
 
-                    // [MOBILE TAP FIX] ???癒?젟????? ?ル슦紐?疫꿸퀡以?
+                    // [MOBILE TAP FIX] ??????????? ????裕∽┼????뚯????덈춣?
                     tapStartClientX = tapLastClientX = e.touches[0].clientX;
                     tapStartClientY = tapLastClientY = e.touches[0].clientY;
 
                 } else if (e.touches.length >= 2) {
-                    // ???癒??? 燁삳?李????猷?筌뤴뫀諭?
+                    // ??????? ??⑤㈇??癲????????꿔꺂??袁ㅻ븶???
                     isMobileCameraMove = true;
                     isMobileSelecting = false;
                     this.selectDragActive = false;
@@ -782,21 +600,29 @@
             }, { passive: false });
 
             window.addEventListener('touchmove', e => {
-                // 筌뤴뫀而???醫뤾문 餓? 燁삳?李????猷??袁⑹읈 筌△뫀??
+                if (e.touches.length === 1
+                    && typeof this.isDirectControlActive === 'function'
+                    && this.isDirectControlActive()) {
+                    e.preventDefault();
+                    updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
+                    return;
+                }
+
+                // mobile select drag
                 if (isMobileSelecting && this.selectDragActive) {
                     e.preventDefault();
                     const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
                     this.selectEndX = p.x + this.cameraX;
                     this.selectEndY = p.y;
 
-                    // [MOBILE TAP FIX] 筌띾뜆?筌???? ?ル슦紐?揶쏄퉮??
+                    // [MOBILE TAP FIX] ?꿔꺂????????? ????裕∽┼???醫딆┣???
                     tapLastClientX = e.touches[0].clientX;
                     tapLastClientY = e.touches[0].clientY;
 
-                    return; // 燁삳?李??嚥≪뮇彛??紐꾪뀱 疫뀀뜆?
+                    return; // ??⑤㈇??癲???汝??吏?癒곕㎦??癲ル슢???????궰???
                 }
 
-                // ???癒???燁삳?李????猷?
+                // ?????????⑤㈇??癲???????
                 if (isMobileCameraMove && e.touches.length >= 2) {
                     if (pinchActive) {
                         e.preventDefault();
@@ -824,15 +650,15 @@
                     this.selectDragActive = false;
                     isMobileSelecting = false;
 
-                    // [MOBILE TAP FIX] ?遺얜굡?ル슦紐?dx,dy)嚥????癒?젟??롢늺 筌뤴뫀而??깅퓠??椰꾧퀣????湲???뺤삋域밸챶以???쇱뵥??
-                    // ??? 疫꿸퀣???곗쨮 ????뺤삋域??癒?젟
+                    // [MOBILE TAP FIX] ???됰Ŧ??????裕∽┼?dx,dy)???????????????꿔꺂??袁ㅻ븶????濚밸Ŧ援잒キ???꿸쑨???????????嶺뚮Ĳ?됪뤃???녾컯嶺??숅뜮????繹먮굝???
+                    // ??? ???뚯???????Β??????嶺뚮Ĳ?됪뤃???????
                     const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
                     const endClientX = ct ? ct.clientX : tapLastClientX;
                     const endClientY = ct ? ct.clientY : tapLastClientY;
                     const movedPx = Math.hypot(endClientX - tapStartClientX, endClientY - tapStartClientY);
 
                     if (movedPx < TAP_THRESHOLD_PX) {
-                        // ??μ뵬 ?? "???ル슦紐???疫꿸퀣???곗쨮 ????筌ｌ꼶?????類μ넇)
+                        // ????뮻??? "??????裕∽┼??????뚯???????Β????????꿔꺂??節뉖き?????癲ル슢怡?怨뚯꼫)
                         const pTap = getScaledPos(endClientX, endClientY);
                         const clickX = pTap.x + this.cameraX;
                         const clickY = pTap.y;
@@ -845,7 +671,7 @@
                         if (this.clearAllSelection) this.clearAllSelection();
                         this.selectedBuilding = null;
                     } else {
-                        // ??뺤삋域??醫뤾문
+                        // ??嶺뚮Ĳ?됪뤃??????ｋ??
                         if (this.selectUnitsInRect) this.selectUnitsInRect();
                         this.selectedBuilding = null;
                     }
@@ -860,7 +686,7 @@
                 }
             });
 
-            // [NEW] ESC ??살쨮 椰꾨똻苑???野껋옖??筌뤴뫀諭??띯뫁??
+            // [NEW] ESC ????寃??꿸쑨?????鍮????嚥▲굧?????꿔꺂??袁ㅻ븶?????????
             window.addEventListener('keydown', e => {
                 const typingInField = isTypingInField();
                 const directMappedKey = DIRECT_CONTROL_KEY_MAP[e.code];
@@ -939,4 +765,5 @@
         }
     };
 })();
+
 

@@ -213,6 +213,29 @@
         return true;
     }
 
+    function drawControlStar(ctx, cx, cy, outerR, innerR) {
+        if (!ctx) return;
+        const o = Number(outerR) || 3;
+        const i = Number(innerR) || (o * 0.5);
+        ctx.save();
+        ctx.beginPath();
+        for (let p = 0; p < 10; p++) {
+            const angle = (-Math.PI / 2) + (p * Math.PI / 5);
+            const r = (p % 2 === 0) ? o : i;
+            const x = cx + Math.cos(angle) * r;
+            const y = cy + Math.sin(angle) * r;
+            if (p === 0) ctx.moveTo(x, y);
+            else ctx.lineTo(x, y);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#facc15';
+        ctx.fill();
+        ctx.strokeStyle = '#92400e';
+        ctx.lineWidth = 0.8;
+        ctx.stroke();
+        ctx.restore();
+    }
+
     function drawUnitHpBar(unit, ctx, snapDy, showHp) {
         if (!unit || !ctx || !showHp) return;
         const hpPct = Math.max(0, unit.hp / unit.maxHp);
@@ -228,6 +251,15 @@
         ctx.strokeStyle = '#000';
         ctx.lineWidth = 0.5;
         ctx.strokeRect(barX - w / 2, barY, w, h);
+
+        const directUnit = (typeof game !== 'undefined'
+            && game
+            && typeof game.getDirectControlUnit === 'function')
+            ? game.getDirectControlUnit()
+            : null;
+        if (directUnit && directUnit === unit) {
+            drawControlStar(ctx, (barX - w / 2) - 6, barY + (h * 0.5), 3.1, 1.5);
+        }
     }
 
     function getUnitIconProfile(unitKey, unitDef, options) {

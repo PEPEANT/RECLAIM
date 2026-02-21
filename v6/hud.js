@@ -501,6 +501,8 @@ const HUD = {
                 return { key: 'cmd_control_start', fallback: 'CONTROL ON', icon: 'fa-solid fa-gamepad' };
             case 'control_cancel':
                 return { key: 'cmd_control_cancel', fallback: 'CONTROL OFF', icon: 'fa-solid fa-circle-stop' };
+            case 'direct_fire':
+                return { key: 'cmd_fire', fallback: 'FIRE', icon: 'fa-solid fa-crosshairs' };
             case 'weapon_toggle':
                 return { key: 'cmd_weapon_toggle', fallback: 'WEAPON', icon: 'fa-solid fa-gun' };
             case 'eject':
@@ -758,6 +760,7 @@ const HUD = {
             case 'camera': return !!ctx.canCamera;
             case 'control_start': return !!ctx.canDirectControlStart && !ctx.directControlActive;
             case 'control_cancel': return !!ctx.directControlActive;
+            case 'direct_fire': return !!ctx.directControlActive && !!ctx.directControlUnit && !ctx.directControlUnit.dead;
             case 'weapon_toggle': return !!ctx.directControlActive && !!ctx.canDirectWeaponToggle;
             case 'eject': return !!ctx.canEject;
             case 'drone_suicide': return !!ctx.canDroneSuicide;
@@ -804,9 +807,12 @@ const HUD = {
             }
             return null;
         };
-        const directControlInteract = ctx.directControlActive
-            ? 'control_cancel'
-            : (ctx.canDirectControlStart ? 'control_start' : null);
+        let directControlInteract = null;
+        if (ctx.directControlActive) {
+            directControlInteract = 'direct_fire';
+        } else if (ctx.canDirectControlStart) {
+            directControlInteract = 'control_start';
+        }
         if (ctx.directControlActive && ctx.canDirectWeaponToggle) {
             map.skill1 = 'weapon_toggle';
             used.add('weapon_toggle');
@@ -990,6 +996,14 @@ const HUD = {
             return false;
         }
 
+        // Direct-control update path overrides regular commandMode processing.
+        // Exit direct control first so stance commands (forward/hold/backward) apply immediately.
+        if (typeof game.isDirectControlActive === 'function'
+            && game.isDirectControlActive()
+            && typeof game.stopDirectControl === 'function') {
+            game.stopDirectControl('internal');
+        }
+
         if (stance === 'backward') {
             this.executeRetreatWithDroneRecall(units);
         } else {
@@ -998,6 +1012,9 @@ const HUD = {
                 if (!u || u.dead) return;
                 u.commandMode = commandMode;
                 u.returnToBase = false;
+                u.targetX = null;
+                u.targetY = null;
+                u.commandTargetX = null;
             });
         }
 
@@ -1131,6 +1148,14 @@ const HUD = {
             case 'control_cancel':
                 if (typeof game.stopDirectControl === 'function') {
                     return game.stopDirectControl('hud') === true;
+                }
+                return false;
+            case 'direct_fire':
+                if (typeof game.directControlFireCurrentWeapon === 'function') {
+                    return game.directControlFireCurrentWeapon() === true;
+                }
+                if (typeof game.mobileDirectMainFire === 'function') {
+                    return game.mobileDirectMainFire() === true;
                 }
                 return false;
             case 'weapon_toggle':

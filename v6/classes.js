@@ -3441,6 +3441,33 @@ class Unit extends Entity {
             ctx.fillStyle = '#ef4444'; ctx.fillRect(barX - w / 2, barY, w, h);
             ctx.fillStyle = '#22c55e'; ctx.fillRect(barX - w / 2, barY, w * hpPct, h);
             ctx.strokeStyle = '#000'; ctx.lineWidth = 0.5; ctx.strokeRect(barX - w / 2, barY, w, h);
+
+            const directUnit = (typeof game !== 'undefined'
+                && game
+                && typeof game.getDirectControlUnit === 'function')
+                ? game.getDirectControlUnit()
+                : null;
+            if (directUnit && directUnit === this) {
+                const cx = (barX - w / 2) - 6;
+                const cy = barY + (h * 0.5);
+                ctx.save();
+                ctx.beginPath();
+                for (let p = 0; p < 10; p++) {
+                    const angle = (-Math.PI / 2) + (p * Math.PI / 5);
+                    const r = (p % 2 === 0) ? 3.1 : 1.5;
+                    const sx = cx + Math.cos(angle) * r;
+                    const sy = cy + Math.sin(angle) * r;
+                    if (p === 0) ctx.moveTo(sx, sy);
+                    else ctx.lineTo(sx, sy);
+                }
+                ctx.closePath();
+                ctx.fillStyle = '#facc15';
+                ctx.fill();
+                ctx.strokeStyle = '#92400e';
+                ctx.lineWidth = 0.8;
+                ctx.stroke();
+                ctx.restore();
+            }
         };
         ctx.save();
         ctx.translate(this.x, this.y + snapDy);

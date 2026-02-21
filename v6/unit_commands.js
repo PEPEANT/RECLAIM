@@ -13,10 +13,14 @@
     // ============================================
     // A-2) Direct Control runtime (combat units only)
     //  - Toggle with E key / HUD interact command
-    //  - Eligible: mbt, spg, aa_tank, apache
+    //  - Eligible: armored + infantry + combat aircraft
     //  - Transport heli keeps DROP/transport interaction flow
     // ============================================
-    const DIRECT_CONTROL_ELIGIBLE_IDS = new Set(['mbt', 'spg', 'aa_tank', 'apache']);
+    const DIRECT_CONTROL_ELIGIBLE_IDS = new Set([
+        'mbt', 'spg', 'aa_tank', 'apache',
+        'infantry', 'engineer', 'special_ops', 'sniper', 'rpg', 'drone_operator',
+        'fighter', 'bomber', 'recon'
+    ]);
 
     function ensureDirectControlState() {
         if (!game.directControl || typeof game.directControl !== 'object') {
@@ -357,6 +361,52 @@
         return true;
     }
 
+    function directControlFireCurrentWeapon() {
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!isDirectControlEligibleUnit(unit)) return false;
+
+        const mode = getDirectControlWeaponMode(unit);
+        if (mode !== 'sub') {
+            return mobileDirectMainFire();
+        }
+
+        const id = String((unit.stats && unit.stats.id) || '');
+        if (id !== 'mbt') {
+            return mobileDirectSubFireStart();
+        }
+
+        const aim = resolveDirectControlAim(unit);
+        if (aim && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
+            unit.manualAimX = aim.x;
+            unit.manualAimY = aim.y;
+            if (Number.isFinite(game.frame)) unit.manualAimFrame = game.frame;
+        }
+
+        unit.manualMgHeld = true;
+        let fired = false;
+        if (typeof unit.tryManualTankMGFire === 'function') {
+            fired = !!unit.tryManualTankMGFire(aim && aim.x, aim && aim.y);
+        }
+
+        const releaseOnce = () => {
+            if (!unit || unit.dead) return;
+            unit.manualMgHeld = false;
+            if (typeof unit.stopManualTankMG === 'function') {
+                unit.stopManualTankMG(false);
+            } else if (typeof unit._stopTankMGSound === 'function') {
+                unit._stopTankMGSound();
+            }
+        };
+
+        if (typeof window !== 'undefined' && typeof window.setTimeout === 'function') {
+            window.setTimeout(releaseOnce, 120);
+        } else {
+            releaseOnce();
+        }
+
+        return fired;
+    }
+
     function startDirectControl(unit) {
         const state = ensureDirectControlState();
         if ((game.buildMode && game.buildMode.active) || game.targetingType) {
@@ -368,7 +418,7 @@
         const target = isDirectControlEligibleUnit(unit) ? unit : getSelectedDirectControlCandidate();
         if (!target) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-                ui.showToast('조종 가능한 유닛 1개를 선택하세요. (전차/자주포/대공전차/아파치)');
+                ui.showToast('조종 가능한 유닛 1개를 선택하세요. (기갑/보병/항공)');
             }
             return false;
         }
@@ -422,7 +472,7 @@
         state.weaponMode = 'main';
 
         if (unit && !unit.dead) {
-            unit.commandMode = 'stop';
+            unit.commandMode = 'attack';
             unit.returnToBase = false;
             unit.targetX = null;
             unit.targetY = null;
@@ -478,6 +528,7 @@
     game.setDirectControlWeaponMode = setDirectControlWeaponMode;
     game.toggleDirectControlWeaponMode = toggleDirectControlWeaponMode;
     game.getDirectControlWeaponToggleInfo = getDirectControlWeaponToggleInfo;
+    game.directControlFireCurrentWeapon = directControlFireCurrentWeapon;
     game.getDirectControlMobileProfile = function (unit) {
         const target = unit || ((typeof this.getDirectControlUnit === 'function') ? this.getDirectControlUnit() : null);
         return getDirectControlMobileProfile(target);
@@ -600,6 +651,13 @@
                 this.x += moveAxis * moveSpeed;
                 this.facing = (moveAxis > 0) ? 1 : -1;
             }
+            const hasManualAim = Number.isFinite(Number(this.manualAimX)) && Number.isFinite(Number(this.manualAimY));
+            if (moveAxis === 0 && hasManualAim) {
+                const aimDx = Number(this.manualAimX) - Number(this.x);
+                if (Math.abs(aimDx) > 4) {
+                    this.facing = (aimDx >= 0) ? 1 : -1;
+                }
+            }
 
             if (unitId === 'apache') {
                 let verticalAxis = 0;
@@ -622,7 +680,6 @@
 
             // Keep MBT manual MG hold behavior consistent with base update path.
             if (unitId === 'mbt') {
-                const hasManualAim = Number.isFinite(Number(this.manualAimX)) && Number.isFinite(Number(this.manualAimY));
                 const buildActive = !!(game && game.buildMode && game.buildMode.active);
                 const targetingActive = !!(game && game.targetingType);
                 if (this.manualMgHeld === true && hasManualAim && !buildActive && !targetingActive) {
@@ -647,7 +704,14 @@
             const missileRange = Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : unitRange);
             const usesExtendedMissileRange = (unitId === 'apc' || unitId === 'engineer' || unitId === 'rpg');
             const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
-            const canAttack = (target && Math.abs(target.x - this.x) <= activeRange);
+            let targetDirectionOk = true;
+            if (target && hasManualAim) {
+                const targetDx = Number(target.x) - Number(this.x);
+                if (Math.abs(targetDx) > 10) {
+                    targetDirectionOk = ((Number(this.facing) || 1) * targetDx) >= 0;
+                }
+            }
+            const canAttack = (target && targetDirectionOk && Math.abs(target.x - this.x) <= activeRange);
 
             if (canAttack) {
                 this.attackTarget = target;
@@ -821,7 +885,8 @@
     // ============================================
     // F) game.checkUnitClick 援ы쁽 (?⑥씪 ?대┃ ?좉?)
     // ============================================
-    game.checkUnitClick = function (wx, wy) {
+    game.checkUnitClick = function (wx, wy, opts = null) {
+        const keepSelectedOnRepeatTap = !!(opts && opts.keepSelectedOnRepeatTap);
         for (let i = this.players.length - 1; i >= 0; i--) {
             const u = this.players[i];
             if (!isUnitHit(u, wx, wy)) continue;
@@ -846,10 +911,12 @@
 
             // ?좉?: ?좏깮/?댁젣
             if (this.selectedUnits.has(u)) {
-                this.selectedUnits.delete(u);
-                u.isSelected = false;
-                u.commandMode = 'attack'; // ?댁젣 ??怨듦꺽 紐⑤뱶 蹂듦?
-                u.returnToBase = false;
+                if (!keepSelectedOnRepeatTap) {
+                    this.selectedUnits.delete(u);
+                    u.isSelected = false;
+                    u.commandMode = 'attack'; // ?댁젣 ??怨듦꺽 紐⑤뱶 蹂듦?
+                    u.returnToBase = false;
+                }
             } else {
                 this.selectedUnits.add(u);
                 u.isSelected = true;
