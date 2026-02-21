@@ -203,6 +203,9 @@ class Unit extends Entity {
                 this.cruiseY = this.y;
             }
         }
+        if (stats.id === 'apc') {
+            this.apcTowLastFrame = -9999;
+        }
     }
 
     // [P0] 타겟 탐색 간격: 6~12프레임 사이로 유닛 타입/사거리별 분산
@@ -244,21 +247,63 @@ class Unit extends Entity {
         const bonus = this.getRangeBonus();
         if (base <= 0) return Math.max(0, bonus);
 
-        // Baseline tuning + global range inflation for readability and combat pacing.
-        let tunedBase = base;
-        if (id === 'spg') tunedBase = Math.round(base * 1.45);
+        // Range profile targets: keep combat readable on large maps without unit-level hardcoding.
+        const targetMinById = {
+            infantry: 280,
+            engineer: 320,
+            drone_operator: 320,
+            special_ops: 420,
+            sniper: 1400,
+            humvee: 650,
+            apc: 520,
+            mbt: 1100,
+            aa_tank: 1050,
+            apache: 900,
+            blackhawk: 650,
+            fighter: 1800,
+            spg: 2200
+        };
 
-        let globalMult = 1.20;
-        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.28);
-        if (s.type === 'mech' || s.category === 'armored') globalMult = Math.max(globalMult, 1.24);
-        if (s.type === 'air' || s.category === 'air') globalMult = Math.max(globalMult, 1.22);
-        if (id === 'sniper') globalMult = 1.12;
-        if (id === 'spg') globalMult = 1.10;
+        // Baseline tuning + global range inflation.
+        let tunedBase = base;
+        if (id === 'spg') tunedBase = Math.round(base * 1.20);
+
+        let globalMult = 1.24;
+        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.30);
+        if (s.type === 'mech' || s.category === 'armored') globalMult = Math.max(globalMult, 1.26);
+        if (s.type === 'air' || s.category === 'air') globalMult = Math.max(globalMult, 1.28);
         if (id === 'bomber') globalMult = 1.28;
         if (id === 'worker' || id === 'recon') globalMult = 1.00;
 
-        const scaled = Math.round(tunedBase * globalMult);
+        let scaled = Math.round(tunedBase * globalMult);
+        const targetMin = Number(targetMinById[id]);
+        if (Number.isFinite(targetMin) && targetMin > 0) {
+            scaled = Math.max(scaled, targetMin);
+        }
+
         return Math.max(0, scaled + bonus);
+    }
+
+    getEffectiveMissileRange() {
+        const id = String((this.stats && this.stats.id) || '');
+        const unitRange = this.getEffectiveRange();
+        const raw = Number(this.stats && this.stats.missileRange);
+        const targetMinById = {
+            engineer: 1300,
+            rpg: 1300,
+            fighter: 2250,
+            apc: 1100
+        };
+        const targetMin = Number(targetMinById[id]) || 0;
+
+        if (!Number.isFinite(raw) || raw <= 0) {
+            if (targetMin > 0) return Math.max(unitRange, targetMin);
+            return unitRange;
+        }
+
+        let scaled = Math.round(raw * 1.24);
+        if (targetMin > 0) scaled = Math.max(scaled, targetMin);
+        return Math.max(unitRange, scaled);
     }
 
     shouldFeetSnap() {
@@ -1209,6 +1254,7 @@ class Unit extends Entity {
             this.x += this.stats.speed * dir;
             this.updateFacing();
             const fighterRange = Math.max(450, Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 600);
+            const fighterMissileRange = Math.max(fighterRange, Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : fighterRange) || fighterRange);
             const fighterLoseRange = fighterRange + 50;
             const fighterScanRange = Math.max(420, Math.round(fighterRange * 0.92));
 
@@ -1246,7 +1292,7 @@ class Unit extends Entity {
                 const dist = Math.abs(target.x - this.x);
                 const lastMissile = Number(this.lastFighterMissile) || -9999;
                 const missileReady = (game.frame - lastMissile) > 150;
-                if (!isDrone && dist <= (fighterRange + 120) && missileReady) {
+                if (!isDrone && dist <= fighterMissileRange && missileReady) {
                     let missileDmg = Number(this.stats.missileDamage);
                     if (!Number.isFinite(missileDmg) || missileDmg <= 0) missileDmg = 420;
                     if (target.stats && target.stats.type === 'air') missileDmg = Math.round(missileDmg * 1.15);
@@ -1263,17 +1309,36 @@ class Unit extends Entity {
         }
 
         // [?쇰컲 ?꾪닾 濡쒖쭅] (吏???좊떅, ?꾪뙆移? **?꾧컻??釉붾옓?명겕**)
-        const isEngineer = this.stats.id === 'engineer';
-        const isRpgUnit = (this.stats.id === 'engineer' || this.stats.id === 'rpg');
+        const unitId = String(this.stats && this.stats.id || '');
+        const isEngineer = unitId === 'engineer';
+        const isRpgUnit = (unitId === 'engineer' || unitId === 'rpg');
+        const isApcTowUnit = unitId === 'apc';
         const unitRange = this.getEffectiveRange();
-        const missileRange = Number(this.stats.missileRange) || unitRange;
-        const canUseMissile = isRpgUnit && this.missileReady !== false;
-        const isEngineerMissileTarget = (t) => {
-            if (!t || !t.stats) return false;
-            const tid = t.stats.id || '';
-            const ttype = t.stats.type;
-            const isDrone = tid.includes('drone') || tid === 'tactical_drone';
-            return !isDrone && (ttype === 'mech' || ttype === 'air');
+        const missileRange = this.getEffectiveMissileRange();
+        const canUseMissile = (isRpgUnit && this.missileReady !== false) || isApcTowUnit;
+        const isMissileTarget = (t) => {
+            if (!t) return false;
+
+            if (isRpgUnit) {
+                if (!t.stats) return false;
+                const tid = t.stats.id || '';
+                const ttype = t.stats.type;
+                const isDrone = tid.includes('drone') || tid === 'tactical_drone';
+                return !isDrone && (ttype === 'mech' || ttype === 'air');
+            }
+
+            if (isApcTowUnit) {
+                if (!t.stats) {
+                    return !!(t.team && t.team !== this.team && t.team !== 'neutral');
+                }
+                const tid = String(t.stats.id || '');
+                const ttype = String(t.stats.type || '');
+                const isDrone = tid.includes('drone') || tid === 'tactical_drone';
+                if (isDrone) return false;
+                return ttype === 'mech' || tid === 'icbm' || tid === 'icbm_enemy';
+            }
+
+            return false;
         };
 
         const extraCivilianTargets = (this.team === 'enemy' && typeof game !== 'undefined' && Array.isArray(game.civilians) && game.civilians.length)
@@ -1290,7 +1355,7 @@ class Unit extends Entity {
             const isStealth = this.attackTarget.stats && this.attackTarget.stats.stealth;
             const isInvulnerable = this.attackTarget.stats && this.attackTarget.stats.invulnerable;
             const isCivilianTarget = this.attackTarget.stats && this.attackTarget.stats.civilian;
-            const effRange = (canUseMissile && isEngineerMissileTarget(this.attackTarget)) ? missileRange : unitRange;
+            const effRange = (canUseMissile && isMissileTarget(this.attackTarget)) ? missileRange : unitRange;
 
             if (this.attackTarget.dead ||
                 (restrictForward && isBehind(this.attackTarget.x)) ||
@@ -1332,7 +1397,7 @@ class Unit extends Entity {
                     if (restrictForward && isBehind(e.x)) continue;
 
                     const dist = Math.abs(e.x - this.x);
-                    const effRange = (canUseMissile && isEngineerMissileTarget(e)) ? missileRange : unitRange;
+                    const effRange = (canUseMissile && isMissileTarget(e)) ? missileRange : unitRange;
                     if (dist > effRange) continue;
 
                     let score = dist;
@@ -1351,7 +1416,7 @@ class Unit extends Entity {
                         if (e.stats && e.stats.type === 'air' && !canHitAir) continue;
                         if (restrictForward && isBehind(e.x)) continue;
                         const dist = Math.abs(e.x - this.x);
-                        const effRange = (canUseMissile && isEngineerMissileTarget(e)) ? missileRange : unitRange;
+                        const effRange = (canUseMissile && isMissileTarget(e)) ? missileRange : unitRange;
                         if (dist > effRange) continue;
                         let score = dist;
                         if (score < bestScore) { bestScore = score; this.attackTarget = e; }
@@ -1363,7 +1428,8 @@ class Unit extends Entity {
                     for (let b of buildings) {
                         if (!b || b.dead || b.team === this.team || b.team === 'neutral') continue;
                         const dist = Math.abs(b.x - this.x);
-                        if (dist > unitRange + b.width / 2) continue;
+                        const buildingRange = (canUseMissile && isMissileTarget(b)) ? missileRange : unitRange;
+                        if (dist > buildingRange + b.width / 2) continue;
                         if (restrictForward && isBehind(b.x)) continue;
                         if (dist < bestScore) { bestScore = dist; this.attackTarget = b; }
                     }
@@ -1376,18 +1442,19 @@ class Unit extends Entity {
         const isAttacking = (target !== null) && !(this.team === 'enemy' && game.empTimer > 0);
 
         if (isAttacking) {
-            const activeRange = (canUseMissile && isEngineerMissileTarget(target)) ? missileRange : unitRange;
+            const activeRange = (canUseMissile && isMissileTarget(target)) ? missileRange : unitRange;
             this._applyCombatSpacing(target, activeRange);
 
             let rate = 60;
             // [?섏젙] 釉붾옓?명겕??鍮좊Ⅸ ?곗궗 (15?꾨젅?? ?곸슜
-            if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
+            if (['humvee', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
+            else if (this.stats.id === 'apc') rate = (canUseMissile && isMissileTarget(target)) ? 12 : 8;
             else if (this.stats.id === 'mbt') rate = 120;
             else if (this.stats.id === 'spg') rate = this._getSpgFireCooldownFrames();
             else if (this.stats.id === 'sniper') rate = 210;
 
             let handledAttackCycle = false;
-            if (isRpgUnit && canUseMissile && isEngineerMissileTarget(target)) {
+            if (isRpgUnit && canUseMissile && isMissileTarget(target)) {
                 const rawAimFrames = Number(this.stats.missileAimFrames);
                 const aimFrames = Number.isFinite(rawAimFrames) ? Math.max(1, Math.floor(rawAimFrames)) : 54;
                 if (this.engineerAimTarget !== target) {
@@ -1715,7 +1782,8 @@ class Unit extends Entity {
             }
 
             if (!this.attackTarget || this.attackTarget.dead) {
-                let bestDist = stats.range + 1;
+                const opRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : stats.range) || 0;
+                let bestDist = opRange + 1;
                 for (const e of enemies) {
                     if (!e || e.dead) continue;
                     if (e.stats && (e.stats.stealth || e.stats.invulnerable)) continue;
@@ -2437,12 +2505,13 @@ class Unit extends Entity {
         const range = Math.max(0, Number(effectiveRange) || 0);
         const id = String((this.stats && this.stats.id) || '');
         const type = String((this.stats && this.stats.type) || '');
-        if (id === 'spg') return Math.max(260, Math.round(range * 0.92));
-        if (id === 'sniper') return Math.max(220, Math.round(range * 0.95));
-        if (id === 'mbt') return Math.max(180, Math.round(range * 0.82));
-        if (type === 'air') return Math.max(160, Math.round(range * 0.78));
-        if (id === 'humvee' || id === 'apc') return Math.max(120, Math.round(range * 0.78));
-        return Math.max(90, Math.round(range * 0.72));
+        if (id === 'spg') return Math.max(260, Math.min(760, Math.round(range * 0.40)));
+        if (id === 'sniper') return Math.max(260, Math.min(620, Math.round(range * 0.58)));
+        if (id === 'mbt') return Math.max(240, Math.min(560, Math.round(range * 0.50)));
+        if (id === 'aa_tank') return Math.max(220, Math.min(540, Math.round(range * 0.52)));
+        if (type === 'air') return Math.max(220, Math.min(720, Math.round(range * 0.36)));
+        if (id === 'humvee' || id === 'apc') return Math.max(160, Math.min(420, Math.round(range * 0.54)));
+        return Math.max(120, Math.min(360, Math.round(range * 0.46)));
     }
 
     _getCombatSlotTier(target) {
@@ -2623,6 +2692,67 @@ class Unit extends Entity {
             return;
         }
 
+        // Bradley IFV (apc): 25mm autocannon + TOW anti-armor missile.
+        if (id === 'apc') {
+            const targetType = target && target.stats ? String(target.stats.type || '') : '';
+            const targetId = target && target.stats ? String(target.stats.id || '') : '';
+            const isDrone = targetId.includes('drone') || targetId === 'tactical_drone';
+            const isTowTarget = !!target && !isDrone && (
+                targetType === 'mech'
+                || targetId === 'icbm'
+                || targetId === 'icbm_enemy'
+                || (!target.stats && target.team && target.team !== this.team && target.team !== 'neutral')
+            );
+            const frameNow = Number.isFinite(game && game.frame) ? game.frame : 0;
+            const towCooldown = Math.max(45, Math.floor(Number(this.stats && this.stats.missileCooldownFrames) || 150));
+            const lastTowFrame = Number(this.apcTowLastFrame);
+            const towReady = !Number.isFinite(lastTowFrame) || (frameNow - lastTowFrame) >= towCooldown;
+
+            if (isTowTarget && towReady) {
+                let spawnX = this.x + ((Number(this.facing) >= 0 ? 1 : -1) * 22);
+                let spawnY = this.y - this.height * 0.55;
+                const targetX = Number(target && target.x);
+                const targetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.30);
+                if (typeof UnitRenderV2Weapons_apc !== 'undefined'
+                    && UnitRenderV2Weapons_apc
+                    && typeof UnitRenderV2Weapons_apc.computeMuzzleWorld === 'function') {
+                    const stateStore = (this._renderV2State && this._renderV2State.apc) ? this._renderV2State.apc : null;
+                    const muzzle = UnitRenderV2Weapons_apc.computeMuzzleWorld(this, {
+                        targetX: targetX,
+                        targetY: targetY,
+                        state: stateStore,
+                        weapon: 'tow'
+                    });
+                    if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                        spawnX = muzzle.x;
+                        spawnY = muzzle.y;
+                    }
+                }
+
+                const towDamageRaw = Number(this.stats && this.stats.missileDamage);
+                const towDamage = (Number.isFinite(towDamageRaw) && towDamageRaw > 0)
+                    ? towDamageRaw
+                    : Math.max(dmg * 4, 90);
+                const towOpts = {
+                    source: this,
+                    impactVfx: 'tank_shell',
+                    impactVfxAir: 'airburst'
+                };
+                game.projectiles.push(new Projectile(spawnX, spawnY, target, towDamage, this.team, 'engineer_missile', towOpts));
+                this.apcTowLastFrame = frameNow;
+                this.missileFlash = 7;
+                this.recoil = Math.max(this.recoil || 0, 2.8);
+                if (typeof AudioSystem !== 'undefined') {
+                    AudioSystem.playSFX('rocket_launcher', this.x);
+                }
+                if (typeof game.createParticles === 'function') {
+                    game.createParticles(spawnX, spawnY, 10, '#ffb347');
+                    game.createParticles(spawnX, spawnY, 6, '#fff4cc');
+                }
+                return;
+            }
+        }
+
         // [기존] 발사체 타입 결정
         let type = 'bullet';
         let shotOpts = null;
@@ -2739,7 +2869,7 @@ class Unit extends Entity {
             // [NOTE] 탱크 포탄 발사음 제거 - 명중 시 사운드로 이동
         }
 
-        const recoilKick = (id === 'mbt') ? 6 : ((id === 'spg') ? 5 : 0);
+        const recoilKick = (id === 'mbt') ? 6 : ((id === 'spg') ? 5 : ((id === 'apc') ? 2.2 : 0));
         if (recoilKick > 0) {
             this.recoil = Math.max(this.recoil || 0, recoilKick);
         }
@@ -2775,6 +2905,25 @@ class Unit extends Entity {
                     }
                 }
             }
+            if (id === 'apc') {
+                const targetX = Number(target && target.x);
+                const targetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.30);
+                if (typeof UnitRenderV2Weapons_apc !== 'undefined'
+                    && UnitRenderV2Weapons_apc
+                    && typeof UnitRenderV2Weapons_apc.computeMuzzleWorld === 'function') {
+                    const stateStore = (this._renderV2State && this._renderV2State.apc) ? this._renderV2State.apc : null;
+                    const muzzle = UnitRenderV2Weapons_apc.computeMuzzleWorld(this, {
+                        targetX: targetX,
+                        targetY: targetY,
+                        state: stateStore,
+                        weapon: 'auto'
+                    });
+                    if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                        spawnX = muzzle.x;
+                        spawnY = muzzle.y;
+                    }
+                }
+            }
             if (id === 'spg' && type === 'artillery') {
                 const fallbackTargetX = Number(target && target.x);
                 const fallbackTargetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.25);
@@ -2803,6 +2952,9 @@ class Unit extends Entity {
             game.projectiles.push(new Projectile(spawnX, spawnY, projectileTarget, dmg, this.team, type, finalOpts));
             if (id === 'humvee' && type === 'humvee_burst' && game && typeof game.createParticles === 'function') {
                 game.createParticles(spawnX, spawnY, 3, '#ffcc55');
+            }
+            if (id === 'apc' && game && typeof game.createParticles === 'function') {
+                game.createParticles(spawnX, spawnY, 2, '#ffcc55');
             }
             if (id === 'spg' && type === 'artillery' && game && typeof game.createParticles === 'function') {
                 game.createParticles(spawnX, spawnY, 14, '#ff7a00');
@@ -2872,7 +3024,7 @@ class Unit extends Entity {
         }
 
         const facing = Number.isFinite(this.facing) ? this.facing : (this.team === 'player' ? 1 : -1);
-        const useV2Armor = ((id === 'mbt' && this.team === 'player') || id === 'spg' || (id === 'humvee' && this.team === 'player'));
+        const useV2Armor = (id === 'mbt' || id === 'spg' || id === 'humvee' || id === 'apc');
         const recoilX = (this.recoil || 0) * -facing;
         // Player armored V2 (MBT/SPG) already applies barrel-only recoil in renderer.
         if (!useV2Armor && recoilX) ctx.translate(recoilX, 0);
@@ -2886,8 +3038,19 @@ class Unit extends Entity {
             return;
         }
 
-        // Unit Render V2: player MBT/SPG/humvee + infantry (all teams).
-        if (((id === 'mbt' && this.team === 'player') || id === 'spg' || (id === 'humvee' && this.team === 'player') || id === 'infantry') && typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
+        // Unit Render V2: armored + infantry line expansion (sniper/special ops included).
+        if ((id === 'mbt'
+            || id === 'spg'
+            || id === 'humvee'
+            || id === 'apc'
+            || id === 'infantry'
+            || id === 'sniper'
+            || id === 'special_ops'
+            || id === 'special_forces'
+            || id === 'engineer'
+            || id === 'rpg'
+            || id === 'drone_operator')
+            && typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
             let renderedWithV2 = false;
             try {
                 renderedWithV2 = UnitRenderV2.draw(this, ctx, {

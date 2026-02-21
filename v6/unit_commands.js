@@ -117,6 +117,9 @@
                 const unitRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats.range || 0));
                 const canAttack = (target && Math.abs(target.x - this.x) <= unitRange);
                 if (canAttack) {
+                    if (typeof this._applyCombatSpacing === 'function') {
+                        this._applyCombatSpacing(target, unitRange);
+                    }
                     let rate = 60;
                     if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
                     else if (this.stats.id === 'spg') rate = 300;

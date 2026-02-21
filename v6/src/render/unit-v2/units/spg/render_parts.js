@@ -59,6 +59,9 @@
         var base = p.base || '#4A5D23';
         var dark = p.dark || '#324016';
         var shadow = p.shadow || '#212B0E';
+        var accent = p.accent || '#8b1e1e';
+        var accent2 = p.accent2 || '#b91c1c';
+        var enemyPattern = p.enemyPattern === true;
         var gunAngle = Number(state && state.gunAngle);
         if (!Number.isFinite(gunAngle)) gunAngle = -Math.PI / 12;
         var recoil = Math.max(0, Number(state && state.recoil) || 0);
@@ -87,6 +90,11 @@
         ctx.fillStyle = '#555';
         ctx.fillRect(147, -8, 3, 16);
         ctx.fillRect(152, -8, 3, 16);
+        if (enemyPattern) {
+            ctx.fillStyle = accent2;
+            ctx.fillRect(93, -6.7, 4.5, 1.8);
+            ctx.fillRect(101, -6.7, 4.5, 1.8);
+        }
         ctx.restore();
 
         // Turret shell.
@@ -117,6 +125,19 @@
         ctx.fillStyle = '#1f2937';
         ctx.fillRect(-18, -39, 6, 2);
 
+        if (enemyPattern) {
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-42, -24);
+            ctx.lineTo(-20, -28);
+            ctx.moveTo(-39, -20);
+            ctx.lineTo(-17, -24);
+            ctx.stroke();
+            ctx.fillStyle = accent2;
+            ctx.fillRect(18, -30, 7, 2.3);
+        }
+
         ctx.restore();
     }
 
@@ -125,4 +146,3 @@
         drawTurret: drawTurret
     };
 })(typeof window !== 'undefined' ? window : globalThis);
-

@@ -19,12 +19,12 @@
             helmet:   '#3A4A20'
         },
         enemy: {
-            uniform:  '#7f1d1d',
-            vest:     '#5a1414',
+            uniform:  '#8b7a5a',
+            vest:     '#6e5f45',
             skin:     '#ffdbac',
             gun:      '#1a1a1a',
-            gunWood:  '#3b2f2f',
-            helmet:   '#450a0a'
+            gunWood:  '#5a4a34',
+            helmet:   '#78674b'
         }
     };
 

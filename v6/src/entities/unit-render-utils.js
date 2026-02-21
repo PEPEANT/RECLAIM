@@ -11,7 +11,7 @@
         special_ops: 0,
         drone_operator: 0,
         humvee: 22, // V2 size down: keep wheels touching ground without sinking.
-        apc: 0,
+        apc: 16,
         mbt: 0,
         spg: 6,
         aa_tank: 2,

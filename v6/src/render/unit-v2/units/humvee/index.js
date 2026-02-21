@@ -20,7 +20,21 @@
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
 
-        // Current rollout: friendly humvee skin first.
+        if (team === 'enemy') {
+            return {
+                base: '#8b7a5a',
+                dark: '#6f5f45',
+                shadow: '#4b3f2f',
+                window: '#534f45',
+                tire: '#1a1a1a',
+                rim: '#3c342b',
+                gun: '#221f1a',
+                tow: '#7e745f',
+                accent: '#8b1e1e',
+                accent2: '#b91c1c',
+                enemyPattern: true
+            };
+        }
         if (team !== 'player') return null;
 
         return {
@@ -31,7 +45,10 @@
             tire: '#1a1a1a',
             rim: '#444',
             gun: '#222',
-            tow: '#4B5320'
+            tow: '#4B5320',
+            accent: '#5d3f22',
+            accent2: '#3f2d1a',
+            enemyPattern: false
         };
     }
 
@@ -84,9 +101,6 @@
         if (!unit || !ctx || !unit.stats || String(unit.stats.id || '') !== 'humvee') return false;
         var deps = getDeps();
         if (!deps.stateApi || !deps.weaponApi) return false;
-
-        // Friendly rollout first.
-        if (String(unit.team || '') !== 'player') return false;
 
         var state = deps.stateApi.getState(unit);
         if (!state) return false;

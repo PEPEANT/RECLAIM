@@ -52,6 +52,9 @@
         var dark = p.dark || '#3D4825';
         var gun = p.gun || '#222';
         var tow = p.tow || '#4B5320';
+        var accent = p.accent || '#8b1e1e';
+        var accent2 = p.accent2 || '#b91c1c';
+        var enemyPattern = p.enemyPattern === true;
         var angle = Number(state && state.turretAngle);
         if (!Number.isFinite(angle)) angle = -0.08;
 
@@ -91,9 +94,22 @@
         ctx.fillRect(12, -6, 2, 10);
         ctx.fillStyle = '#111';
         ctx.fillRect(-8, -12, 10, 6);
-        ctx.fillStyle = '#5599ff';
+        ctx.fillStyle = enemyPattern ? '#fb7185' : '#5599ff';
         ctx.fillRect(0, -11, 2, 4);
         ctx.restore();
+
+        if (enemyPattern) {
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 1.4;
+            ctx.beginPath();
+            ctx.moveTo(-6, -9);
+            ctx.lineTo(8, -12);
+            ctx.moveTo(-6, -5);
+            ctx.lineTo(8, -8);
+            ctx.stroke();
+            ctx.fillStyle = accent2;
+            ctx.fillRect(-12, -4, 4, 2);
+        }
 
         // MG muzzle flash.
         var mgFlash = Math.max(0, Number(state && state.mgFlash) || 0);

@@ -42,13 +42,16 @@
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
         if (team === 'enemy') {
             return {
-                base: '#6f3c3c',
-                dark: '#4f2a2a',
-                shadow: '#2f1717',
+                base: '#8b7a5a',
+                dark: '#6f5f45',
+                shadow: '#4b3f2f',
                 track: '#1a1a1a',
                 wheelOuter: '#151515',
-                wheelInner: '#4f2a2a',
-                hub: '#111'
+                wheelInner: '#6b5d45',
+                hub: '#111',
+                accent: '#8b1e1e',
+                accent2: '#b91c1c',
+                enemyPattern: true
             };
         }
         if (team !== 'player') return null;
@@ -59,7 +62,10 @@
             track: '#1a1a1a',
             wheelOuter: '#151515',
             wheelInner: '#324016',
-            hub: '#111'
+            hub: '#111',
+            accent: '#3f2f1d',
+            accent2: '#2a2014',
+            enemyPattern: false
         };
     }
 

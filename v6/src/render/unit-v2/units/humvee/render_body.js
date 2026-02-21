@@ -9,6 +9,9 @@
         var dark = p.dark || '#3D4825';
         var shadow = p.shadow || '#2C3519';
         var windowColor = p.window || '#3b4d59';
+        var accent = p.accent || '#8b1e1e';
+        var accent2 = p.accent2 || '#b91c1c';
+        var enemyPattern = p.enemyPattern === true;
 
         // Main hull silhouette (slant-back style).
         ctx.fillStyle = base;
@@ -39,6 +42,26 @@
         ctx.lineTo(24, -7);
         ctx.closePath();
         ctx.fill();
+
+        if (enemyPattern) {
+            // Desert camo chips + red aggression marks.
+            ctx.fillStyle = 'rgba(60,46,30,0.28)';
+            ctx.fillRect(-38, -25, 17, 7);
+            ctx.fillRect(-4, -18, 20, 6);
+            ctx.fillRect(26, -12, 13, 5);
+
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(20, -10);
+            ctx.lineTo(41, -6);
+            ctx.moveTo(17, -6);
+            ctx.lineTo(38, -2);
+            ctx.stroke();
+
+            ctx.fillStyle = accent2;
+            ctx.fillRect(-49, -8, 8, 3);
+        }
 
         // Windows.
         ctx.fillStyle = windowColor;

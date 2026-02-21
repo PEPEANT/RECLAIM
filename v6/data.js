@@ -12,12 +12,12 @@
         // 🛰️ 후방 HQ (공중 요격만)
         hq_player: {
             hp: 5000, width: 200, height: 140, name: '총사령부', canShoot: true, antiAir: true, onlyAir: true,
-            damage: 80, range: 900, rate: 34, projectileType: 'aa_shell',
+            damage: 80, range: 1300, rate: 34, projectileType: 'aa_shell',
             yOffset: -10,
         },
         hq_enemy: {
             hp: 5000, width: 200, height: 140, name: '총사령부', canShoot: true, antiAir: true, onlyAir: true,
-            damage: 80, range: 900, rate: 34, projectileType: 'aa_shell',
+            damage: 80, range: 1300, rate: 34, projectileType: 'aa_shell',
             yOffset: -10,
         },
 
@@ -36,7 +36,7 @@
         defense_line: {
             hp: 1008, width: 320, height: 140, name: '전방 방어선',
             canShoot: true, antiAir: false,
-            damage: 14, range: 480, rate: 14, projectileType: 'bullet',
+            damage: 14, range: 720, rate: 14, projectileType: 'bullet',
             allowAir: true, ignoreDrone: true, airDamageMult: 0.35,
             yOffset: 6, hpBarOffsetY: 45,
         },
@@ -45,7 +45,7 @@
         watchtower: {
             hp: 1200, width: 60, height: 80, name: '감시탑',
             canShoot: true, antiAir: false,
-            damage: 8, range: 400, rate: 12, projectileType: 'bullet',
+            damage: 8, range: 620, rate: 12, projectileType: 'bullet',
             allowAir: true, ignoreDrone: true, airDamageMult: 0.35,
             yOffset: 0,
         },
@@ -56,8 +56,8 @@
             yOffset: 0,
             hpBarOffsetY: 18
         },
-        bunker: { hp: 2000, width: 80, height: 60, color: '#475569', name: '전술 벙커', damage: 25, range: 350, rate: 30 },
-        turret: { hp: 1500, width: 50, height: 60, color: '#64748b', name: 'CIWS 포탑', damage: 12, range: 500, rate: 8, antiAir: true }
+        bunker: { hp: 2000, width: 80, height: 60, color: '#475569', name: '전술 벙커', damage: 25, range: 520, rate: 30 },
+        turret: { hp: 1500, width: 50, height: 60, color: '#64748b', name: 'CIWS 포탑', damage: 12, range: 760, rate: 8, antiAir: true }
     },
 
     // ============================================
@@ -77,7 +77,7 @@
             footprint: { w: 80, h: 20 },
             canShoot: true,
             damage: 8,
-            range: 400,
+            range: 620,
             rate: 12,
             projectileType: 'bullet',
         }
@@ -130,10 +130,11 @@
             role: '고속 기동', description: '빠른 속도로 치고 빠지며 보병을 제압합니다.'
         },
         apc: {
-            id: 'apc', name: '장갑차', cost: 60, cooldown: 130, maxCount: 12,
-            hp: 400, damage: 10, range: 200, speed: 1.0,
-            width: 60, height: 36, color: '#6366f1', type: 'mech', category: 'armored',
-            role: '전투 수송', description: '피격 시 즉시 보병 4명을 하차시키고 전투를 지속합니다.'
+            id: 'apc', name: 'M2 브래들리 IFV', cost: 65, cooldown: 130, maxCount: 12,
+            hp: 430, damage: 16, range: 260, speed: 0.95,
+            missileRange: 900, missileDamage: 140, missileCooldownFrames: 150,
+            width: 66, height: 40, color: '#6366f1', type: 'mech', category: 'armored',
+            role: '보병전투장갑차', description: '25mm 기관포로 제압하고 TOW 미사일로 적 기갑/시설을 타격합니다.'
         },
         mbt: {
             id: 'mbt', name: '전차', cost: 85, cooldown: 180, maxCount: 12,

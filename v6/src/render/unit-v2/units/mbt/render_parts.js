@@ -93,6 +93,9 @@
         var main = p.main || '#4E5B31';
         var dark = p.dark || '#3D4825';
         var shadow = p.shadow || '#2C3519';
+        var accent = p.accent || '#8b1e1e';
+        var accent2 = p.accent2 || '#b91c1c';
+        var enemyPattern = p.enemyPattern === true;
 
         ctx.save();
         ctx.translate(5, -30);
@@ -115,6 +118,12 @@
 
         ctx.fillStyle = '#444';
         ctx.fillRect(108, -4.5, 4, 9);
+
+        if (enemyPattern) {
+            ctx.fillStyle = accent2;
+            ctx.fillRect(78, -6.2, 5, 1.6);
+            ctx.fillRect(86, -6.2, 5, 1.6);
+        }
         ctx.restore();
 
         // Turret body
@@ -130,6 +139,19 @@
         ctx.lineTo(-60, -15);
         ctx.closePath();
         ctx.fill();
+
+        if (enemyPattern) {
+            ctx.strokeStyle = accent;
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(-52, -8);
+            ctx.lineTo(-26, -12);
+            ctx.moveTo(-48, -4);
+            ctx.lineTo(-22, -8);
+            ctx.stroke();
+            ctx.fillStyle = accent2;
+            ctx.fillRect(20, -7, 8, 2.5);
+        }
 
         ctx.fillStyle = 'rgba(0,0,0,0.1)';
         ctx.beginPath();

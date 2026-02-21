@@ -28,7 +28,21 @@
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
 
-        // 현재 단계: 아군만 V2 스킨 적용. 적군은 후속 스킨에서 별도 처리.
+        if (team === 'enemy') {
+            return {
+                main: '#8a795b',
+                dark: '#6e5f46',
+                shadow: '#4a3e2f',
+                track: '#1f1d1a',
+                wheelOuter: '#151515',
+                wheelInner: '#675941',
+                hub: '#222',
+                sprocket: '#352c23',
+                accent: '#8b1e1e',
+                accent2: '#b91c1c',
+                enemyPattern: true
+            };
+        }
         if (team !== 'player') return null;
 
         return {
@@ -39,7 +53,10 @@
             wheelOuter: '#151515',
             wheelInner: '#3D4825',
             hub: '#222',
-            sprocket: '#333'
+            sprocket: '#333',
+            accent: '#3f2f1d',
+            accent2: '#2a2014',
+            enemyPattern: false
         };
     }
 
@@ -101,9 +118,6 @@
         if (!unit || !ctx || !unit.stats || String(unit.stats.id || '') !== 'mbt') return false;
         var deps = getDeps();
         if (!deps.stateApi) return false;
-
-        // 현재 단계: 아군 MBT만 V2 적용
-        if (String(unit.team || '') !== 'player') return false;
 
         var state = deps.stateApi.getState(unit);
         if (!state) return false;
