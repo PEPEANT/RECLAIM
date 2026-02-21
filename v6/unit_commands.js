@@ -115,10 +115,13 @@
                 // 지상: 제자리 유지 + 사거리 내 자동 공격만 수행
                 const target = this.findNearestEnemy(enemies, buildings);
                 const unitRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats.range || 0));
-                const canAttack = (target && Math.abs(target.x - this.x) <= unitRange);
+                const missileRange = Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : unitRange);
+                const usesExtendedMissileRange = (this.stats.id === 'apc' || this.stats.id === 'engineer' || this.stats.id === 'rpg');
+                const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
+                const canAttack = (target && Math.abs(target.x - this.x) <= activeRange);
                 if (canAttack) {
                     if (typeof this._applyCombatSpacing === 'function') {
-                        this._applyCombatSpacing(target, unitRange);
+                        this._applyCombatSpacing(target, activeRange);
                     }
                     let rate = 60;
                     if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
