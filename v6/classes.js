@@ -53,20 +53,25 @@ class Unit extends Entity {
         };
 
         let startY = groundY;
-        // Air lanes: move aerial combat higher into the sky.
+        // Air lanes: globally lift all aerial units and keep altitude hierarchy.
+        // Priority: recon > fighter > apache > blackhawk/uh60/chinook
         if (stats.id === 'stealth_drone') {
-            startY = groundY - 540 - Math.random() * 80;
+            startY = groundY - 620 - Math.random() * 90;
+        } else if (stats.id === 'recon') {
+            startY = groundY - 600 - Math.random() * 90;
+        } else if (stats.id === 'fighter') {
+            startY = groundY - 550 - Math.random() * 90;
         } else if (stats.id === 'bomber') {
-            startY = groundY - 430 - Math.random() * 110;
-        } else if (stats.id === 'fighter' || stats.id === 'recon') {
-            startY = groundY - 470 - Math.random() * 120;
-        } else if (stats.id === 'apache' || stats.id === 'blackhawk' || stats.id === 'chinook' || stats.id === 'uh60') {
-            startY = groundY - 420 - Math.random() * 120;
+            startY = groundY - 570 - Math.random() * 80;
+        } else if (stats.id === 'apache') {
+            startY = groundY - 500 - Math.random() * 80;
+        } else if (stats.id === 'blackhawk' || stats.id === 'chinook' || stats.id === 'uh60') {
+            startY = groundY - 450 - Math.random() * 80;
         // [R 4.2 FIX v4] 자폭/대전차 드론은 발밑에서 시작 (상승 애니메이션용)
         } else if (stats.id === 'drone_suicide' || stats.id === 'drone_at') {
             startY = groundY;
         } else if (stats.type === 'air') {
-            startY = groundY - 320 - Math.random() * 90;
+            startY = groundY - 430 - Math.random() * 80;
         }
 
         super(x, startY, team, stats.hp, stats.width, stats.height);
@@ -93,6 +98,14 @@ class Unit extends Entity {
         this.skipDeathSound = false;
         this.recoil = 0;
         this.missileFlash = 0;
+        // Combat hold: armored/air can fire from fixed position for a period.
+        this.combatHoldAnchorX = null;
+        this.combatHoldTarget = null;
+        this.combatHoldStartFrame = -1;
+        // Retreat runtime state (AI/manual shared skeleton)
+        this.retreatUntilFrame = 0;
+        this.retreatMinHoldUntil = 0;
+        this.retreatCooldownUntil = 0;
         this.engineerAimTarget = null;
         this.engineerAimTimer = 0;
         // [P0] 타겟 탐색 주기(프레임) - 유닛별로 분산
@@ -1042,12 +1055,22 @@ class Unit extends Entity {
             const groundRefY = (typeof game !== 'undefined' && Number.isFinite(game.groundY)) ? game.groundY : null;
             if (Number.isFinite(groundRefY) && !this.dropState) {
                 let desiredAirY = null;
-                if (this.stats.id === 'fighter' || this.stats.id === 'recon') {
-                    desiredAirY = groundRefY - 490;
-                } else if (this.stats.id === 'apache' || this.stats.id === 'blackhawk' || this.stats.id === 'chinook' || this.stats.id === 'uh60') {
+                if (this.stats.id === 'stealth_drone') {
+                    desiredAirY = groundRefY - 640;
+                } else if (this.stats.id === 'recon') {
+                    desiredAirY = groundRefY - 620;
+                } else if (this.stats.id === 'fighter') {
+                    desiredAirY = groundRefY - 560;
+                } else if (this.stats.id === 'bomber') {
+                    desiredAirY = groundRefY - 570;
+                } else if (this.stats.id === 'apache') {
+                    desiredAirY = groundRefY - 500;
+                } else if (this.stats.id === 'blackhawk' || this.stats.id === 'chinook' || this.stats.id === 'uh60') {
+                    desiredAirY = groundRefY - 450;
+                } else {
                     desiredAirY = groundRefY - 430;
                 }
-                if (Number.isFinite(desiredAirY) && this.y > desiredAirY) {
+                if (Number.isFinite(desiredAirY)) {
                     this.y += (desiredAirY - this.y) * 0.12;
                     if (Math.abs(this.y - desiredAirY) < 0.8) this.y = desiredAirY;
                     if (this.stats.id === 'blackhawk' || this.stats.id === 'chinook' || this.stats.id === 'uh60') {
@@ -1459,6 +1482,15 @@ class Unit extends Entity {
         const mgTarget = (this.stats.id === 'mbt') ? this._findTankMGTarget(enemies, extraCivilianTargets) : null;
         const isAttacking = (target !== null) && !(this.team === 'enemy' && game.empTimer > 0);
 
+        // Retreat has the highest priority in general combat loop.
+        this._tryAutoEnterRetreat(target, enemies, buildings);
+        if (this.commandMode === 'retreat') {
+            this._updateRetreat(enemies, buildings);
+            if (this.stats.id === 'mbt') this._stopTankMGSound();
+            this.updateFacing();
+            return;
+        }
+
         if (isAttacking) {
             const activeRange = (canUseMissile && isMissileTarget(target)) ? missileRange : unitRange;
             this._applyCombatSpacing(target, activeRange);
@@ -1518,17 +1550,12 @@ class Unit extends Entity {
                 this.engineerAimTimer = 0;
                 this.engineerMode = 'carrying';
             }
+            this.combatHoldAnchorX = null;
+            this.combatHoldTarget = null;
+            this.combatHoldStartFrame = -1;
 
             const speed = Number(this.stats.speed) || 0;
             const cmd = this.commandMode;
-
-            // 안전 모드: retreat는 이동 충돌을 피하기 위해 정지로 통합
-            if (cmd === 'retreat') {
-                this.commandMode = 'stop';
-                this.returnToBase = false;
-                this.targetX = null;
-                this.commandTargetX = null;
-            }
 
             // 공격 타겟이 없으면 기본 전진 대신 commandMode(stop/move)를 우선 적용
             if (this.commandMode === 'stop') {
@@ -1855,8 +1882,9 @@ class Unit extends Entity {
         }
     }
 
-    // [R 4.2 FIX v4] facing은 오직 실제 x 이동량으로만 결정
-    // 제자리면 마지막 방향 유지 (타겟/명령 기반 X)
+    // [R 4.3 HOTFIX] facing 우선순위:
+    // 1) 실제 이동 방향 우선
+    // 2) 정지 상태에서만 전투 타겟 방향 보정
     updateFacing() {
         if (this.dead) return;
         if (this.isIcbmLauncherUnit()) {
@@ -1881,23 +1909,24 @@ class Unit extends Entity {
         const frameNow = (typeof game !== 'undefined' && game && Number.isFinite(game.frame)) ? game.frame : NaN;
         const lastAttackFrame = Number(this.lastAttack);
         const attackedRecently = Number.isFinite(frameNow) && Number.isFinite(lastAttackFrame) && (frameNow - lastAttackFrame <= 180);
+        const isAirLike = (category === 'air' || unitType === 'air');
+        const isCombatFacingUnit = isArmoredLike || isAirLike;
 
-        // Armored units keep hull facing to their combat target.
-        // This prevents humvee/tank/apc back-turning during spacing micro-moves.
-        if (isArmoredLike
+        // Combat-facing priority for armored/air:
+        // while actively fighting, keep nose/hull toward target to avoid left-right flips.
+        if (isCombatFacingUnit
             && combatTarget
-            && (this.attackTarget || attackedRecently || this.commandMode === 'stop' || this.commandMode === 'attack')
-            && this.commandMode !== 'move'
+            && (this.attackTarget || attackedRecently)
             && this.commandMode !== 'retreat'
             && !this.returnToBase) {
             const tx = Number(combatTarget.x);
             if (Number.isFinite(tx)) {
                 const dtx = tx - this.x;
-                if (Math.abs(dtx) > 5) {
+                if (Math.abs(dtx) > 6) {
                     this.facing = dtx >= 0 ? 1 : -1;
+                    this._lastX = this.x;
+                    return;
                 }
-                this._lastX = this.x;
-                return;
             }
         }
 
@@ -1915,16 +1944,201 @@ class Unit extends Entity {
         const dx = this.x - this._lastX;
         this._lastX = this.x;
 
-        // Use category-aware thresholds so slow armored repositioning
-        // still updates facing without jitter.
+        // 카테고리별 임계값(너무 작은 흔들림은 무시)
         let facingThreshold = 0.5;
-        if (category === 'infantry') facingThreshold = 0.08;
+        if (category === 'infantry') facingThreshold = 0.14;
         else if (category === 'armored' || unitType === 'mech') facingThreshold = 0.06;
         else if (category === 'air' || unitType === 'air') facingThreshold = 0.12;
+
+        const dxAbs = Math.abs(dx);
+        if (category === 'infantry'
+            && combatTarget
+            && (this.attackTarget || attackedRecently)
+            && this.commandMode !== 'move'
+            && this.commandMode !== 'retreat') {
+            const tx = Number(combatTarget.x);
+            if (Number.isFinite(tx)) {
+                const dtx = tx - this.x;
+                // While firing or micro-shuffling, keep facing to enemy to prevent flip jitter.
+                if (dxAbs <= (facingThreshold * 2.2) && Math.abs(dtx) > 4) {
+                    this.facing = dtx >= 0 ? 1 : -1;
+                    return;
+                }
+            }
+        }
         if (Math.abs(dx) > facingThreshold) {
             this.facing = dx > 0 ? 1 : -1;
+            this._facingCandidate = 0;
+            this._facingCandidateFrames = 0;
+            return;
         }
-        // else: 제자리 → facing 유지 (아무것도 안 함)
+
+        // Armored units keep hull facing to their combat target when almost stationary.
+        if (isArmoredLike
+            && combatTarget
+            && (this.attackTarget || attackedRecently || this.commandMode === 'stop' || this.commandMode === 'attack')
+            && this.commandMode !== 'move'
+            && this.commandMode !== 'retreat'
+            && !this.returnToBase) {
+            const tx = Number(combatTarget.x);
+            if (Number.isFinite(tx)) {
+                const dtx = tx - this.x;
+                if (Math.abs(dtx) > 5) {
+                    this.facing = dtx >= 0 ? 1 : -1;
+                }
+            }
+        }
+    }
+
+    _isRetreatCapableUnit() {
+        const id = String((this.stats && this.stats.id) || '');
+        // Fast fixed-route aircraft and strategic launchers are excluded.
+        if (id === 'fighter' || id === 'recon' || id === 'bomber' || id === 'stealth_drone') return false;
+        if (id === 'icbm' || id === 'icbm_enemy') return false;
+        return true;
+    }
+
+    _findNearestRetreatThreat(enemies, buildings) {
+        let best = null;
+        let bestDist = Infinity;
+        const selfTeam = this.team;
+        const selfX = Number(this.x) || 0;
+
+        const scan = (obj) => {
+            if (!obj || obj.dead) return;
+            if (obj.team === selfTeam || obj.team === 'neutral') return;
+            if (obj.stats && obj.stats.invulnerable) return;
+            const ox = Number(obj.x);
+            if (!Number.isFinite(ox)) return;
+            const d = Math.abs(ox - selfX);
+            if (d < bestDist) {
+                bestDist = d;
+                best = obj;
+            }
+        };
+
+        if (Array.isArray(enemies)) {
+            for (let i = 0; i < enemies.length; i++) scan(enemies[i]);
+        }
+        if (Array.isArray(buildings)) {
+            for (let i = 0; i < buildings.length; i++) scan(buildings[i]);
+        }
+        return best;
+    }
+
+    _clearRetreatState(frameNow) {
+        const fNow = Number.isFinite(frameNow)
+            ? frameNow
+            : ((typeof game !== 'undefined' && game && Number.isFinite(game.frame)) ? game.frame : 0);
+        this.retreatUntilFrame = 0;
+        this.retreatMinHoldUntil = 0;
+        this.retreatCooldownUntil = Math.max(Number(this.retreatCooldownUntil) || 0, fNow + 240);
+        this.attackTarget = null;
+        this.targetX = null;
+        this.commandTargetX = null;
+        this.commandMode = (this.team === 'enemy') ? 'attack' : 'stop';
+    }
+
+    _tryAutoEnterRetreat(target, enemies, buildings) {
+        // Auto retreat is AI-only for now. (Player retreat remains manual.)
+        if (this.team !== 'enemy') return false;
+        if (!this._isRetreatCapableUnit()) return false;
+        if (this.commandMode === 'retreat') return true;
+
+        const frameNow = (typeof game !== 'undefined' && game && Number.isFinite(game.frame)) ? game.frame : 0;
+        const cooldownUntil = Number(this.retreatCooldownUntil) || 0;
+        if (frameNow < cooldownUntil) return false;
+
+        const hp = Number(this.hp);
+        const maxHp = Math.max(1, Number(this.maxHp) || 1);
+        const hpRatio = Number.isFinite(hp) ? (hp / maxHp) : 1;
+        const category = String((this.stats && this.stats.category) || '');
+        const unitType = String((this.stats && this.stats.type) || '');
+
+        let hpThreshold = 0.34;
+        if (category === 'armored' || unitType === 'mech') hpThreshold = 0.30;
+        if (unitType === 'air') hpThreshold = 0.28;
+        if (String((this.stats && this.stats.id) || '') === 'aa_tank') hpThreshold = 0.33;
+
+        const lastHit = Number(this.lastDamagedFrame);
+        const recentlyHit = Number.isFinite(lastHit) && (frameNow - lastHit <= 180);
+        if (!recentlyHit && hpRatio > hpThreshold) return false;
+
+        const threat = (target && !target.dead) ? target : this._findNearestRetreatThreat(enemies, buildings);
+        if (!threat) return false;
+
+        const tx = Number(threat.x);
+        if (!Number.isFinite(tx)) return false;
+        const dist = Math.abs(tx - this.x);
+        const effRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 0;
+        const pressureRange = Math.max(130, effRange * 0.92);
+        if (dist > pressureRange && hpRatio > hpThreshold) return false;
+
+        this.commandMode = 'retreat';
+        this.returnToBase = false;
+        this.attackTarget = null;
+        this.targetX = null;
+        this.commandTargetX = null;
+
+        this.combatHoldAnchorX = null;
+        this.combatHoldTarget = null;
+        this.combatHoldStartFrame = -1;
+
+        this.retreatMinHoldUntil = frameNow + 90;
+        this.retreatUntilFrame = frameNow + 240;
+        return true;
+    }
+
+    _updateRetreat(enemies, buildings) {
+        if (this.commandMode !== 'retreat') return false;
+        if (!this._isRetreatCapableUnit()) {
+            this._clearRetreatState();
+            return false;
+        }
+
+        const frameNow = (typeof game !== 'undefined' && game && Number.isFinite(game.frame)) ? game.frame : 0;
+        let threat = (this.attackTarget && !this.attackTarget.dead) ? this.attackTarget : null;
+        if (!threat) threat = this._findNearestRetreatThreat(enemies, buildings);
+
+        const speed = Math.max(0, Number(this.stats && this.stats.speed) || 0);
+        if (speed <= 0) {
+            this._clearRetreatState(frameNow);
+            return true;
+        }
+
+        let awayDir = 0;
+        if (threat && Number.isFinite(Number(threat.x))) {
+            awayDir = (Number(threat.x) >= this.x) ? -1 : 1;
+        } else {
+            awayDir = ((Number(this.facing) || 1) >= 0) ? -1 : 1;
+        }
+
+        const category = String((this.stats && this.stats.category) || '');
+        const unitType = String((this.stats && this.stats.type) || '');
+        let retreatSpeedMul = 1.0;
+        if (category === 'infantry') retreatSpeedMul = 1.15;
+        else if (category === 'armored' || unitType === 'mech') retreatSpeedMul = 0.95;
+        else if (unitType === 'air') retreatSpeedMul = 1.05;
+
+        this.x += awayDir * speed * retreatSpeedMul;
+        this.facing = awayDir;
+
+        const minHoldDone = frameNow >= (Number(this.retreatMinHoldUntil) || 0);
+        const hardTimeout = frameNow >= (Number(this.retreatUntilFrame) || 0);
+
+        let safeEnough = false;
+        if (threat && Number.isFinite(Number(threat.x))) {
+            const dist = Math.abs(Number(threat.x) - this.x);
+            const safeDist = Math.max(180, (Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 0) * 1.20);
+            safeEnough = dist >= safeDist;
+        } else {
+            safeEnough = true;
+        }
+
+        if ((minHoldDone && safeEnough) || hardTimeout) {
+            this._clearRetreatState(frameNow);
+        }
+        return true;
     }
 
     findNearestEnemy(enemies, buildings) {
@@ -2579,6 +2793,40 @@ class Unit extends Entity {
         return hash % 5; // 0..4
     }
 
+    _getCombatHoldPolicy() {
+        const id = String((this.stats && this.stats.id) || '');
+        const type = String((this.stats && this.stats.type) || '');
+
+        // Defaults: fixed-fire hold on armored/air for readability.
+        let policy = { enabled: false, holdFrames: 120, safeNoHitFrames: 180 };
+        if (type === 'air') policy = { enabled: true, holdFrames: 90, safeNoHitFrames: 120 };
+        if (type === 'mech' || String((this.stats && this.stats.category) || '') === 'armored') {
+            policy = { enabled: true, holdFrames: 120, safeNoHitFrames: 180 };
+        }
+
+        // Fast aircraft should keep moving.
+        if (id === 'fighter' || id === 'recon' || id === 'bomber' || id === 'stealth_drone') {
+            return { enabled: false, holdFrames: 0, safeNoHitFrames: 0 };
+        }
+
+        // AA tank keeps short hold only (must track air quickly).
+        if (id === 'aa_tank') {
+            return { enabled: true, holdFrames: 60, safeNoHitFrames: 90 };
+        }
+
+        // Helicopters: medium hold.
+        if (id === 'apache' || id === 'blackhawk' || id === 'uh60' || id === 'chinook') {
+            return { enabled: true, holdFrames: 90, safeNoHitFrames: 120 };
+        }
+
+        // Light armored: slightly shorter than MBT.
+        if (id === 'humvee' || id === 'apc') {
+            return { enabled: true, holdFrames: 96, safeNoHitFrames: 132 };
+        }
+
+        return policy;
+    }
+
     _applyCombatSpacing(target, effectiveRange) {
         if (!target || target.dead) return;
         if (this.dead || this.stunTimer > 0) return;
@@ -2591,7 +2839,11 @@ class Unit extends Entity {
         if (!Number.isFinite(targetX)) return;
 
         const category = String((this.stats && this.stats.category) || '');
-        if (category === 'infantry') {
+        const unitType = String((this.stats && this.stats.type) || '');
+        const isInfantry = (category === 'infantry');
+        const isAir = !!(this.stats && this.stats.type === 'air');
+        const isArmoredLike = (category === 'armored' || unitType === 'mech');
+        if (isInfantry) {
             const stateStore = this._renderV2State && this._renderV2State.infantry;
             if (stateStore) {
                 const stance = String(stateStore.stance || '');
@@ -2604,9 +2856,50 @@ class Unit extends Entity {
             }
         }
 
+        // Fixed-fire hold for armored/air:
+        // stay at current position for N seconds, and only resume movement when not hit recently.
+        const holdPolicy = this._getCombatHoldPolicy();
+        if ((isAir || isArmoredLike)
+            && holdPolicy.enabled
+            && this.commandMode !== 'retreat'
+            && this.commandMode !== 'move'
+            && !this.returnToBase) {
+            const frameNow = (typeof game !== 'undefined' && game && Number.isFinite(game.frame)) ? game.frame : 0;
+            const holdFrames = Math.max(1, Number(holdPolicy.holdFrames) || 120);
+            const safeNoHitFrames = Math.max(1, Number(holdPolicy.safeNoHitFrames) || 180);
+
+            const sameHoldTarget = (this.combatHoldTarget === target);
+            if (!sameHoldTarget || !Number.isFinite(Number(this.combatHoldAnchorX))) {
+                this.combatHoldTarget = target;
+                this.combatHoldAnchorX = this.x;
+                this.combatHoldStartFrame = frameNow;
+            }
+
+            const lastHitFrame = Number(this.lastDamagedFrame);
+            const recentlyHit = Number.isFinite(lastHitFrame) && ((frameNow - lastHitFrame) < safeNoHitFrames);
+            const holdStart = Number(this.combatHoldStartFrame);
+            const holdElapsed = Number.isFinite(holdStart) ? (frameNow - holdStart) : 0;
+            const shouldHold = (holdElapsed < holdFrames) || recentlyHit;
+
+            if (shouldHold) {
+                if (Number.isFinite(Number(this.combatHoldAnchorX))) {
+                    this.x = Number(this.combatHoldAnchorX);
+                }
+                return;
+            }
+
+            // Release hold and allow spacing move.
+            this.combatHoldAnchorX = null;
+            this.combatHoldTarget = null;
+            this.combatHoldStartFrame = -1;
+        } else {
+            this.combatHoldAnchorX = null;
+            this.combatHoldTarget = null;
+            this.combatHoldStartFrame = -1;
+        }
+
         const holdBase = this._getCombatHoldDistance(effectiveRange);
         let side = (this.x <= targetX) ? -1 : 1;
-        const isAir = !!(this.stats && this.stats.type === 'air');
         const sameTarget = (this._combatSideTarget === target);
         const lockedSide = Number(this._combatSideSign);
         if (sameTarget && (lockedSide === -1 || lockedSide === 1)) {
@@ -2618,7 +2911,9 @@ class Unit extends Entity {
             if (Math.abs(this.x - targetX) < holdBase * 0.45) side = (this.x <= targetX) ? -1 : 1;
         } else {
             // Ground units keep side unless they clearly crossed over target center.
-            const crossMargin = Math.max(18, holdBase * 0.18);
+            const crossMargin = isInfantry
+                ? Math.max(38, holdBase * 0.32)
+                : Math.max(18, holdBase * 0.18);
             if (side < 0 && this.x > targetX + crossMargin) side = 1;
             if (side > 0 && this.x < targetX - crossMargin) side = -1;
         }
@@ -2675,11 +2970,36 @@ class Unit extends Entity {
         else desiredX = Math.max(desiredX, targetX + minFront);
 
         const dxMove = desiredX - this.x;
-        const deadZone = isAir ? 8 : 6;
+        const deadZone = isAir ? 8 : (isInfantry ? 14 : 6);
         if (Math.abs(dxMove) <= deadZone) return;
 
         const step = Math.min(Math.max(speed * 0.8, 0.2), Math.abs(dxMove));
-        this.x += Math.sign(dxMove) * step;
+        const dir = Math.sign(dxMove);
+        const nextX = this.x + (dir * step);
+
+        // For armored/air, avoid "retreat-like backstep" while already in good firing range.
+        if ((isAir || isArmoredLike)
+            && this.commandMode !== 'retreat'
+            && !this.returnToBase) {
+            const distNow = Math.abs(targetX - this.x);
+            const distNext = Math.abs(targetX - nextX);
+            const holdRange = Math.max(70, (Number(effectiveRange) || 0) * 0.92);
+            if (distNow <= holdRange && distNext > (distNow + 0.6)) {
+                return;
+            }
+        }
+        if (isInfantry
+            && this.commandMode !== 'retreat'
+            && !this.returnToBase) {
+            const distNow = Math.abs(targetX - this.x);
+            const distNext = Math.abs(targetX - nextX);
+            const holdRange = Math.max(56, (Number(effectiveRange) || 0) * 0.95);
+            if (distNow <= holdRange && distNext > (distNow + 0.35)) {
+                return;
+            }
+        }
+
+        this.x = nextX;
     }
 
     attack(target) {
@@ -2953,7 +3273,7 @@ class Unit extends Entity {
             // [NOTE] 탱크 포탄 발사음 제거 - 명중 시 사운드로 이동
         }
 
-        const recoilKick = (id === 'mbt') ? 6 : ((id === 'spg') ? 5 : ((id === 'apc') ? 2.2 : 0));
+        const recoilKick = (id === 'mbt') ? 6 : ((id === 'spg') ? 5 : ((id === 'apc') ? 2.2 : ((id === 'aa_tank') ? 2.4 : 0)));
         if (recoilKick > 0) {
             this.recoil = Math.max(this.recoil || 0, recoilKick);
         }
@@ -3001,6 +3321,27 @@ class Unit extends Entity {
                         targetY: targetY,
                         state: stateStore,
                         weapon: 'auto'
+                    });
+                    if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                        spawnX = muzzle.x;
+                        spawnY = muzzle.y;
+                    }
+                }
+            }
+            if (id === 'aa_tank' && type === 'aa_shell') {
+                const targetX = Number(target && target.x);
+                const targetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.30);
+                if (typeof UnitRenderV2Weapons_aa_tank !== 'undefined'
+                    && UnitRenderV2Weapons_aa_tank
+                    && typeof UnitRenderV2Weapons_aa_tank.computeMuzzleWorld === 'function') {
+                    const stateStore = (this._renderV2State && this._renderV2State.aa_tank) ? this._renderV2State.aa_tank : null;
+                    const shotFrame = (game && Number.isFinite(game.frame)) ? game.frame : NaN;
+                    const muzzle = UnitRenderV2Weapons_aa_tank.computeMuzzleWorld(this, {
+                        targetX: targetX,
+                        targetY: targetY,
+                        state: stateStore,
+                        weapon: 'auto',
+                        shotFrame: shotFrame
                     });
                     if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
                         spawnX = muzzle.x;
@@ -3082,7 +3423,7 @@ class Unit extends Entity {
     draw(ctx) {
         if (this.dead) return;
         const id = this.stats.id;
-        const disableSkinForV2Armor = (id === 'mbt' || id === 'spg' || id === 'humvee' || id === 'apc');
+        const disableSkinForV2Armor = (id === 'mbt' || id === 'spg' || id === 'humvee' || id === 'apc' || id === 'aa_tank');
         const skins = (typeof window !== 'undefined' && window.RECLAIM_SKINS) ? window.RECLAIM_SKINS : null;
         const skin = (!disableSkinForV2Armor && skins) ? (skins[id] || skins[this.typeKey]) : null;
         const snapDy = this.computeFeetSnapDy(skin);
@@ -3132,7 +3473,7 @@ class Unit extends Entity {
         }
 
         const facing = Number.isFinite(this.facing) ? this.facing : (this.team === 'player' ? 1 : -1);
-        const useV2Armor = (id === 'mbt' || id === 'spg' || id === 'humvee' || id === 'apc');
+        const useV2Armor = (id === 'mbt' || id === 'spg' || id === 'humvee' || id === 'apc' || id === 'aa_tank');
         const recoilX = (this.recoil || 0) * -facing;
         // Player armored V2 (MBT/SPG) already applies barrel-only recoil in renderer.
         if (!useV2Armor && recoilX) ctx.translate(recoilX, 0);
@@ -3151,6 +3492,7 @@ class Unit extends Entity {
             || id === 'spg'
             || id === 'humvee'
             || id === 'apc'
+            || id === 'aa_tank'
             || id === 'infantry'
             || id === 'sniper'
             || id === 'special_ops'
@@ -3877,7 +4219,32 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'icbm' || id === 'icbm_enemy') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const isEnemyIcbm = (this.team === 'enemy' || id === 'icbm_enemy');
+            const icbmPalette = isEnemyIcbm
+                ? {
+                    hullMain: '#8b7a5a',
+                    hullPanel: '#6f5f45',
+                    cab: '#7a6a4f',
+                    window: 'rgba(92, 84, 70, 0.86)',
+                    windowFrame: '#4b3f2f',
+                    canister: '#7a6b52',
+                    canisterRib: '#5f523f',
+                    cap: '#665944',
+                    support: '#4a3f30',
+                    mark: '#5a4630'
+                }
+                : {
+                    hullMain: '#4E5B31',
+                    hullPanel: '#3D4825',
+                    cab: '#425239',
+                    window: 'rgba(59, 77, 89, 0.85)',
+                    windowFrame: '#2C3519',
+                    canister: '#4A5D23',
+                    canisterRib: '#324016',
+                    cap: '#3D4825',
+                    support: '#2C3519',
+                    mark: '#3f2f1d'
+                };
             const TEL_WIDTH = 360;
             const TEL_HEIGHT = 50;
             const WHEEL_RADIUS = 16;
@@ -3914,16 +4281,16 @@ class Unit extends Entity {
                 ctx.fill();
             }
 
-            ctx.fillStyle = '#3b4d32';
+            ctx.fillStyle = icbmPalette.hullMain;
             ctx.fillRect(0, 15, TEL_WIDTH - 10, TEL_HEIGHT - 15);
-            ctx.fillStyle = '#4a5e40';
+            ctx.fillStyle = icbmPalette.hullPanel;
             ctx.fillRect(100, 20, 40, 25);
             ctx.fillRect(290, 20, 40, 25);
             ctx.fillStyle = '#111';
             ctx.fillRect(90, 35, 15, 25);
             ctx.fillRect(280, 35, 15, 25);
 
-            ctx.fillStyle = '#425239';
+            ctx.fillStyle = icbmPalette.cab;
             ctx.beginPath();
             ctx.moveTo(0, 50);
             ctx.lineTo(-20, 50);
@@ -3933,10 +4300,10 @@ class Unit extends Entity {
             ctx.lineTo(70, 50);
             ctx.closePath();
             ctx.fill();
-            ctx.fillStyle = 'rgba(60, 75, 90, 0.8)';
+            ctx.fillStyle = icbmPalette.window;
             ctx.fillRect(-15, 10, 15, 15);
             ctx.fillRect(5, 10, 25, 15);
-            ctx.strokeStyle = '#35422e';
+            ctx.strokeStyle = icbmPalette.windowFrame;
             ctx.lineWidth = 2;
             ctx.strokeRect(-15, 10, 15, 15);
             ctx.strokeRect(5, 10, 25, 15);
@@ -3975,21 +4342,21 @@ class Unit extends Entity {
                 ctx.fill();
             }
 
-            ctx.fillStyle = '#4f6146';
+            ctx.fillStyle = icbmPalette.canister;
             ctx.fillRect(-canLength, -canThick / 2, canLength + 20, canThick);
-            ctx.fillStyle = '#3e4f36';
+            ctx.fillStyle = icbmPalette.canisterRib;
             for (let i = 1; i < 5; i++) {
                 ctx.fillRect(-canLength + (i * 45), -canThick / 2, 10, canThick);
             }
 
             if (!capOpen) {
-                ctx.fillStyle = '#3a4a32';
+                ctx.fillStyle = icbmPalette.cap;
                 ctx.beginPath();
                 ctx.arc(-canLength, 0, canThick / 2 + 2, Math.PI * 0.5, Math.PI * 1.5);
                 ctx.fill();
             }
 
-            ctx.fillStyle = '#2b3326';
+            ctx.fillStyle = icbmPalette.support;
             ctx.fillRect(-150, canThick / 2, 120, 10);
 
             if ((this.icbmMuzzleFlash || 0) > 0) {
@@ -4015,7 +4382,7 @@ class Unit extends Entity {
 
             ctx.restore();
 
-            ctx.fillStyle = teamColor;
+            ctx.fillStyle = icbmPalette.mark;
             ctx.fillRect(120, 15, 54, 4);
             ctx.restore();
         }
@@ -4094,10 +4461,11 @@ class Unit extends Entity {
             // 테일 로터 배경
             ctx.fillStyle = '#1e293b'; ctx.fillRect(-45, -5, 30, 6);
 
-            // 테일 로터 회전
+            // 테일 로터: 회전 원형 느낌 제거 + 형상 유지(고정 블레이드)
             ctx.save(); ctx.translate(-45, -5);
-            ctx.rotate(this.rotorAngle * 3);
-            ctx.fillStyle = '#000'; ctx.fillRect(-2, -10, 4, 20);
+            ctx.fillStyle = '#000';
+            ctx.fillRect(-1.4, -9, 2.8, 18);
+            ctx.fillRect(-7, -1.2, 14, 2.4);
             ctx.restore();
 
             // 몸체

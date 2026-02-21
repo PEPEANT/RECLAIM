@@ -796,8 +796,10 @@
             return (dx * dx + dy * dy) <= 1;
         };
 
+        const PARK_PLAZA_TREE_SCALE_BOOST = 1.35;
+
         const drawTreeCluster = (cx, cy, scale) => {
-            const s = Math.max(0.8, Number(scale) || 1);
+            const s = Math.max(0.8, Number(scale) || 1) * PARK_PLAZA_TREE_SCALE_BOOST;
             // Do not place any cluster that overlaps the pond area.
             if (
                 inPondArea(cx, cy - 14 * s, 10 * s)
@@ -808,12 +810,12 @@
             }
 
             ctx.fillStyle = '#5a3f30';
-            ctx.fillRect(cx - 2.5 * s, cy - 10 * s, 5 * s, 12 * s);
+            ctx.fillRect(cx - 2.9 * s, cy - 10 * s, 5.8 * s, 12.6 * s);
             ctx.fillStyle = '#2e7d32';
             ctx.beginPath();
-            ctx.arc(cx, cy - 14 * s, 10 * s, 0, Math.PI * 2);
-            ctx.arc(cx - 7 * s, cy - 11 * s, 7.5 * s, 0, Math.PI * 2);
-            ctx.arc(cx + 8 * s, cy - 11 * s, 7.5 * s, 0, Math.PI * 2);
+            ctx.arc(cx, cy - 14 * s, 11.2 * s, 0, Math.PI * 2);
+            ctx.arc(cx - 7 * s, cy - 11 * s, 8.4 * s, 0, Math.PI * 2);
+            ctx.arc(cx + 8 * s, cy - 11 * s, 8.4 * s, 0, Math.PI * 2);
             ctx.fill();
         };
 

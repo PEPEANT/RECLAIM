@@ -30,9 +30,9 @@
                 rim: '#3c342b',
                 gun: '#221f1a',
                 tow: '#7e745f',
-                accent: '#8b1e1e',
-                accent2: '#b91c1c',
-                enemyPattern: true
+                accent: '#5a4630',
+                accent2: '#3f3021',
+                enemyPattern: false
             };
         }
         if (team !== 'player') return null;

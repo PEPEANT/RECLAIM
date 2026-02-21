@@ -239,60 +239,15 @@ const ui = {
             iconCvs.width = 64; iconCvs.height = 48;
             const ctx = iconCvs.getContext('2d');
 
-            let drew = false;
-            try {
-                ctx.save();
-                // 유닛은 (0,0)에서 위쪽으로 그려지므로 캔버스 하단 중앙으로 translate
-                const canvasCenterX = 32;
-                const canvasBottomY = 44; // 하단에서 약간 여유
-
-                // 유닛 크기에 따라 스케일 및 Y 위치 조정
-                let scale = 0.8;
-                let offsetY = 0;
-
-                // 헬기/큰 유닛 특별 처리
-                if (key === 'blackhawk' || key === 'chinook') {
-                    scale = 0.35;
-                    offsetY = -15;
-                } else if (key === 'bomber') {
-                    scale = 0.3;
-                    offsetY = -10;
-                } else if (key === 'apache' || key === 'fighter') {
-                    scale = 0.45;
-                    offsetY = -12;
-                } else if (key === 'humvee') {
-                    // 험비: 특수한 feetY 오프셋 보정
-                    scale = 0.65;
-                    offsetY = -18;
-                } else if (key === 'emp' || key === 'nuke' || key === 'tactical_missile') {
-                    // 스킬 유닛: 중앙 배치
-                    scale = 0.7;
-                    offsetY = -8;
-                } else if (u.width > 60) {
-                    scale = 0.45;
-                    offsetY = -5;
-                } else if (u.width > 40) {
-                    scale = 0.55;
-                    offsetY = -3;
-                } else if (u.type === 'air') {
-                    scale = 0.6;
-                    offsetY = -8;
-                }
-
-                ctx.translate(canvasCenterX, canvasBottomY + offsetY);
-                ctx.scale(scale, scale);
-
-                const dummy = new Unit(key, 0, 0, 'player');
-                dummy.hideHp = true;
-                dummy.disableFeetSnap = true;
-                dummy.iconRenderBackTurret = true;
-                if (dummy.stats.type === 'air') dummy.y = 0;
-                dummy.draw(ctx);
-                ctx.restore();
-                drew = true;
-            } catch (_) {
-                ctx.restore();
-            }
+            const iconUtils = (typeof UnitRenderUtils !== 'undefined') ? UnitRenderUtils : null;
+            const drew = !!(iconUtils && typeof iconUtils.drawUnitIconToCanvas === 'function'
+                && iconUtils.drawUnitIconToCanvas(ctx, key, u, {
+                    centerX: 32,
+                    bottomY: 44,
+                    baseScale: 0.8,
+                    baseOffsetY: 0,
+                    drawFallback: false
+                }));
 
             if (!drew) {
                 const w = Math.max(10, Math.min(50, Math.round((Number(u.width) || 30) * 0.9)));
@@ -528,11 +483,30 @@ const ui = {
             ? game.getVeteranSpawnEntries()
             : [];
         const veteranCountsByUnit = {};
+        const veteranHasItemByUnit = {};
         if (Array.isArray(veteranEntries)) {
             veteranEntries.forEach((entry) => {
                 const unitKey = String(entry?.unitKey || '').trim();
                 if (!unitKey) return;
                 veteranCountsByUnit[unitKey] = Math.max(0, Math.floor(Number(veteranCountsByUnit[unitKey]) || 0)) + 1;
+            });
+        }
+        // 아이템 장착 여부 체크: playerVeteransById에서 loadout 직접 확인
+        const _vetById = (typeof game !== 'undefined' && game && typeof game.playerVeteransById === 'object')
+            ? game.playerVeteransById
+            : null;
+        if (_vetById) {
+            Object.values(_vetById).forEach((vet) => {
+                const unitKey = String(vet?.unitKey || '').trim();
+                if (!unitKey) return;
+                const loadout = vet?.loadout;
+                if (!loadout || typeof loadout !== 'object') return;
+                const hasPassive = !!String(loadout.itemKey || '').trim();
+                const hasSkill = Array.isArray(loadout.skillItemKeys)
+                    && loadout.skillItemKeys.some((k) => !!String(k || '').trim());
+                if (hasPassive || hasSkill) {
+                    veteranHasItemByUnit[unitKey] = true;
+                }
             });
         }
 
@@ -571,8 +545,10 @@ const ui = {
             const veteranCount = Math.max(0, Math.floor(Number(veteranCountsByUnit[key]) || 0));
             if (cache.veteranBadge) {
                 if (!u.isSkill && u.droneLaunchOnly !== true && veteranCount > 0) {
-                    if (this.lastValues[key].veteranCount !== veteranCount) {
-                        cache.veteranBadge.innerText = `V${veteranCount}`;
+                    const hasItem = !!veteranHasItemByUnit[key];
+                    const badgeText = hasItem ? '1+' : `V${veteranCount}`;
+                    if (this.lastValues[key].veteranCount !== veteranCount || cache.veteranBadge.innerText !== badgeText) {
+                        cache.veteranBadge.innerText = badgeText;
                     }
                     cache.veteranBadge.classList.remove('hidden');
                 } else {
@@ -727,54 +703,15 @@ const ui = {
             return canvas;
         }
 
-        let drew = false;
-        try {
-            ctx.save();
-            const canvasCenterX = 32;
-            const canvasBottomY = 44;
-
-            let scale = 0.8;
-            let offsetY = 0;
-            if (unitKey === 'blackhawk' || unitKey === 'chinook') {
-                scale = 0.35;
-                offsetY = -15;
-            } else if (unitKey === 'bomber') {
-                scale = 0.3;
-                offsetY = -10;
-            } else if (unitKey === 'apache' || unitKey === 'fighter') {
-                scale = 0.45;
-                offsetY = -12;
-            } else if (unitKey === 'humvee') {
-                scale = 0.65;
-                offsetY = -18;
-            } else if (unitKey === 'emp' || unitKey === 'nuke' || unitKey === 'tactical_missile') {
-                scale = 0.7;
-                offsetY = -8;
-            } else if ((Number(unitCfg.width) || 0) > 60) {
-                scale = 0.45;
-                offsetY = -5;
-            } else if ((Number(unitCfg.width) || 0) > 40) {
-                scale = 0.55;
-                offsetY = -3;
-            } else if (unitCfg.type === 'air') {
-                scale = 0.6;
-                offsetY = -8;
-            }
-
-            ctx.translate(canvasCenterX, canvasBottomY + offsetY);
-            ctx.scale(scale, scale);
-
-            const dummy = new Unit(unitKey, 0, 0, 'player');
-            dummy.hideHp = true;
-            dummy.disableFeetSnap = true;
-            dummy.iconRenderBackTurret = true;
-            if (dummy.stats?.type === 'air') dummy.y = 0;
-            dummy.draw(ctx);
-            ctx.restore();
-            drew = true;
-        } catch (_) {
-            try { ctx.restore(); } catch (_) { }
-        }
+        const iconUtils = (typeof UnitRenderUtils !== 'undefined') ? UnitRenderUtils : null;
+        const drew = !!(iconUtils && typeof iconUtils.drawUnitIconToCanvas === 'function'
+            && iconUtils.drawUnitIconToCanvas(ctx, unitKey, unitCfg, {
+                centerX: 32,
+                bottomY: 44,
+                baseScale: 0.8,
+                baseOffsetY: 0,
+                drawFallback: false
+            }));
 
         if (!drew) {
             const w = Math.max(10, Math.min(50, Math.round((Number(unitCfg.width) || 30) * 0.9)));

@@ -56,6 +56,9 @@
         var facing = Number(unit.facing);
         if (Number.isFinite(facing) && facing !== 0) {
             state.facing = facing > 0 ? 1 : -1;
+        } else {
+            var team = String(unit.team || '').trim().toLowerCase();
+            state.facing = (team === 'enemy') ? -1 : 1;
         }
 
         var xNow = Number(unit.x) || 0;
@@ -73,8 +76,8 @@
         }
 
         var speedRatio = Math.max(0, Math.min(1, state.speed / 3.4));
-        var mainStep = 0.34 + (speedRatio * 0.14);
-        var tailStep = 1.25 + (speedRatio * 0.55);
+        var mainStep = 0.28 + (speedRatio * 0.12);
+        var tailStep = 1.45 + (speedRatio * 0.55);
 
         state.mainRotorAngle = (state.mainRotorAngle + mainStep) % TAU;
         state.tailRotorAngle = (state.tailRotorAngle + tailStep) % TAU;

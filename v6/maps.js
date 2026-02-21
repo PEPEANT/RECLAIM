@@ -194,6 +194,10 @@
             this.drawSkirmishDesertGround(ctx, width, height, groundY);
             return;
         }
+        if (this.currentMap === 'plain' || this.currentMap === 'skirmish') {
+            this.drawPlainGrassBase(ctx, width, height, groundY, cameraX);
+            return;
+        }
         const theme = this.types[this.currentMap] || this.types['plain'];
 
         const grad = ctx.createLinearGradient(0, 0, 0, height);
@@ -206,6 +210,75 @@
 
         ctx.fillStyle = theme.ground;
         ctx.fillRect(0, groundY, width, height - groundY);
+    },
+
+    drawPlainGrassBase(ctx, width, height, groundY, cameraX = 0) {
+        const skyGrad = ctx.createLinearGradient(0, 0, 0, groundY);
+        skyGrad.addColorStop(0, '#8ecff1');
+        skyGrad.addColorStop(0.62, '#c7e9ff');
+        skyGrad.addColorStop(1, '#d8eeb9');
+        ctx.fillStyle = skyGrad;
+        ctx.fillRect(0, 0, width, groundY);
+
+        const groundGrad = ctx.createLinearGradient(0, groundY, 0, height);
+        groundGrad.addColorStop(0, '#73b95f');
+        groundGrad.addColorStop(1, '#4f8f43');
+        ctx.fillStyle = groundGrad;
+        ctx.fillRect(0, groundY, width, height - groundY);
+
+        ctx.fillStyle = 'rgba(225, 255, 205, 0.18)';
+        ctx.fillRect(0, groundY, width, 2);
+
+        // Tile-based grass texture using short diagonal blades (no circular blobs).
+        const tileSize = 84;
+        const tileStart = Math.floor((cameraX - 100) / tileSize) * tileSize;
+        const tileEnd = cameraX + width + 100;
+        const rows = Math.max(2, Math.floor((height - groundY) / tileSize));
+
+        for (let wx = tileStart; wx <= tileEnd; wx += tileSize) {
+            for (let row = 0; row < rows; row++) {
+                const baseX = wx - cameraX;
+                const baseY = groundY + row * tileSize;
+                const seed = `plain.tile.${wx}.${row}`;
+                const tone = this._rand(`${seed}.tone`);
+                if (tone > 0.56) {
+                    ctx.fillStyle = 'rgba(176, 220, 132, 0.060)';
+                    ctx.fillRect(baseX, baseY, tileSize, tileSize);
+                } else if (tone < 0.22) {
+                    ctx.fillStyle = 'rgba(42, 92, 37, 0.060)';
+                    ctx.fillRect(baseX, baseY, tileSize, tileSize);
+                }
+
+                const density = 2 + Math.floor(this._rand(`${seed}.n`) * 4); // 2~5
+
+                for (let i = 0; i < density; i++) {
+                    const px = baseX + 5 + this._rand(`${seed}.x.${i}`) * (tileSize - 10);
+                    const py = baseY + 5 + this._rand(`${seed}.y.${i}`) * (tileSize - 10);
+                    const bladeLen = 4 + Math.floor(this._rand(`${seed}.h.${i}`) * 6);
+                    const lean = (this._rand(`${seed}.lean.${i}`) - 0.5) * 2.2;
+
+                    // Fill-based tuft to avoid "outline-only" look.
+                    ctx.fillStyle = `rgba(30, 86, 28, ${(0.14 + this._rand(`${seed}.a.${i}`) * 0.10).toFixed(3)})`;
+                    ctx.fillRect(px, py, 1, bladeLen);
+                    ctx.fillRect(px + 1 + lean * 0.35, py + 1, 1, Math.max(2, bladeLen - 1));
+
+                    if (this._rand(`${seed}.sub.${i}`) < 0.5) {
+                        const bladeLen2 = Math.max(2, bladeLen - 2);
+                        ctx.fillStyle = 'rgba(171, 221, 126, 0.14)';
+                        ctx.fillRect(px + 1, py, 1, bladeLen2);
+                    }
+                }
+
+                const propChance = this._rand(`${seed}.prop`);
+                if (row > 0 && propChance > 0.965) {
+                    ctx.fillStyle = 'rgba(255, 235, 59, 0.65)';
+                    ctx.fillRect(baseX + 10 + this._rand(`${seed}.fx`) * (tileSize - 20), baseY + 10 + this._rand(`${seed}.fy`) * (tileSize - 20), 2, 2);
+                } else if (row > 0 && propChance < 0.02) {
+                    ctx.fillStyle = 'rgba(120, 120, 120, 0.45)';
+                    ctx.fillRect(baseX + 10 + this._rand(`${seed}.rx`) * (tileSize - 20), baseY + 10 + this._rand(`${seed}.ry`) * (tileSize - 20), 2, 2);
+                }
+            }
+        }
     },
 
     drawDecorations(ctx, width, height, groundY, cameraX = 0) {

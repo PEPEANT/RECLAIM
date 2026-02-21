@@ -4,7 +4,7 @@
 
     window.GameInput = {
         setup() {
-            // [R 2.4] 완전 재설계된 입력 시스템
+            // [R 2.4] ?袁⑹읈 ??苑뺞④쑬留???낆젾 ??뽯뮞??
             const getScaledPos = (clientX, clientY) => {
                 return Camera.screenToView(this, clientX, clientY);
             };
@@ -44,7 +44,8 @@
                     'unit-cmd-wrapper',
                     'map-modal',
                     'scope-modal',
-                    'mission-objective-modal'
+                    'mission-objective-modal',
+                    'mobile-direct-ui'
                 ];
                 for (let i = 0; i < hudInteractiveIds.length; i++) {
                     const el = document.getElementById(hudInteractiveIds[i]);
@@ -68,19 +69,38 @@
                 return sx >= 0 && sx <= this.width && sy >= 0 && sy <= this.height;
             };
 
-            // ======== 상태 변수 ========
-            // 카메라 드래그 (PC 우클릭 / 모바일 두 손가락)
+            const isTypingInField = () => {
+                const active = document.activeElement;
+                if (!active) return false;
+                const tag = String(active.tagName || '').toUpperCase();
+                return !!active.isContentEditable
+                    || tag === 'INPUT'
+                    || tag === 'TEXTAREA'
+                    || tag === 'SELECT';
+            };
+
+            const DIRECT_CONTROL_KEY_MAP = {
+                KeyW: 'w',
+                KeyA: 'a',
+                KeyS: 's',
+                KeyD: 'd',
+                ArrowLeft: 'arrowLeft',
+                ArrowRight: 'arrowRight'
+            };
+
+            // ======== ?怨밴묶 癰궰??========
+            // 燁삳?李????뺤삋域?(PC ?怨좉깻??/ 筌뤴뫀而?????癒???
             let cameraDrag = false;
             let cameraLastX = 0;
 
-            // 선택 박스 드래그 (PC 좌클릭 / 모바일 한 손가락)
+            // ?醫뤾문 獄쏅벡????뺤삋域?(PC ?ル슦寃®뵳?/ 筌뤴뫀而?????癒???
             this.selectDragActive = false;
             this.selectStartX = 0;
             this.selectStartY = 0;
             this.selectEndX = 0;
             this.selectEndY = 0;
 
-            // 모바일 전용 상태
+            // 筌뤴뫀而???袁⑹뒠 ?怨밴묶
             let isMobileSelecting = false;
             let isMobileCameraMove = false;
             let pinchActive = false;
@@ -89,25 +109,25 @@
             let pinchAnchorClientX = 0;
             let pinchAnchorClientY = 0;
 
-            // [MOBILE TAP FIX] 탭/드래그 판정은 월드좌표가 아니라 "픽셀" 기준으로 한다
+            // [MOBILE TAP FIX] ????뺤삋域??癒?젟?? ?遺얜굡?ル슦紐닷첎? ?袁⑤빍??"???" 疫꿸퀣???곗쨮 ??뺣뼄
             let tapStartClientX = 0, tapStartClientY = 0;
             let tapLastClientX = 0, tapLastClientY = 0;
-            const TAP_THRESHOLD_PX = 14; // 12~18 사이 취향, 14 추천
+            const TAP_THRESHOLD_PX = 14; // 12~18 ?????띯뫂堉? 14 ?곕뗄荑?
 
-            // [MODIFIED] 건물 선택 (플레이어 건설 건물 포함)
+            // [MODIFIED] 椰꾨?窺 ?醫뤾문 (???쟿??곷선 椰꾨똻苑?椰꾨?窺 ??釉?
             const selectBuildingAt = (wx, wy) => {
-                // 선택 가능한 건물 타입들
+                // ?醫뤾문 揶쎛?館釉?椰꾨?窺 ????낅굶
                 const selectableTypes = [
                     'hq_player', 'hq_enemy', 'fortress_player', 'fortress_enemy',
-                    'watchtower',  // [3.8] 플레이어 건설 감시탑
+                    'watchtower',  // [3.8] ???쟿??곷선 椰꾨똻苑?揶쏅Ŋ???
                     'spawn_flag_player'
                 ];
 
                 for (let b of this.buildings) {
                     if (b.dead) continue;
-                    // 기존 타입 또는 canProduce 플래그가 있는 건물만 선택 가능
+                    // 疫꿸퀣???????癒?뮉 canProduce ???삋域밸㈇? ??덈뮉 椰꾨?窺筌??醫뤾문 揶쎛??
                     if (!selectableTypes.includes(b.type) && !b.canProduce && !b.canShoot) continue;
-                    // [FIX] 클릭 범위 확대 (좌우 +20px, 상하 +15px)
+                    // [FIX] ????甕곕뗄???類? (?ル슣??+20px, ?怨밸릭 +15px)
                     const padX = 20;
                     const padY = 15;
                     if (wx > b.x - b.width / 2 - padX && wx < b.x + b.width / 2 + padX &&
@@ -222,7 +242,260 @@
                 y: (t1.clientY + t2.clientY) / 2
             });
 
-            // ======== PC 마우스 이벤트 ========
+            const mobileDirectUi = (() => {
+                const root = document.getElementById('mobile-direct-ui');
+                const stickZone = document.getElementById('mobile-direct-stick-zone');
+                const stick = document.getElementById('mobile-direct-stick');
+                const statusEl = document.getElementById('mobile-direct-status');
+                const footer = document.getElementById('hud-footer');
+                if (!root || !stickZone || !stick) {
+                    return {
+                        refresh() { },
+                        release() { }
+                    };
+                }
+
+                let stickPointerId = null;
+                let centerX = 0;
+                let centerY = 0;
+                let radius = 1;
+                let fireTimer = 0;
+                let firing = false;
+                let subActive = false;
+                let aimNx = 1;
+                let aimNy = -0.2;
+
+                const isMobileViewport = () => {
+                    const coarse = (typeof window.matchMedia === 'function')
+                        ? window.matchMedia('(pointer: coarse)').matches
+                        : false;
+                    if (!coarse) return false;
+                    return window.innerWidth <= 1024;
+                };
+
+                const getDirectUnit = () => {
+                    if (typeof game.getDirectControlUnit !== 'function') return null;
+                    return game.getDirectControlUnit();
+                };
+
+                const getMobileProfile = (unit) => {
+                    if (typeof game.getDirectControlMobileProfile !== 'function') return null;
+                    return game.getDirectControlMobileProfile(unit);
+                };
+
+                const setStatus = (text) => {
+                    if (!statusEl) return;
+                    statusEl.textContent = text;
+                };
+
+                const stopSubFire = () => {
+                    if (typeof game.mobileDirectSubFireStop === 'function') {
+                        game.mobileDirectSubFireStop();
+                    }
+                };
+
+                const clearFireTimer = () => {
+                    if (!fireTimer) return;
+                    window.clearInterval(fireTimer);
+                    fireTimer = 0;
+                };
+
+                const stopFiring = () => {
+                    firing = false;
+                    clearFireTimer();
+                    stopSubFire();
+                    subActive = false;
+                };
+
+                const getAimRange = (unit) => {
+                    const raw = Number(unit && unit.getEffectiveRange ? unit.getEffectiveRange() : (unit && unit.stats && unit.stats.range));
+                    if (!Number.isFinite(raw) || raw <= 0) return 520;
+                    return Math.max(260, Math.min(1400, raw * 0.95));
+                };
+
+                const updateUnitAim = (unit) => {
+                    if (!unit || unit.dead) return;
+                    let nx = Number(aimNx);
+                    let ny = Number(aimNy);
+                    const mag = Math.hypot(nx, ny);
+                    if (!Number.isFinite(nx) || !Number.isFinite(ny) || mag < 0.02) {
+                        const facingRaw = Number(unit.facing);
+                        const facing = Number.isFinite(facingRaw) && facingRaw < 0 ? -1 : 1;
+                        nx = facing;
+                        ny = -0.2;
+                    } else {
+                        nx /= mag;
+                        ny /= mag;
+                    }
+                    const range = getAimRange(unit);
+                    unit.manualAimX = Number(unit.x) + (nx * range);
+                    unit.manualAimY = Number(unit.y) + (ny * range);
+                    if (Number.isFinite(game.frame)) unit.manualAimFrame = game.frame;
+                };
+
+                const updateFireStatus = (unit, mode) => {
+                    const unitLabel = String((unit && unit.stats && (unit.stats.name || unit.stats.id)) || 'UNIT');
+                    const weaponLabel = (mode === 'sub') ? '기관총' : '포탑';
+                    setStatus(`${unitLabel} | ${weaponLabel}`);
+                };
+
+                const fireTick = () => {
+                    const unit = getDirectUnit();
+                    if (!unit || unit.dead) {
+                        stopFiring();
+                        return;
+                    }
+
+                    updateUnitAim(unit);
+                    const profile = getMobileProfile(unit);
+                    const selectedMode = (typeof game.getDirectControlWeaponMode === 'function')
+                        ? game.getDirectControlWeaponMode()
+                        : 'main';
+                    const mode = (selectedMode === 'sub') ? 'sub' : 'main';
+                    updateFireStatus(unit, mode);
+
+                    if (mode === 'sub' && profile && profile.hasSub && typeof game.mobileDirectSubFireStart === 'function') {
+                        if (profile.subHold) {
+                            if (!subActive) {
+                                game.mobileDirectSubFireStart();
+                                subActive = true;
+                            }
+                        } else {
+                            game.mobileDirectSubFireStart();
+                        }
+                        return;
+                    }
+
+                    if (subActive) {
+                        stopSubFire();
+                        subActive = false;
+                    }
+                    if (typeof game.mobileDirectMainFire === 'function') {
+                        game.mobileDirectMainFire();
+                    }
+                };
+
+                const startFiring = () => {
+                    if (firing) return;
+                    firing = true;
+                    fireTick();
+                    fireTimer = window.setInterval(fireTick, 95);
+                };
+
+                const updateStickGeometry = () => {
+                    const rect = stickZone.getBoundingClientRect();
+                    centerX = rect.left + (rect.width / 2);
+                    centerY = rect.top + (rect.height / 2);
+                    radius = Math.max(20, (Math.min(rect.width, rect.height) * 0.5) - 16);
+                };
+
+                const updateStickByPointer = (clientX, clientY) => {
+                    updateStickGeometry();
+                    const dx = clientX - centerX;
+                    const dy = clientY - centerY;
+                    const dist = Math.hypot(dx, dy) || 0;
+                    const clamped = Math.min(radius, dist);
+                    const nx = dist > 0 ? (dx / dist) : 0;
+                    const ny = dist > 0 ? (dy / dist) : 0;
+                    const sx = nx * clamped;
+                    const sy = ny * clamped;
+
+                    stick.style.transform = `translate(${sx}px, ${sy}px)`;
+                    aimNx = nx;
+                    aimNy = ny;
+                };
+
+                const releaseStick = () => {
+                    if (stickPointerId !== null) {
+                        try { stickZone.releasePointerCapture(stickPointerId); } catch (_) { }
+                    }
+                    stickPointerId = null;
+                    stick.style.transform = 'translate(0px, 0px)';
+                    aimNx = 0;
+                    aimNy = 0;
+                    stopFiring();
+                };
+
+                const refresh = () => {
+                    const active = isMobileViewport()
+                        && !!game.running
+                        && !game.isGameOver
+                        && (typeof game.isDirectControlActive === 'function')
+                        && game.isDirectControlActive();
+
+                    root.classList.toggle('hidden', !active);
+                    root.setAttribute('aria-hidden', active ? 'false' : 'true');
+                    if (footer) footer.classList.toggle('hud-mobile-direct-active', active);
+
+                    if (!active) {
+                        releaseStick();
+                        return;
+                    }
+
+                    const unit = getDirectUnit();
+                    if (!unit || unit.dead || !unit.stats) {
+                        setStatus('조종 유닛 없음');
+                        return;
+                    }
+                    const mode = (typeof game.getDirectControlWeaponMode === 'function')
+                        ? game.getDirectControlWeaponMode()
+                        : 'main';
+                    updateFireStatus(unit, mode);
+                };
+
+                const onStickPointerDown = (e) => {
+                    if (e.button !== undefined && e.button !== 0) return;
+                    if (stickPointerId !== null) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    stickPointerId = e.pointerId;
+                    try { stickZone.setPointerCapture(e.pointerId); } catch (_) { }
+                    updateStickByPointer(e.clientX, e.clientY);
+                    startFiring();
+                };
+
+                const onGlobalPointerMove = (e) => {
+                    if (stickPointerId === null || e.pointerId !== stickPointerId) return;
+                    e.preventDefault();
+                    updateStickByPointer(e.clientX, e.clientY);
+                };
+
+                const onGlobalPointerUp = (e) => {
+                    if (stickPointerId === null || e.pointerId !== stickPointerId) return;
+                    e.preventDefault();
+                    releaseStick();
+                };
+
+                root.addEventListener('contextmenu', (e) => e.preventDefault());
+                stickZone.addEventListener('pointerdown', onStickPointerDown, { passive: false });
+                window.addEventListener('pointermove', onGlobalPointerMove, { passive: false });
+                window.addEventListener('pointerup', onGlobalPointerUp, { passive: false });
+                window.addEventListener('pointercancel', onGlobalPointerUp, { passive: false });
+                window.addEventListener('blur', () => {
+                    releaseStick();
+                });
+
+                const onViewportChange = () => { refresh(); };
+                window.addEventListener('resize', onViewportChange);
+                window.addEventListener('orientationchange', () => { setTimeout(onViewportChange, 80); });
+
+                const syncTimer = window.setInterval(refresh, 180);
+                root.__mobileDirectSyncTimer = syncTimer;
+                refresh();
+
+                return {
+                    refresh,
+                    release: () => {
+                        releaseStick();
+                    }
+                };
+            })();
+            this.mobileDirectUi = mobileDirectUi;
+            if (typeof window !== 'undefined') {
+                window.MobileDirectControlUI = mobileDirectUi;
+            }
+
+            // ======== PC 筌띾뜆?????源??========
             this.canvas.addEventListener('mousedown', e => {
                 // [NEW] Block if inside HUD area
                 if (isInsideHUD(e.clientX, e.clientY)) return;
@@ -243,14 +516,18 @@
                         return;
                     }
 
-                    // [NEW] PC 우클릭: 선택 유닛 이동 (기본 RTS 방식)
+                    // [NEW] PC ?怨좉깻?? ?醫뤾문 ?醫딅뻺 ??猷?(疫꿸퀡??RTS 獄쎻뫗??
+                    if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
+                        return;
+                    }
+
                     if (this.selectedUnits && this.selectedUnits.size > 0 && !this.buildMode.active && !this.targetingType) {
                         clearManualTankMgHold();
 
                         this.selectedUnits.forEach(u => {
                             if (!u || u.dead) return;
                             u.commandMode = 'move';
-                            u.commandTargetX = worldX; // ★ 반드시 갱신 (facing용)
+                            u.commandTargetX = worldX; // ??獄쏆꼶諭??揶쏄퉮??(facing??
                             u.targetX = worldX;
                             u.targetY = null;
                             u.lockedTarget = null;
@@ -268,21 +545,43 @@
                         return;
                     }
 
-                    // (선택 유닛 없으면) 우클릭: 카메라 드래그 유지
+                    // (?醫뤾문 ?醫딅뻺 ??곸몵筌? ?怨좉깻?? 燁삳?李????뺤삋域??醫?
                     cameraDrag = true;
                     cameraLastX = p.x;
                 } else if (e.button === 0) {
-                    // [NEW] 건설 모드 중이면 배치 처리
+                    // [NEW] 椰꾨똻苑?筌뤴뫀諭?餓λ쵐?좑쭖?獄쏄퀣??筌ｌ꼶??
                     if (this.buildMode.active) {
                         this.handleBuildPlacement(p.x + this.cameraX);
                         return;
                     }
-                    // 좌클릭: 타겟팅 중이면 타겟팅 처리
+                    // ?ル슦寃®뵳? ??野껋옖??餓λ쵐?좑쭖???野껋옖??筌ｌ꼶??
                     if (this.targetingType) {
                         this.handleTargeting(p.x + this.cameraX, p.y);
                         return;
                     }
-                    // 선택 박스 드래그 시작
+                    // ?醫뤾문 獄쏅벡????뺤삋域???뽰삂
+                    const directControlUnit = (typeof this.getDirectControlUnit === 'function')
+                        ? this.getDirectControlUnit()
+                        : null;
+                    if (directControlUnit && directControlUnit.stats) {
+                        const directId = String(directControlUnit.stats.id || '');
+                        if (directId === 'mbt' && !e.shiftKey) {
+                            updateManualTankAim(directControlUnit, worldX, worldY);
+                            if (typeof directControlUnit.tryManualTankMainFire === 'function') {
+                                directControlUnit.tryManualTankMainFire(worldX, worldY);
+                            }
+                            return;
+                        }
+                        if (directId === 'spg' && !e.shiftKey) {
+                            updateManualTankAim(directControlUnit, worldX, worldY);
+                            if (typeof directControlUnit.tryManualSpgMainFire === 'function') {
+                                directControlUnit.tryManualSpgMainFire(worldX, worldY);
+                            }
+                            return;
+                        }
+                        return;
+                    }
+
                     const manualTank = getSingleSelectedPlayerMbt();
                     if (manualTank && !e.shiftKey) {
                         updateManualTankAim(manualTank, worldX, worldY);
@@ -322,15 +621,21 @@
                 const worldX = p.x + this.cameraX;
                 const worldY = p.y;
 
-                // [NEW] 건설 모드 프리뷰 업데이트
+                // [NEW] 椰꾨똻苑?筌뤴뫀諭??袁ⓥ봺????낅쑓??꾨뱜
                 if (this.buildMode.active) {
                     this.updateBuildPreview(p.x + this.cameraX, p.y);
                 }
 
-                // 카메라 드래그 (우클릭)
+                // 燁삳?李????뺤삋域?(?怨좉깻??
                 const manualArmor = getSingleSelectedPlayerManualArmor();
                 if (manualArmor && !this.buildMode.active && !this.targetingType && isInsideCanvasClient(e.clientX, e.clientY)) {
                     updateManualTankAim(manualArmor, worldX, worldY);
+                }
+                const directControlUnit = (typeof this.getDirectControlUnit === 'function')
+                    ? this.getDirectControlUnit()
+                    : null;
+                if (directControlUnit && !this.buildMode.active && !this.targetingType && isInsideCanvasClient(e.clientX, e.clientY)) {
+                    updateManualTankAim(directControlUnit, worldX, worldY);
                 }
 
                 if (cameraDrag && !this.selectDragActive) {
@@ -339,7 +644,7 @@
                     cameraLastX = p.x;
                 }
 
-                // 선택 박스 갱신 (좌클릭)
+                // ?醫뤾문 獄쏅벡??揶쏄퉮??(?ル슦寃®뵳?
                 if (this.selectDragActive) {
                     this.selectEndX = p.x + this.cameraX;
                     this.selectEndY = p.y;
@@ -352,11 +657,11 @@
                     clearManualTankMgHold();
                 } else if (e.button === 0 && this.selectDragActive) {
                     this.selectDragActive = false;
-                    // 선택 박스가 너무 작으면 단일 클릭으로 처리
+                    // ?醫뤾문 獄쏅벡?ゅ첎? ??댭??臾믪몵筌???μ뵬 ?????곗쨮 筌ｌ꼶??
                     const dx = Math.abs(this.selectEndX - this.selectStartX);
                     const dy = Math.abs(this.selectEndY - this.selectStartY);
                     if (dx < 10 && dy < 10) {
-                        // 단일 클릭: 기존 클릭 로직
+                        // ??μ뵬 ???? 疫꿸퀣??????嚥≪뮇彛?
                         const clickX = this.selectStartX;
                         const clickY = this.selectStartY;
                         if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
@@ -367,17 +672,23 @@
                         if (this.clearAllSelection) this.clearAllSelection();
                         this.selectedBuilding = null;
                     } else {
-                        // 드래그 선택: 박스 내 유닛 선택
+                        // ??뺤삋域??醫뤾문: 獄쏅벡?????醫딅뻺 ?醫뤾문
                         if (this.selectUnitsInRect) this.selectUnitsInRect();
                         this.selectedBuilding = null;
                     }
                 }
             });
 
-            // 우클릭 메뉴 차단 + 드론 명령 + 건설 취소
+            // ?怨좉깻??筌롫뗀??筌△뫀??+ ??뺤쨴 筌뤿굝議?+ 椰꾨똻苑??띯뫁??
             window.addEventListener('blur', () => {
                 cameraDrag = false;
                 clearManualTankMgHold();
+                if (typeof this.clearDirectControlKeys === 'function') {
+                    this.clearDirectControlKeys();
+                }
+                if (this.mobileDirectUi && typeof this.mobileDirectUi.release === 'function') {
+                    this.mobileDirectUi.release();
+                }
             });
 
             this.canvas.addEventListener('contextmenu', e => {
@@ -386,10 +697,10 @@
                 // [NEW] Block if inside HUD area
                 if (isInsideHUD(e.clientX, e.clientY)) return;
 
-                // [NEW] 건설 모드 취소
+                // [NEW] 椰꾨똻苑?筌뤴뫀諭??띯뫁??
                 if (this.buildMode.active) {
                     this.cancelBuildMode();
-                    ui.showToast('건설 취소');
+                    ui.showToast('嫄댁꽕 痍⑥냼');
                     return;
                 }
 
@@ -406,7 +717,7 @@
                 if (Camera.zoom !== prevZoom) this.updateZoomUI();
             }, { passive: false });
 
-            // ======== 모바일 터치 이벤트 ========
+            // ======== 筌뤴뫀而???怨쀭뒄 ??源??========
             this.canvas.addEventListener('touchstart', e => {
                 e.preventDefault();
 
@@ -416,7 +727,7 @@
                 }
 
                 if (e.touches.length === 1) {
-                    // 단일 터치: 유닛 선택 모드 (카메라 이동 금지)
+                    // ??μ뵬 ?怨쀭뒄: ?醫딅뻺 ?醫뤾문 筌뤴뫀諭?(燁삳?李????猷?疫뀀뜆?)
                     isMobileSelecting = true;
                     isMobileCameraMove = false;
                     pinchActive = false;
@@ -424,7 +735,7 @@
                     const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
                     if (!isInsideCanvasClient(e.touches[0].clientX, e.touches[0].clientY)) return;
 
-                    // [NEW] 건설 모드 중이면 배치 처리
+                    // [NEW] 椰꾨똻苑?筌뤴뫀諭?餓λ쵐?좑쭖?獄쏄퀣??筌ｌ꼶??
                     if (this.buildMode.active) {
                         this.updateBuildPreview(p.x + this.cameraX, p.y);
                         this.handleBuildPlacement(p.x + this.cameraX);
@@ -432,26 +743,26 @@
                         return;
                     }
 
-                    // 타겟팅 중이면 타겟팅 처리
+                    // ??野껋옖??餓λ쵐?좑쭖???野껋옖??筌ｌ꼶??
                     if (this.targetingType) {
                         this.handleTargeting(p.x + this.cameraX, p.y);
                         isMobileSelecting = false;
                         return;
                     }
 
-                    // 선택 박스 시작
+                    // ?醫뤾문 獄쏅벡????뽰삂
                     this.selectDragActive = true;
                     this.selectStartX = p.x + this.cameraX;
                     this.selectStartY = p.y;
                     this.selectEndX = this.selectStartX;
                     this.selectEndY = this.selectStartY;
 
-                    // [MOBILE TAP FIX] 탭 판정용 픽셀 좌표 기록
+                    // [MOBILE TAP FIX] ???癒?젟????? ?ル슦紐?疫꿸퀡以?
                     tapStartClientX = tapLastClientX = e.touches[0].clientX;
                     tapStartClientY = tapLastClientY = e.touches[0].clientY;
 
                 } else if (e.touches.length >= 2) {
-                    // 두 손가락: 카메라 이동 모드
+                    // ???癒??? 燁삳?李????猷?筌뤴뫀諭?
                     isMobileCameraMove = true;
                     isMobileSelecting = false;
                     this.selectDragActive = false;
@@ -471,21 +782,21 @@
             }, { passive: false });
 
             window.addEventListener('touchmove', e => {
-                // 모바일 선택 중: 카메라 이동 완전 차단
+                // 筌뤴뫀而???醫뤾문 餓? 燁삳?李????猷??袁⑹읈 筌△뫀??
                 if (isMobileSelecting && this.selectDragActive) {
                     e.preventDefault();
                     const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
                     this.selectEndX = p.x + this.cameraX;
                     this.selectEndY = p.y;
 
-                    // [MOBILE TAP FIX] 마지막 픽셀 좌표 갱신
+                    // [MOBILE TAP FIX] 筌띾뜆?筌???? ?ル슦紐?揶쏄퉮??
                     tapLastClientX = e.touches[0].clientX;
                     tapLastClientY = e.touches[0].clientY;
 
-                    return; // 카메라 로직 호출 금지
+                    return; // 燁삳?李??嚥≪뮇彛??紐꾪뀱 疫뀀뜆?
                 }
 
-                // 두 손가락 카메라 이동
+                // ???癒???燁삳?李????猷?
                 if (isMobileCameraMove && e.touches.length >= 2) {
                     if (pinchActive) {
                         e.preventDefault();
@@ -513,15 +824,15 @@
                     this.selectDragActive = false;
                     isMobileSelecting = false;
 
-                    // [MOBILE TAP FIX] 월드좌표(dx,dy)로 탭 판정하면 모바일에서 거의 항상 드래그로 오인됨
-                    // 픽셀 기준으로 탭/드래그 판정
+                    // [MOBILE TAP FIX] ?遺얜굡?ル슦紐?dx,dy)嚥????癒?젟??롢늺 筌뤴뫀而??깅퓠??椰꾧퀣????湲???뺤삋域밸챶以???쇱뵥??
+                    // ??? 疫꿸퀣???곗쨮 ????뺤삋域??癒?젟
                     const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
                     const endClientX = ct ? ct.clientX : tapLastClientX;
                     const endClientY = ct ? ct.clientY : tapLastClientY;
                     const movedPx = Math.hypot(endClientX - tapStartClientX, endClientY - tapStartClientY);
 
                     if (movedPx < TAP_THRESHOLD_PX) {
-                        // 단일 탭: "끝 좌표"를 기준으로 클릭 처리(더 정확)
+                        // ??μ뵬 ?? "???ル슦紐???疫꿸퀣???곗쨮 ????筌ｌ꼶?????類μ넇)
                         const pTap = getScaledPos(endClientX, endClientY);
                         const clickX = pTap.x + this.cameraX;
                         const clickY = pTap.y;
@@ -534,7 +845,7 @@
                         if (this.clearAllSelection) this.clearAllSelection();
                         this.selectedBuilding = null;
                     } else {
-                        // 드래그 선택
+                        // ??뺤삋域??醫뤾문
                         if (this.selectUnitsInRect) this.selectUnitsInRect();
                         this.selectedBuilding = null;
                     }
@@ -549,8 +860,33 @@
                 }
             });
 
-            // [NEW] ESC 키로 건설/타겟팅 모드 취소
+            // [NEW] ESC ??살쨮 椰꾨똻苑???野껋옖??筌뤴뫀諭??띯뫁??
             window.addEventListener('keydown', e => {
+                const typingInField = isTypingInField();
+                const directMappedKey = DIRECT_CONTROL_KEY_MAP[e.code];
+                if (!typingInField && directMappedKey && typeof this.setDirectControlKeyState === 'function') {
+                    this.setDirectControlKeyState(directMappedKey, true);
+                    if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
+                        e.preventDefault();
+                    }
+                }
+                if (typingInField && e.key !== 'Escape') return;
+
+                if (e.code === 'KeyE') {
+                    if (typingInField) return;
+                    if (e.repeat) return;
+                    if (typeof this.toggleDirectControl === 'function') {
+                        const changed = this.toggleDirectControl();
+                        if (changed) {
+                            e.preventDefault();
+                            if (this.mobileDirectUi && typeof this.mobileDirectUi.refresh === 'function') {
+                                this.mobileDirectUi.refresh();
+                            }
+                        }
+                    }
+                    return;
+                }
+
                 if (e.key === 'Escape') {
                     if (typeof ui !== 'undefined'
                         && ui
@@ -558,9 +894,19 @@
                         && ui.handleEscapeShortcut(e, this)) {
                         return;
                     }
+                    if (typeof this.isDirectControlActive === 'function'
+                        && this.isDirectControlActive()
+                        && typeof this.stopDirectControl === 'function') {
+                        this.stopDirectControl('escape');
+                        if (this.mobileDirectUi && typeof this.mobileDirectUi.refresh === 'function') {
+                            this.mobileDirectUi.refresh();
+                        }
+                        e.preventDefault();
+                        return;
+                    }
                     if (this.buildMode.active) {
                         this.cancelBuildMode();
-                        ui.showToast('건설 취소');
+                        ui.showToast('嫄댁꽕 痍⑥냼');
                     } else if (this.targetingType) {
                         this.cancelTargeting();
                     }
@@ -583,6 +929,14 @@
                     }
                 }
             });
+
+            window.addEventListener('keyup', e => {
+                const directMappedKey = DIRECT_CONTROL_KEY_MAP[e.code];
+                if (directMappedKey && typeof this.setDirectControlKeyState === 'function') {
+                    this.setDirectControlKeyState(directMappedKey, false);
+                }
+            });
         }
     };
 })();
+

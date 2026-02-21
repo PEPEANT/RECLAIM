@@ -413,42 +413,15 @@ const HUD = {
             return '';
         }
 
-        let drew = false;
-        if (typeof Unit !== 'undefined') {
-            try {
-                ctx.save();
-
-                const centerX = 32;
-                const bottomY = 42;
-                let scale = 0.82;
-                let offsetY = -2;
-
-                if (key === 'drone_suicide') {
-                    scale = 1.02;
-                    offsetY = -4;
-                } else if (key === 'drone_at') {
-                    scale = 0.96;
-                    offsetY = -4;
-                } else if (unitDef.type === 'air') {
-                    scale = 0.72;
-                    offsetY = -8;
-                }
-
-                ctx.translate(centerX, bottomY + offsetY);
-                ctx.scale(scale, scale);
-
-                const dummy = new Unit(key, 0, 0, 'player');
-                dummy.hideHp = true;
-                dummy.disableFeetSnap = true;
-                dummy.iconRenderBackTurret = true;
-                if (dummy.stats?.type === 'air') dummy.y = 0;
-                dummy.draw(ctx);
-                ctx.restore();
-                drew = true;
-            } catch (_) {
-                try { ctx.restore(); } catch (_) { }
-            }
-        }
+        const iconUtils = (typeof UnitRenderUtils !== 'undefined') ? UnitRenderUtils : null;
+        const drew = !!(iconUtils && typeof iconUtils.drawUnitIconToCanvas === 'function'
+            && iconUtils.drawUnitIconToCanvas(ctx, key, unitDef, {
+                centerX: 32,
+                bottomY: 42,
+                baseScale: 0.82,
+                baseOffsetY: -2,
+                drawFallback: false
+            }));
 
         if (!drew) {
             const w = Math.max(12, Math.min(50, Math.round((Number(unitDef.width) || 24) * 1.2)));
@@ -524,6 +497,12 @@ const HUD = {
                 return { key: 'cmd_news', fallback: 'BROADCAST', icon: 'fa-solid fa-tower-broadcast', targetingType: '__news__' };
             case 'camera':
                 return { key: 'cmd_camera', fallback: 'CAMERA', icon: 'fa-solid fa-video' };
+            case 'control_start':
+                return { key: 'cmd_control_start', fallback: 'CONTROL ON', icon: 'fa-solid fa-gamepad' };
+            case 'control_cancel':
+                return { key: 'cmd_control_cancel', fallback: 'CONTROL OFF', icon: 'fa-solid fa-circle-stop' };
+            case 'weapon_toggle':
+                return { key: 'cmd_weapon_toggle', fallback: 'WEAPON', icon: 'fa-solid fa-gun' };
             case 'eject':
                 return { key: 'cmd_eject', fallback: 'EJECT', icon: 'fa-solid fa-right-from-bracket' };
             case 'drone_suicide':
@@ -684,6 +663,25 @@ const HUD = {
             selectedBunker.garrisonUnits.length > 0
         );
 
+        const directControlActive = (typeof game.isDirectControlActive === 'function')
+            ? game.isDirectControlActive()
+            : false;
+        const directControlUnit = (typeof game.getDirectControlUnit === 'function')
+            ? game.getDirectControlUnit()
+            : null;
+        const directWeaponToggleInfo = (typeof game.getDirectControlWeaponToggleInfo === 'function')
+            ? game.getDirectControlWeaponToggleInfo()
+            : null;
+        const canDirectWeaponToggle = !!(directWeaponToggleInfo && directWeaponToggleInfo.enabled);
+        let canDirectControlStart = false;
+        if (selectedUnits.length > 0) {
+            if (typeof game.getDirectControlSelectedCandidate === 'function') {
+                canDirectControlStart = !!game.getDirectControlSelectedCandidate();
+            } else if (typeof game.isDirectControlEligible === 'function') {
+                canDirectControlStart = selectedUnits.some(u => game.isDirectControlEligible(u));
+            }
+        }
+
         return {
             selectedUnits,
             hasSelection: selectedUnits.length > 0,
@@ -707,6 +705,11 @@ const HUD = {
             canIcbmEmp,
             canIcbmNuke,
             canEject,
+            directControlActive,
+            directControlUnit,
+            canDirectControlStart,
+            directWeaponToggleInfo,
+            canDirectWeaponToggle,
             selectedBunker,
             cameraLocked,
             targetingType: game.targetingType || null,
@@ -753,6 +756,9 @@ const HUD = {
             case 'missile': return !!ctx.hasMissileCharge;
             case 'news': return !!ctx.hasCameraman;
             case 'camera': return !!ctx.canCamera;
+            case 'control_start': return !!ctx.canDirectControlStart && !ctx.directControlActive;
+            case 'control_cancel': return !!ctx.directControlActive;
+            case 'weapon_toggle': return !!ctx.directControlActive && !!ctx.canDirectWeaponToggle;
             case 'eject': return !!ctx.canEject;
             case 'drone_suicide': return !!ctx.canDroneSuicide;
             case 'drone_at': return !!ctx.canDroneAt;
@@ -798,12 +804,19 @@ const HUD = {
             }
             return null;
         };
+        const directControlInteract = ctx.directControlActive
+            ? 'control_cancel'
+            : (ctx.canDirectControlStart ? 'control_start' : null);
+        if (ctx.directControlActive && ctx.canDirectWeaponToggle) {
+            map.skill1 = 'weapon_toggle';
+            used.add('weapon_toggle');
+        }
 
         if (ctx.hasSelectedIcbm) {
             map.skill1 = pick(['icbm_tactical', 'icbm_emp', 'icbm_nuke']);
             map.skill2 = pick(['icbm_emp', 'icbm_nuke', 'icbm_tactical']);
             map.skill3 = pick(['icbm_nuke', 'icbm_tactical', 'icbm_emp']);
-            map.interact = pick(['drop', 'eject', 'news', 'recon']);
+            map.interact = directControlInteract || pick(['drop', 'eject', 'news', 'recon']);
             return map;
         }
 
@@ -820,14 +833,16 @@ const HUD = {
             const mode = (typeof game.getDroneControlMode === 'function')
                 ? game.getDroneControlMode()
                 : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
-            map.interact = (mode === 'manual') ? 'drone_auto' : 'drone_manual';
+            map.interact = directControlInteract || ((mode === 'manual') ? 'drone_auto' : 'drone_manual');
             return map;
         }
 
-        map.skill1 = pick(['missile', 'smoke', 'medkit', 'recon', 'news']);
+        if (!map.skill1) {
+            map.skill1 = pick(['missile', 'smoke', 'medkit', 'recon', 'news']);
+        }
         map.skill2 = pick(['smoke', 'medkit', 'missile', 'news', 'recon']);
         map.skill3 = pick(['medkit', 'recon', 'news', 'missile', 'smoke']);
-        map.interact = pick(['drop', 'eject', 'news', 'recon', 'missile', 'smoke', 'medkit']);
+        map.interact = directControlInteract || pick(['drop', 'eject', 'news', 'recon', 'missile', 'smoke', 'medkit']);
 
         return map;
     },
@@ -847,6 +862,22 @@ const HUD = {
             this.setHudButtonEnabled(btn, false);
             btn.classList.remove('active');
             btn.dataset.hudResolvedCmd = '';
+            return;
+        }
+
+        if (mappedCmd === 'weapon_toggle') {
+            const info = (typeof game.getDirectControlWeaponToggleInfo === 'function')
+                ? game.getDirectControlWeaponToggleInfo()
+                : null;
+            const label = (info && info.nextLabel) ? String(info.nextLabel) : this.getLangText('cmd_weapon_toggle', 'WEAPON');
+            this.setHudCommandButtonVisual(
+                btn,
+                'fa-solid fa-gun',
+                label
+            );
+            this.setHudButtonEnabled(btn, !!(info && info.enabled));
+            btn.classList.remove('active');
+            btn.dataset.hudResolvedCmd = mappedCmd;
             return;
         }
 
@@ -878,6 +909,13 @@ const HUD = {
     },
 
     handleCancelCommand() {
+        if (typeof game.isDirectControlActive === 'function'
+            && game.isDirectControlActive()
+            && typeof game.stopDirectControl === 'function') {
+            game.stopDirectControl('cancel');
+            return true;
+        }
+
         if (game.targetingType && typeof game.cancelTargeting === 'function') {
             game.cancelTargeting();
             return true;
@@ -1085,6 +1123,21 @@ const HUD = {
                     return true;
                 }
                 return false;
+            case 'control_start':
+                if (typeof game.startDirectControl === 'function') {
+                    return game.startDirectControl() === true;
+                }
+                return false;
+            case 'control_cancel':
+                if (typeof game.stopDirectControl === 'function') {
+                    return game.stopDirectControl('hud') === true;
+                }
+                return false;
+            case 'weapon_toggle':
+                if (typeof game.toggleDirectControlWeaponMode === 'function') {
+                    return game.toggleDirectControlWeaponMode() === true;
+                }
+                return false;
             case 'eject': {
                 const b = game.selectedBuilding;
                 const canEject = !!(
@@ -1158,6 +1211,9 @@ const HUD = {
             `missile:${ctx.hasMissileCharge ? 1 : 0}`,
             `news:${ctx.hasCameraman ? 1 : 0}`,
             `eject:${ctx.canEject ? 1 : 0}`,
+            `dcA:${ctx.directControlActive ? 1 : 0}`,
+            `dcS:${ctx.canDirectControlStart ? 1 : 0}`,
+            `dcW:${ctx.directWeaponToggleInfo ? (ctx.directWeaponToggleInfo.currentMode || '-') : '-'}`,
             `droneS:${ctx.canDroneSuicide ? 1 : 0}`,
             `droneA:${ctx.canDroneAt ? 1 : 0}`,
             `opAt:${ctx.hasOperatorAtSkill ? 1 : 0}`,

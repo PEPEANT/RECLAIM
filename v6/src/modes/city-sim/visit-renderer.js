@@ -2293,6 +2293,9 @@
         const drillgroundOccupancy = buildDrillgroundOccupancy(grid, cols, drillgroundSlots, drillgroundInfantryCounts);
 
         gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        gridEl.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+        gridEl.style.gridAutoColumns = 'minmax(0, 1fr)';
+        gridEl.style.gridAutoRows = 'minmax(0, 1fr)';
         gridEl.style.aspectRatio = `${cols} / ${rows}`;
 
         if (_renderCache.cols !== cols || _renderCache.rows !== rows || _renderCache.total !== total || _renderCache.cells.length !== total) {
@@ -2364,9 +2367,7 @@
             cell.className = classes.join(' ');
             cell.replaceChildren();
 
-            if (ground !== 'grass') {
-                appendGroundSurface(cell, ground, groundTransitionMask);
-            }
+            appendGroundSurface(cell, ground, groundTransitionMask);
             if (tile === 'road') {
                 appendRoadShape(cell, roadMask);
             }

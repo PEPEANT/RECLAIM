@@ -344,6 +344,11 @@
         drone_suicide_item: 'drone_suicide',
         drone_at_item: 'drone_at'
     };
+    // 보병 카테고리 전용 스킬 슬롯 아이템 → 커맨드 매핑
+    const VETERAN_INFANTRY_ITEM_TO_COMMAND = {
+        smoke_grenade: 'smoke',
+        medkit_c: 'medkit'
+    };
     const CITY_ITEM_EQUIPPABLE_KEYS = [
         'rifle_d',
         'body_armor_d',
@@ -3973,6 +3978,9 @@
         const rows = state.rows || 8;
         const total = cols * rows;
         gridEl.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+        gridEl.style.gridTemplateRows = `repeat(${rows}, minmax(0, 1fr))`;
+        gridEl.style.gridAutoColumns = 'minmax(0, 1fr)';
+        gridEl.style.gridAutoRows = 'minmax(0, 1fr)';
         gridEl.style.aspectRatio = `${cols} / ${rows}`;
 
         const cache = game && typeof game === 'object'
@@ -4216,9 +4224,7 @@
 
             cell.replaceChildren();
 
-            if (ground !== 'grass') {
-                appendGroundSurface(cell, ground, groundTransitionMask);
-            }
+            appendGroundSurface(cell, ground, groundTransitionMask);
 
             if (tile === 'road') {
                 appendRoadShape(cell, roadMask);
@@ -4532,7 +4538,12 @@
             return normalizedUnitKey !== 'drone_operator';
         }
 
-        // 요청사항: 아래 일반 아이템은 보병 카테고리만 허용 (기갑/공군 금지)
+        // M249(rifle_d)는 저격수 착용 불가
+        if (key === 'rifle_d' && normalizedUnitKey === 'sniper') {
+            return true;
+        }
+
+        // 일반 보병 아이템은 보병 카테고리만 허용 (기갑/공군 금지)
         if (
             key === 'rifle_d'
             || key === 'body_armor_d'
@@ -4638,6 +4649,8 @@
     function getVeteranEditableSkillSlotIndexes(unitKey) {
         const normalized = normalizeUnitKey(unitKey);
         if (normalized === 'drone_operator') return [1, 2];
+        // 보병 카테고리도 슬롯 1,2 편집 가능 (smoke_grenade, medkit_c)
+        if (isInfantryCategoryUnit(normalized)) return [1, 2];
         return [];
     }
 
@@ -4648,9 +4661,11 @@
     function getVeteranSkillCommandKeyByItemKey(itemKey) {
         const key = normalizeVeteranItemKey(itemKey);
         if (!key) return '';
-        return Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)
-            ? String(VETERAN_DRONE_ITEM_TO_COMMAND[key] || '').trim()
-            : '';
+        if (Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key))
+            return String(VETERAN_DRONE_ITEM_TO_COMMAND[key] || '').trim();
+        if (Object.prototype.hasOwnProperty.call(VETERAN_INFANTRY_ITEM_TO_COMMAND, key))
+            return String(VETERAN_INFANTRY_ITEM_TO_COMMAND[key] || '').trim();
+        return '';
     }
 
     function isVeteranSkillLoadoutItem(unitKey, itemKey) {
@@ -4658,7 +4673,11 @@
         const key = normalizeVeteranItemKey(itemKey);
         if (!normalizedUnitKey || !key) return false;
         if (normalizedUnitKey === 'drone_operator') {
-            return getVeteranSkillCommandKeyByItemKey(key).length > 0;
+            return Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key);
+        }
+        // 보병 카테고리: smoke_grenade, medkit_c는 스킬 슬롯 아이템
+        if (isInfantryCategoryUnit(normalizedUnitKey)) {
+            return Object.prototype.hasOwnProperty.call(VETERAN_INFANTRY_ITEM_TO_COMMAND, key);
         }
         return false;
     }
@@ -6050,12 +6069,20 @@
         if (key === 'infantry') {
             push('smoke');
         }
-        // [ITEM] 아이템 기반 추가 스킬: smoke_grenade → 연막 커맨드, medkit_c → 치료 커맨드
+        // [ITEM] 패시브 아이템 기반 추가 스킬: smoke_grenade → 연막 커맨드, medkit_c → 치료 커맨드
         if (loadoutItemKey === 'smoke_grenade') {
             push('smoke');
         }
         if (loadoutItemKey === 'medkit_c') {
             push('medkit');
+        }
+        // [ITEM] 스킬 슬롯 아이템 기반 추가 스킬 (보병 카테고리)
+        if (isInfantryCategoryUnit(key)) {
+            for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
+                const slotItemKey = normalizeVeteranItemKey(loadoutSkillItemKeys[slotIndex] || '');
+                const slotCommandKey = getVeteranSkillCommandKeyByItemKey(slotItemKey);
+                if (slotCommandKey) push(slotCommandKey);
+            }
         }
         if (unitDef?.missileCommand === true || unitDef?.hasMissile === true || key === 'fighter' || key === 'engineer') {
             push('missile');
@@ -6100,6 +6127,35 @@
                     itemKey,
                     isFixed: i === VETERAN_FIXED_SKILL_SLOT_INDEX,
                     isEditable: i !== VETERAN_FIXED_SKILL_SLOT_INDEX
+                });
+            }
+            return slots;
+        }
+
+        // 보병 카테고리: 슬롯 1은 고정(기본 스킬), 슬롯 2-3은 아이템 장착 가능
+        if (isInfantryCategoryUnit(key)) {
+            const slots = [];
+            // 슬롯 0 고정: 유닛 기본 스킬 (infantry→smoke, 나머지→없음)
+            const baseCommandKeys = getUnitProfileSkillCommandKeys(key, unitDef, {});
+            for (let i = 0; i < VETERAN_SKILL_SLOT_COUNT; i++) {
+                const isFixed = (i === VETERAN_FIXED_SKILL_SLOT_INDEX);
+                let commandKey = '';
+                let itemKey = '';
+                if (isFixed) {
+                    commandKey = baseCommandKeys[0] || '';
+                } else {
+                    itemKey = normalizeVeteranItemKey(loadoutSkillItemKeys[i] || '');
+                    commandKey = getVeteranSkillCommandKeyByItemKey(itemKey);
+                }
+                const meta = PROFILE_SKILL_COMMAND_META[commandKey] || null;
+                slots.push({
+                    index: i + 1,
+                    name: meta ? getLocalizedText(meta.langKey, meta.fallback) : '-',
+                    iconClass: meta?.iconClass || 'fa-solid fa-minus',
+                    commandKey,
+                    itemKey,
+                    isFixed,
+                    isEditable: !isFixed
                 });
             }
             return slots;
@@ -6395,7 +6451,11 @@
                 const dragAttr = (isVeteranProfile && !isLocked && itemKey)
                     ? ` data-city-veteran-drag-slot="${slot.index}" data-city-veteran-slot-item-key="${escapeHtml(itemKey)}"`
                     : '';
-                const dropAttr = (isVeteranProfile && normalizeUnitKey(unitKey) === 'drone_operator')
+                const _canDropSlot = isVeteranProfile && (
+                    normalizeUnitKey(unitKey) === 'drone_operator'
+                    || isInfantryCategoryUnit(unitKey)
+                );
+                const dropAttr = _canDropSlot
                     ? ` data-city-veteran-skill-slot="${slot.index}" data-city-veteran-slot-locked="${isLocked ? '1' : '0'}"`
                     : '';
                 const slotCharges = slot.chargeKey
@@ -6404,11 +6464,17 @@
                 const countBadge = slotCharges !== null
                     ? `<span class="city-unit-profile-skillslot-count">${slotCharges}</span>`
                     : '';
+                // 아이템이 장착된 슬롯: 아이템 이름/아이콘 표시
+                const filledItemDef = itemKey ? getVeteranItemDef(itemKey) : null;
+                const slotIconHtml = (filledItemDef && filledItemDef.asset)
+                    ? `<img class="city-unit-profile-skillslot-item-img" src="${escapeHtml(filledItemDef.asset)}" alt="${escapeHtml(filledItemDef.name)}">`
+                    : `<span class="city-unit-profile-skillslot-icon" aria-hidden="true"><i class="${slot.iconClass}"></i></span>`;
+                const slotNameText = filledItemDef ? filledItemDef.name : slot.name;
                 return (
                     `<div class="city-unit-profile-skillslot${isLocked ? ' is-fixed' : ''}${itemKey ? ' is-filled' : ''}"${dropAttr}${dragAttr}>` +
-                `<span class="city-unit-profile-skillslot-icon" aria-hidden="true"><i class="${slot.iconClass}"></i></span>` +
+                slotIconHtml +
                 `<span class="city-unit-profile-skillslot-index">${slot.index}</span>` +
-                `<span class="city-unit-profile-skillslot-name">${escapeHtml(slot.name)}</span>` +
+                `<span class="city-unit-profile-skillslot-name">${escapeHtml(slotNameText)}</span>` +
                 countBadge +
                 (isVeteranProfile && isLocked
                     ? `<span class="city-unit-profile-skillslot-note">고정</span>`
@@ -6417,7 +6483,7 @@
                 );
             }).join('') +
             `</div>` +
-            (isVeteranProfile && normalizeUnitKey(unitKey) === 'drone_operator'
+            (isVeteranProfile && (normalizeUnitKey(unitKey) === 'drone_operator' || isInfantryCategoryUnit(unitKey))
                 ? `<div class="city-unit-profile-skilltree-help">아이템 카드를 스킬 2/3 슬롯으로 드래그해 장착하고, 슬롯을 아이템 보관함으로 드래그하면 해제됩니다.</div>`
                 : '') +
             `</div>`;
@@ -6529,7 +6595,9 @@
         };
 
         const setupVeteranSkillDragInteractions = () => {
-            if (normalizeUnitKey(unitKey) !== 'drone_operator') return;
+            const _isDroneOp = normalizeUnitKey(unitKey) === 'drone_operator';
+            const _isInfantry = isInfantryCategoryUnit(unitKey);
+            if (!_isDroneOp && !_isInfantry) return;
 
             const slotDropEls = Array.from(msgEl.querySelectorAll('[data-city-veteran-skill-slot]'));
             const itemDropZoneEl = msgEl.querySelector('[data-city-veteran-item-dropzone]');

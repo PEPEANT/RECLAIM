@@ -17,24 +17,24 @@
 
     var PALETTE_PLAYER = {
         body:     '#2c2f33',
-        dark:     '#1a1c1e',
-        panel:    '#3a3e42',
+        dark:     '#16181a',
+        panel:    '#484f57',
         glass:    '#0c111a',
         glassRef: '#1e3348',
-        metal:    '#545d6a',
+        metal:    '#606a78',
         weapon:   '#141618',
-        accent:   '#424850'
+        accent:   '#52595f'
     };
 
     var PALETTE_ENEMY = {
         body:     '#6b5e3e',
-        dark:     '#4a4028',
-        panel:    '#8a7a54',
+        dark:     '#3e3420',
+        panel:    '#9a8c6a',
         glass:    '#141a12',
         glassRef: '#2a3020',
-        metal:    '#7a6e52',
+        metal:    '#8a7e62',
         weapon:   '#2a220e',
-        accent:   '#6b5e3e'
+        accent:   '#7a6e52'
     };
 
     function getDeps() {

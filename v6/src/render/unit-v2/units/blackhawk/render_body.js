@@ -1,6 +1,16 @@
-﻿// Body rendering for: blackhawk (UH-60)
+// Body rendering for: blackhawk (UH-60)
 (function attachUnitRenderV2Body_blackhawk(globalScope) {
     'use strict';
+
+    var SCALE = 0.145;
+
+    function sx(x) {
+        return (x - 340) * SCALE;
+    }
+
+    function sy(y) {
+        return (y - 235) * SCALE;
+    }
 
     function rr(ctx, x, y, w, h, r) {
         if (!ctx) return;
@@ -19,11 +29,21 @@
     }
 
     function poly(ctx, pts) {
-        if (!ctx || !Array.isArray(pts) || pts.length < 4) return;
+        if (!ctx || !Array.isArray(pts) || pts.length < 6) return;
         ctx.beginPath();
         ctx.moveTo(pts[0], pts[1]);
         for (var i = 2; i < pts.length; i += 2) {
             ctx.lineTo(pts[i], pts[i + 1]);
+        }
+        ctx.closePath();
+    }
+
+    function polySvg(ctx, pts) {
+        if (!ctx || !Array.isArray(pts) || pts.length < 6) return;
+        ctx.beginPath();
+        ctx.moveTo(sx(pts[0]), sy(pts[1]));
+        for (var i = 2; i < pts.length; i += 2) {
+            ctx.lineTo(sx(pts[i]), sy(pts[i + 1]));
         }
         ctx.closePath();
     }
@@ -43,242 +63,209 @@
         var accent2 = p.accent2 || '#374151';
         var enemyPattern = p.enemyPattern === true;
 
-        // Rear wheel (depth layer)
+        var roofStroke = 1.5 * SCALE;
+        var panelStroke = 1.2 * SCALE;
+
+        // Rear depth landing gear
         ctx.save();
-        ctx.globalAlpha = 0.72;
+        ctx.globalAlpha = 0.70;
         ctx.strokeStyle = '#222';
-        ctx.lineWidth = 0.9;
+        ctx.lineWidth = 3 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(10.6, 3.6);
-        ctx.lineTo(11.5, 8.5);
+        ctx.moveTo(sx(255), sy(265));
+        ctx.lineTo(sx(248), sy(305));
         ctx.stroke();
         ctx.fillStyle = tire;
         ctx.beginPath();
-        ctx.arc(11.5, 8.5, 1.3, 0, Math.PI * 2);
+        ctx.arc(sx(248), sy(305), 9 * SCALE, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
 
-        // Main fuselage silhouette (tail boom widened + smoothed)
+        // Main fuselage silhouette from source SVG (Gemini tail-corrected base)
         ctx.fillStyle = body;
         ctx.beginPath();
-        ctx.moveTo(24.4, 0);
-        ctx.bezierCurveTo(24.4, 2.9, 23.2, 4.4, 18.8, 4.6);
-        ctx.lineTo(-11.3, 4.6);
-        ctx.lineTo(-46.2, 2.0);
-        ctx.lineTo(-50.2, -1.8);
-        ctx.lineTo(-52.7, -6.7);
-        ctx.lineTo(-52.9, -11.3);
-        ctx.lineTo(-50.9, -14.1);
-        ctx.lineTo(-46.5, -14.4);
-        ctx.lineTo(-41.2, -12.8);
-        ctx.lineTo(-13.8, -2.5);
-        ctx.bezierCurveTo(-11.3, -5.3, -8.8, -7.5, -5.0, -7.5);
-        ctx.lineTo(3.8, -7.5);
-        ctx.lineTo(8.8, -5.0);
-        ctx.lineTo(16.3, -5.0);
-        ctx.lineTo(20.0, -2.5);
-        ctx.bezierCurveTo(22.4, -2.5, 24.4, -1.6, 24.4, 0);
+        ctx.moveTo(sx(145), sy(235));
+        ctx.bezierCurveTo(sx(145), sy(258), sx(155), sy(270), sx(190), sy(272));
+        ctx.lineTo(sx(450), sy(272));
+        ctx.lineTo(sx(640), sy(252));
+        ctx.lineTo(sx(650), sy(265));
+        ctx.lineTo(sx(665), sy(265));
+        ctx.lineTo(sx(675), sy(245));
+        ctx.lineTo(sx(710), sy(155));
+        ctx.lineTo(sx(720), sy(145));
+        ctx.lineTo(sx(710), sy(125));
+        ctx.lineTo(sx(685), sy(125));
+        ctx.lineTo(sx(640), sy(215));
+        ctx.lineTo(sx(450), sy(215));
+        ctx.bezierCurveTo(sx(430), sy(190), sx(410), sy(175), sx(380), sy(175));
+        ctx.lineTo(sx(310), sy(175));
+        ctx.lineTo(sx(270), sy(195));
+        ctx.lineTo(sx(210), sy(195));
+        ctx.lineTo(sx(180), sy(215));
+        ctx.bezierCurveTo(sx(160), sy(215), sx(145), sy(220), sx(145), sy(235));
         ctx.closePath();
         ctx.fill();
 
-        // Fuselage panel lines
+        // Body panel/highlight lines
         ctx.strokeStyle = highlight;
-        ctx.lineWidth = 0.55;
+        ctx.lineWidth = panelStroke;
         ctx.beginPath();
-        ctx.moveTo(18.8, 4.6);
-        ctx.lineTo(-11.3, 4.6);
-        ctx.lineTo(-46.2, 2.0);
+        ctx.moveTo(sx(190), sy(272));
+        ctx.lineTo(sx(450), sy(272));
+        ctx.lineTo(sx(640), sy(252));
         ctx.stroke();
 
         ctx.save();
-        ctx.globalAlpha = 0.45;
+        ctx.globalAlpha = 0.4;
         ctx.beginPath();
-        ctx.moveTo(-13.8, -2.5);
-        ctx.lineTo(-50.2, -1.8);
+        ctx.moveTo(sx(450), sy(215));
+        ctx.lineTo(sx(640), sy(215));
+        ctx.stroke();
+        ctx.restore();
+
+        ctx.save();
+        ctx.globalAlpha = 0.2;
+        ctx.beginPath();
+        ctx.moveTo(sx(450), sy(240));
+        ctx.lineTo(sx(635), sy(235));
         ctx.stroke();
         ctx.restore();
 
         ctx.beginPath();
-        ctx.moveTo(3.8, -7.5);
-        ctx.lineTo(8.8, -5.0);
-        ctx.lineTo(16.3, -5.0);
+        ctx.moveTo(sx(310), sy(175));
+        ctx.lineTo(sx(270), sy(195));
+        ctx.lineTo(sx(210), sy(195));
         ctx.stroke();
 
-        // Tail boom connector reinforcement (keeps top surface visually filled)
+        // Sponson
         ctx.fillStyle = dark;
-        poly(ctx, [
-            -40.9, -9.7,
-            -50.2, -11.4,
-            -49.8, -13.1,
-            -40.5, -11.8
-        ]);
-        ctx.fill();
-        ctx.strokeStyle = highlight;
-        ctx.lineWidth = 0.45;
-        ctx.beginPath();
-        ctx.moveTo(-40.8, -10.1);
-        ctx.lineTo(-50.0, -11.7);
-        ctx.stroke();
-
-        // Tail fin root around tail rotor axis
-        ctx.fillStyle = dark;
-        poly(ctx, [
-            -49.6, -4.5,
-            -52.6, -9.8,
-            -51.7, -13.7,
-            -49.1, -8.3
-        ]);
-        ctx.fill();
-
-        // Side sponson
-        ctx.fillStyle = dark;
-        poly(ctx, [
-            15.4, 3.4,
-            8.0, 3.4,
-            6.9, 1.7,
-            13.6, 1.5
-        ]);
+        polySvg(ctx, [215, 260, 275, 260, 285, 260, 290, 248, 280, 245, 225, 245]);
         ctx.fill();
 
         // Cockpit windows
         ctx.fillStyle = windowColor;
-        poly(ctx, [
-            19.8, -2.4,
-            16.5, -4.6,
-            15.0, -4.6,
-            15.0, -0.6,
-            19.8, -1.1
-        ]);
+        polySvg(ctx, [182, 216, 208, 198, 220, 198, 220, 230, 182, 226]);
         ctx.fill();
         ctx.strokeStyle = body;
-        ctx.lineWidth = 0.5;
-        poly(ctx, [
-            19.8, -2.4,
-            16.5, -4.6,
-            15.0, -4.6,
-            15.0, -0.6,
-            19.8, -1.1
-        ]);
+        ctx.lineWidth = 2 * SCALE;
+        polySvg(ctx, [182, 216, 208, 198, 220, 198, 220, 230, 182, 226]);
         ctx.stroke();
 
-        // Side pilot glass
         ctx.fillStyle = windowColor;
-        poly(ctx, [
-            23.0, 0.3,
-            20.5, -0.6,
-            20.5, 2.1,
-            22.4, 2.8
-        ]);
+        polySvg(ctx, [156, 237, 176, 230, 176, 252, 161, 257]);
         ctx.fill();
 
-        // Crew small window
+        // Crew window
+        rr(ctx, sx(230), sy(202), 35 * SCALE, 35 * SCALE, 5 * SCALE);
         ctx.fillStyle = windowColor;
-        rr(ctx, 9.6, -4.2, 4.4, 4.4, 0.6);
         ctx.fill();
 
-        // Cargo sliding door outline + windows
+        // Cargo door and windows
+        rr(ctx, sx(275), sy(196), 85 * SCALE, 74 * SCALE, 3 * SCALE);
         ctx.strokeStyle = dark;
-        ctx.lineWidth = 0.6;
-        rr(ctx, 0.9, -4.9, 10.6, 9.2, 0.5);
+        ctx.lineWidth = roofStroke;
         ctx.stroke();
 
+        rr(ctx, sx(285), sy(205), 28 * SCALE, 28 * SCALE, 4 * SCALE);
         ctx.fillStyle = windowColor;
-        rr(ctx, 2.1, -3.8, 3.4, 3.4, 0.55);
         ctx.fill();
-        rr(ctx, 6.4, -3.8, 3.4, 3.4, 0.55);
+        rr(ctx, sx(322), sy(205), 28 * SCALE, 28 * SCALE, 4 * SCALE);
         ctx.fill();
 
-        // Engine exhaust housing
+        // Engine exhaust
         ctx.fillStyle = dark;
-        poly(ctx, [
-            -5.0, -7.5,
-            -10.0, -7.5,
-            -9.4, -4.6,
-            -6.2, -4.6
-        ]);
+        polySvg(ctx, [380, 175, 420, 175, 415, 198, 390, 198]);
         ctx.fill();
         ctx.fillStyle = '#0f0f11';
         ctx.beginPath();
-        ctx.ellipse(-9.6, -6.1, 0.8, 1.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(sx(417), sy(186), 6 * SCALE, 12 * SCALE, 0, 0, Math.PI * 2);
         ctx.fill();
 
         // Stabilator
         ctx.fillStyle = dark;
-        poly(ctx, [
-            -44.4, 1.3,
-            -50.4, 0.1,
-            -50.3, 1.8,
-            -44.4, 2.2
-        ]);
+        polySvg(ctx, [630, 240, 690, 230, 690, 242, 630, 250]);
         ctx.fill();
 
         // Sensors / mast details
         ctx.fillStyle = dark;
         ctx.beginPath();
-        ctx.arc(24.1, 1.4, 0.5, 0, Math.PI * 2);
+        ctx.arc(sx(147), sy(245), 4 * SCALE, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillRect(10.2, -5.8, 0.6, 0.9);
+        ctx.fillRect(sx(255), sy(188), 5 * SCALE, 7 * SCALE);
         ctx.strokeStyle = dark;
-        ctx.lineWidth = 0.5;
+        ctx.lineWidth = 2 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(-11.0, 4.6);
-        ctx.lineTo(-11.7, 6.0);
-        ctx.lineTo(-12.4, 4.4);
+        ctx.moveTo(sx(425), sy(272));
+        ctx.lineTo(sx(430), sy(283));
+        ctx.lineTo(sx(435), sy(271));
         ctx.stroke();
 
         // Front landing gear
         ctx.strokeStyle = gear;
-        ctx.lineWidth = 1.15;
         ctx.lineCap = 'round';
+        ctx.lineWidth = 5 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(14.0, 3.4);
-        ctx.lineTo(15.0, 9.2);
+        ctx.moveTo(sx(235), sy(260));
+        ctx.lineTo(sx(220), sy(310));
         ctx.stroke();
 
-        ctx.lineWidth = 0.9;
+        ctx.lineWidth = 3 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(11.1, 3.5);
-        ctx.lineTo(15.0, 9.2);
+        ctx.moveTo(sx(260), sy(262));
+        ctx.lineTo(sx(220), sy(310));
         ctx.stroke();
 
         ctx.fillStyle = tire;
         ctx.beginPath();
-        ctx.arc(15.0, 9.2, 1.6, 0, Math.PI * 2);
+        ctx.arc(sx(220), sy(310), 11 * SCALE, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#666';
         ctx.beginPath();
-        ctx.arc(15.0, 9.2, 0.58, 0, Math.PI * 2);
+        ctx.arc(sx(220), sy(310), 4 * SCALE, 0, Math.PI * 2);
         ctx.fill();
 
         // Tail landing gear
         ctx.strokeStyle = gear;
-        ctx.lineWidth = 0.8;
+        ctx.lineWidth = 3 * SCALE;
         ctx.beginPath();
-        ctx.moveTo(-45.0, 2.0);
-        ctx.lineTo(-46.4, 5.3);
+        ctx.moveTo(sx(660), sy(265));
+        ctx.lineTo(sx(670), sy(295));
         ctx.stroke();
-
         ctx.fillStyle = tire;
         ctx.beginPath();
-        ctx.arc(-46.4, 5.3, 0.9, 0, Math.PI * 2);
+        ctx.arc(sx(670), sy(295), 6 * SCALE, 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = '#666';
         ctx.beginPath();
-        ctx.arc(-46.4, 5.3, 0.36, 0, Math.PI * 2);
+        ctx.arc(sx(670), sy(295), 2.5 * SCALE, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Main rotor mast/hub static body pieces
+        ctx.fillStyle = gear;
+        ctx.fillRect(sx(333), sy(140), 14 * SCALE, 35 * SCALE);
+
+        ctx.fillStyle = dark;
+        polySvg(ctx, [320, 135, 360, 135, 355, 145, 325, 145]);
+        ctx.fill();
+
+        ctx.fillStyle = light;
+        ctx.fillRect(sx(325), sy(145), 30 * SCALE, 5 * SCALE);
+        ctx.fillStyle = gear;
+        ctx.beginPath();
+        ctx.arc(sx(340), sy(133), 6 * SCALE, 0, Math.PI * 2);
         ctx.fill();
 
         // Team accent
         ctx.fillStyle = enemyPattern ? accent : accent2;
-        ctx.fillRect(4.8, -1.7, 6.0, 0.95);
-
+        ctx.fillRect(sx(275), sy(246), 78 * SCALE, 5 * SCALE);
         if (enemyPattern) {
             ctx.strokeStyle = accent;
-            ctx.lineWidth = 0.72;
+            ctx.lineWidth = 1.3 * SCALE;
             ctx.beginPath();
-            ctx.moveTo(-4.5, -1.6);
-            ctx.lineTo(1.2, -1.0);
-            ctx.moveTo(-4.5, 0.0);
-            ctx.lineTo(1.2, 0.6);
+            ctx.moveTo(sx(362), sy(210));
+            ctx.lineTo(sx(412), sy(228));
+            ctx.moveTo(sx(360), sy(224));
+            ctx.lineTo(sx(410), sy(239));
             ctx.stroke();
         }
     }

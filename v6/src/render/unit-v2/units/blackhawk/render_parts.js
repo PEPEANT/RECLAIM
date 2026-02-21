@@ -1,10 +1,20 @@
-﻿// Additional part rendering (rotor/gear hub) for: blackhawk (UH-60)
+// Additional part rendering (rotors) for: blackhawk (UH-60)
 (function attachUnitRenderV2Parts_blackhawk(globalScope) {
     'use strict';
 
+    var TAU = Math.PI * 2;
+    var SCALE = 0.145;
+
+    function sx(x) {
+        return (x - 340) * SCALE;
+    }
+
+    function sy(y) {
+        return (y - 235) * SCALE;
+    }
+
     function drawParts(unit, ctx, state, palette) {
         if (!ctx) return;
-        var TAU = Math.PI * 2;
 
         var p = palette || {};
         var rotor = p.rotor || '#1a1a1a';
@@ -12,96 +22,61 @@
         var light = p.light || '#484c52';
 
         var mainAngle = Number(state && state.mainRotorAngle) || 0;
-        var tailAngle = Number(state && state.tailRotorAngle) || 0;
-        var mainPulse = 0.86 + (Math.abs(Math.sin(mainAngle)) * 0.24);
-        var mainPulseFront = 0.78 + (Math.abs(Math.cos(mainAngle)) * 0.32);
 
-        // Main rotor: filled blur disk + strip (not thin line-only)
+        var mainCx = sx(340);
+        var mainCyRear = sy(134);
+        var mainCyFront = sy(132);
+        var halfBlade = 300 * SCALE;
+        var bladeW = 4.0 * SCALE;
+
+        // Main rotor: keep visible blade strip, but remove circular spin impression.
         ctx.save();
-        ctx.translate(0, -12.85);
-        ctx.scale(mainPulse, 1);
+        ctx.translate(mainCx, mainCyRear);
+        ctx.rotate(Math.sin(mainAngle * 0.2) * 0.06);
         ctx.globalAlpha = 0.44;
         ctx.fillStyle = rotor;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 45.5, 2.2, 0, 0, TAU);
-        ctx.fill();
-        ctx.globalAlpha = 0.58;
+        ctx.fillRect(-halfBlade, -bladeW * 0.55, halfBlade * 2, bladeW * 1.1);
+        ctx.globalAlpha = 0.30;
         ctx.fillStyle = light;
-        ctx.beginPath();
-        ctx.ellipse(0, 0, 41.0, 1.45, 0, 0, TAU);
-        ctx.fill();
-        ctx.globalAlpha = 0.70;
-        ctx.fillStyle = rotor;
-        ctx.fillRect(-43.2, -0.80, 86.4, 1.60);
+        ctx.fillRect(-halfBlade * 0.84, -bladeW * 0.22, halfBlade * 1.68, bladeW * 0.44);
         ctx.restore();
 
-        // Main rotor mast + hub
-        ctx.fillStyle = gear;
-        ctx.fillRect(-0.88, -11.8, 1.76, 4.4);
-        ctx.fillStyle = p.dark || '#1c1e20';
-        ctx.beginPath();
-        ctx.moveTo(-2.5, -12.9);
-        ctx.lineTo(2.5, -12.9);
-        ctx.lineTo(1.8, -11.7);
-        ctx.lineTo(-1.8, -11.7);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = light;
-        ctx.fillRect(-1.7, -11.6, 3.4, 0.7);
-        ctx.fillStyle = gear;
-        ctx.beginPath();
-        ctx.arc(0, -13.1, 0.9, 0, Math.PI * 2);
-        ctx.fill();
-
-        // Main rotor (front sharp strip)
+        // Front overlay strip: same heading only (no 90deg cross to avoid disc-like look).
         ctx.save();
-        ctx.translate(0, -13.15);
-        ctx.scale(mainPulseFront, 1);
-        ctx.globalAlpha = 0.96;
+        ctx.translate(mainCx, mainCyFront);
+        ctx.rotate(Math.sin(mainAngle * 0.2) * 0.06);
+        ctx.globalAlpha = 0.20;
         ctx.fillStyle = rotor;
-        ctx.fillRect(-43.5, -0.75, 87.0, 1.50);
-        ctx.globalAlpha = 0.70;
-        ctx.fillStyle = light;
-        ctx.fillRect(-39.0, -0.48, 78.0, 0.96);
+        ctx.fillRect(-halfBlade * 0.90, -bladeW * 0.40, halfBlade * 1.80, bladeW * 0.80);
+        ctx.restore();
+
+        // Main rotor hub
         ctx.fillStyle = '#0f0f11';
         ctx.beginPath();
-        ctx.arc(0, 0, 0.85, 0, TAU);
+        ctx.arc(mainCx, mainCyFront, 4.2 * SCALE, 0, TAU);
         ctx.fill();
-        ctx.restore();
 
-        // Tail rotor hub
-        var tx = -50.3;
-        var ty = -10.4;
+        // Tail rotor hub (smaller cap)
+        var tx = sx(705);
+        var ty = sy(145);
         ctx.fillStyle = gear;
         ctx.beginPath();
-        ctx.arc(tx, ty, 1.15, 0, Math.PI * 2);
+        ctx.arc(tx, ty, 5 * SCALE, 0, TAU);
         ctx.fill();
 
-        // Tail rotor blur ring
-        ctx.save();
-        ctx.globalAlpha = 0.42;
-        ctx.fillStyle = rotor;
-        ctx.beginPath();
-        ctx.arc(tx, ty, 4.25, 0, TAU);
-        ctx.fill();
-        ctx.globalAlpha = 0.26;
-        ctx.fillStyle = light;
-        ctx.beginPath();
-        ctx.arc(tx, ty, 3.4, 0, TAU);
-        ctx.fill();
-        ctx.restore();
-
-        // Tail rotor blades
+        // Tail rotor blades: visible shape without circular spinning.
         ctx.save();
         ctx.translate(tx, ty);
-        ctx.rotate(tailAngle);
-        ctx.globalAlpha = 0.95;
+        ctx.globalAlpha = 0.82;
         ctx.fillStyle = rotor;
-        ctx.fillRect(-0.62, -5.9, 1.24, 11.8);
-        ctx.fillRect(-5.9, -0.62, 11.8, 1.24);
+        // Vertical blade
+        ctx.fillRect(-(4 * SCALE) / 2, -(76 * SCALE) / 2, 4 * SCALE, 76 * SCALE);
+        // Short cross-blade (to keep rotor visible)
+        ctx.fillRect(-(28 * SCALE) / 2, -(4 * SCALE) / 2, 28 * SCALE, 4 * SCALE);
+        ctx.globalAlpha = 1.0;
         ctx.fillStyle = '#555';
         ctx.beginPath();
-        ctx.arc(0, 0, 0.64, 0, TAU);
+        ctx.arc(0, 0, 3 * SCALE, 0, TAU);
         ctx.fill();
         ctx.restore();
     }

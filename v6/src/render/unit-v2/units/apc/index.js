@@ -29,9 +29,9 @@
                 wheelInner: '#6b5d45',
                 hub: '#111',
                 sprocket: '#352c23',
-                accent: '#8b1e1e',
-                accent2: '#b91c1c',
-                enemyPattern: true
+                accent: '#5a4630',
+                accent2: '#3f3021',
+                enemyPattern: false
             };
         }
         if (team !== 'player') return null;

@@ -408,8 +408,28 @@
             });
         }
 
-        game.enemies.forEach(u => u.draw(ctx));
-        game.players.forEach(u => u.draw(ctx));
+        const isInfantryUnit = (u) => {
+            if (!u || !u.stats) return false;
+            return String(u.stats.category || '') === 'infantry';
+        };
+        const drawUnitsInfantryFront = (list) => {
+            if (!Array.isArray(list) || list.length <= 0) return;
+            // Pass 1: non-infantry (armor/air/etc.)
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || isInfantryUnit(u)) continue;
+                u.draw(ctx);
+            }
+            // Pass 2: infantry on top when overlapped with armored units.
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || !isInfantryUnit(u)) continue;
+                u.draw(ctx);
+            }
+        };
+
+        drawUnitsInfantryFront(game.enemies);
+        drawUnitsInfantryFront(game.players);
         game.projectiles.forEach(p => p.draw(ctx));
         game.particles.forEach(p => p.draw(ctx));
 

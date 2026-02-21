@@ -7,14 +7,18 @@
     'use strict';
 
     const CINEMATIC_KEY = 'reclaim_cinematic_watched';
-    const CINEMATIC_BGM_PATH = 'bgm/ost/tunetank2.mp3';
+    const INTRO_LOGO_BGM_PATH = 'bgm/ost/tunetank2.mp3';
+    const MAIN_CINEMATIC_BGM_PATH = 'bgm/ost/warrior.mp3';
     const CINEMATIC_ENGINE_PATH = 'bgm/ost/806143.mp3';
+    const INTRO_LOGO_VIDEO_PATH = 'assets/tutorial/videos/grok_video.mp4';
+    const CINEMATIC_VIDEO_PATH = 'assets/tutorial/videos/cinematic.mp4';
+    const INTRO_LOGO_MAX_SECONDS = 3;
 
     let canvas, ctx;
     let width, height;
     let animationId = null;
-    let cinematicAudio = null;
-    let cinematicAudioTimer = null;
+    let introLogoAudio = null;
+    let mainCinematicAudio = null;
     let cinematicStopped = false;
     let cinematicSessionToken = 0;
     let videoFallbackTimer = null;
@@ -74,7 +78,8 @@
         paradeDurationFrames: 520,
         endFadeFrames: 45,
         endHoldFrames: 90,
-        videoFallbackMs: 1400,
+        showEndingLogo: false,
+        videoFallbackMs: 7000,
         videoStallTimeoutMs: 4500,
         skyColor: '#87CEEB', // 諛앹? ?섎뒛 (??
         wallColor: '#C0C0C0',
@@ -123,13 +128,6 @@
         clearWatchedFlag();
     }
 
-    function clearCinematicAudioTimer() {
-        if (cinematicAudioTimer) {
-            clearTimeout(cinematicAudioTimer);
-            cinematicAudioTimer = null;
-        }
-    }
-
     function clearVideoPreviewTimers() {
         if (videoFallbackTimer) {
             clearTimeout(videoFallbackTimer);
@@ -148,23 +146,96 @@
         }
     }
 
-    function startCinematicBgmDelayed(delayMs = 0) {
-        clearCinematicAudioTimer();
-        const waitMs = Math.max(0, Number(delayMs) || 0);
-        cinematicAudioTimer = setTimeout(() => {
-            cinematicAudioTimer = null;
-            if (cinematicStopped) return;
-            try {
-                cinematicAudio = new Audio(CINEMATIC_BGM_PATH);
-                cinematicAudio.loop = true;
-                cinematicAudio.volume = 0.5;
-                cinematicAudio.play().catch(err => {
-                    console.warn('[Cinematic] Audio autoplay blocked:', err);
-                });
-            } catch (err) {
-                console.warn('[Cinematic] Audio init failed:', err);
+    function stopIntroLogoBgm() {
+        if (!introLogoAudio) return;
+        try {
+            introLogoAudio.pause();
+            introLogoAudio.currentTime = 0;
+        } catch (_) { }
+        introLogoAudio = null;
+    }
+
+    function startIntroLogoBgm() {
+        stopIntroLogoBgm();
+        try {
+            introLogoAudio = new Audio(INTRO_LOGO_BGM_PATH);
+            introLogoAudio.loop = true;
+            introLogoAudio.volume = 0.55;
+            introLogoAudio.play().catch(err => {
+                console.warn('[Cinematic] Intro logo audio autoplay blocked:', err);
+            });
+        } catch (err) {
+            console.warn('[Cinematic] Intro logo audio init failed:', err);
+        }
+    }
+
+    function stopMainCinematicBgm() {
+        if (!mainCinematicAudio) return;
+        try {
+            mainCinematicAudio.pause();
+            mainCinematicAudio.currentTime = 0;
+        } catch (_) { }
+        mainCinematicAudio = null;
+    }
+
+    function startMainCinematicBgm() {
+        try {
+            if (!mainCinematicAudio) {
+                mainCinematicAudio = new Audio(MAIN_CINEMATIC_BGM_PATH);
+                mainCinematicAudio.preload = 'auto';
+            } else {
+                try {
+                    mainCinematicAudio.pause();
+                    mainCinematicAudio.currentTime = 0;
+                } catch (_) { }
             }
-        }, waitMs);
+            mainCinematicAudio.loop = false;
+            mainCinematicAudio.volume = 0.72;
+            try {
+                mainCinematicAudio.currentTime = 0;
+            } catch (_) { }
+            mainCinematicAudio.play().catch(err => {
+                console.warn('[Cinematic] Main cinematic audio autoplay blocked:', err);
+            });
+        } catch (err) {
+            console.warn('[Cinematic] Main cinematic audio init failed:', err);
+        }
+    }
+
+    function setVideoPresentation(videoEl, stage = 'logo') {
+        if (!videoEl) return;
+        const isMain = stage === 'main';
+        videoEl.classList.toggle('cinematic-video-logo', !isMain);
+        videoEl.classList.toggle('cinematic-video-main', isMain);
+        if (isMain) {
+            videoEl.defaultMuted = true;
+            videoEl.setAttribute('muted', '');
+            videoEl.muted = true;
+            videoEl.volume = 0;
+        } else {
+            videoEl.defaultMuted = true;
+            videoEl.setAttribute('muted', '');
+            videoEl.muted = true;
+            videoEl.volume = 0;
+        }
+    }
+
+    function applyVideoSource(videoEl, srcPath) {
+        if (!videoEl) return;
+        const targetPath = String(srcPath || '').trim();
+        if (!targetPath) return;
+        try {
+            const sourceEl = videoEl.querySelector('source');
+            if (sourceEl && sourceEl.getAttribute('src') !== targetPath) {
+                sourceEl.setAttribute('src', targetPath);
+            }
+            if (videoEl.getAttribute('src') !== targetPath) {
+                videoEl.setAttribute('src', targetPath);
+            }
+            videoEl.load();
+        } catch (err) {
+            console.warn('[Cinematic] video source apply failed:', err);
+        }
     }
 
     function play(onComplete, options = null) {
@@ -188,17 +259,10 @@
 
         const sessionToken = ++cinematicSessionToken;
         cinematicStopped = false;
-        clearCinematicAudioTimer();
         clearVideoPreviewTimers();
         clearSkipEnableTimer();
-        if (cinematicAudio) {
-            try {
-                cinematicAudio.pause();
-                cinematicAudio.currentTime = 0;
-            } catch (_) { }
-            cinematicAudio = null;
-        }
-        startCinematicBgmDelayed(0);
+        stopIntroLogoBgm();
+        stopMainCinematicBgm();
 
         // 鍮꾨뵒???붿냼 媛?몄삤湲?
         const video = document.getElementById('cinematic-video');
@@ -229,11 +293,8 @@
                     video.currentTime = 0;
                 }
                 cinematicStopped = true;
-                clearCinematicAudioTimer();
-                if (cinematicAudio) {
-                    cinematicAudio.pause();
-                    cinematicAudio.currentTime = 0;
-                }
+                stopIntroLogoBgm();
+                stopMainCinematicBgm();
                 stop('skip_button');
                 markAsWatched();
                 if (typeof onComplete === 'function') onComplete();
@@ -243,67 +304,154 @@
         // 鍮꾨뵒?ㅺ? ?덉쑝硫?癒쇱? ?ъ깮
         if (video) {
             let canvasStarted = false;
+            let mainVideoStarted = false;
+            let currentVideoStage = 'logo';
+            let playbackCompleted = false;
+
+            const completePlaybackOnce = (reason = 'video_complete') => {
+                if (playbackCompleted) return;
+                if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
+                playbackCompleted = true;
+                console.log('[Cinematic] complete playback:', reason);
+                stop(reason);
+                markAsWatched();
+                if (typeof onComplete === 'function') onComplete();
+            };
+
             const startCanvasOnce = (reason = 'unknown') => {
                 if (canvasStarted) return;
                 if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
                 canvasStarted = true;
-                console.log('[Cinematic] switch to canvas:', reason);
+                // 구버전 캔버스 시네마틱으로 넘어가지 않고 즉시 종료한다.
+                completePlaybackOnce(`fallback_${reason}`);
+            };
+
+            const armVideoWatchers = (onFail) => {
                 clearVideoPreviewTimers();
-                video.classList.add('hidden');
-                canvas.classList.remove('hidden');
-                startCanvasAnimation(onComplete);
+                videoFallbackTimer = setTimeout(() => {
+                    videoFallbackTimer = null;
+                    if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
+                    if (video.paused || video.currentTime <= 0.05) {
+                        onFail('video_fallback_timeout');
+                    }
+                }, CONFIG.videoFallbackMs);
+
+                let lastVideoTime = Number(video.currentTime) || 0;
+                let stallWindowStartedAt = Date.now();
+                videoStallTimer = setInterval(() => {
+                    if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
+                    if (video.ended) return;
+
+                    const currentVideoTime = Number(video.currentTime) || 0;
+
+                    if (currentVideoTime > lastVideoTime + 0.03) {
+                        lastVideoTime = currentVideoTime;
+                        stallWindowStartedAt = Date.now();
+                        return;
+                    }
+                    if (video.paused) return;
+                    if ((Date.now() - stallWindowStartedAt) >= CONFIG.videoStallTimeoutMs) {
+                        onFail('video_stalled_timeout');
+                    }
+                }, 350);
+            };
+
+            const startMainVideoOnce = (reason = 'logo_end') => {
+                if (mainVideoStarted) return;
+                if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
+                mainVideoStarted = true;
+                currentVideoStage = 'main';
+                console.log('[Cinematic] switch to main video:', reason);
+
+                stopIntroLogoBgm();
+
+                setVideoPresentation(video, 'main');
+                applyVideoSource(video, CINEMATIC_VIDEO_PATH);
+                video.currentTime = 0;
+                startMainCinematicBgm();
+
+                armVideoWatchers((failReason) => {
+                    startCanvasOnce(`main_${failReason}`);
+                });
+
+                const playPromise = video.play();
+                if (playPromise !== undefined) {
+                    playPromise.catch(err => {
+                        if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
+                        console.warn('[Cinematic] Main video autoplay blocked:', err);
+                        startCanvasOnce('main_video_play_rejected');
+                    });
+                }
+
+            };
+
+            const handleVideoFailure = (reason) => {
+                if (currentVideoStage === 'logo' && !mainVideoStarted) {
+                    startMainVideoOnce(`logo_${reason}`);
+                    return;
+                }
+                startCanvasOnce(reason);
             };
 
             video.classList.remove('hidden');
             canvas.classList.add('hidden');
 
-            // 鍮꾨뵒??醫낅즺 ??罹붾쾭???좊땲硫붿씠???쒖옉
-            video.onended = () => startCanvasOnce('video_ended');
-            video.onerror = () => startCanvasOnce('video_error');
-
-            // 鍮꾨뵒???ъ깮 ?쒕룄
+            // 1) Intro logo video + intro logo BGM
+            currentVideoStage = 'logo';
+            mainVideoStarted = false;
+            setVideoPresentation(video, 'logo');
+            applyVideoSource(video, INTRO_LOGO_VIDEO_PATH);
             video.currentTime = 0;
-            videoFallbackTimer = setTimeout(() => {
-                videoFallbackTimer = null;
-                if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-                if (video.paused || video.currentTime <= 0.05) {
-                    startCanvasOnce('video_fallback_timeout');
+            startIntroLogoBgm();
+            try {
+                if (!mainCinematicAudio) {
+                    mainCinematicAudio = new Audio(MAIN_CINEMATIC_BGM_PATH);
+                    mainCinematicAudio.preload = 'auto';
+                    mainCinematicAudio.loop = false;
+                    mainCinematicAudio.volume = 0.72;
+                    mainCinematicAudio.load();
                 }
-            }, CONFIG.videoFallbackMs);
+            } catch (err) {
+                console.warn('[Cinematic] Main cinematic audio preload failed:', err);
+            }
 
-            let lastVideoTime = 0;
-            let stallWindowStartedAt = Date.now();
-            videoStallTimer = setInterval(() => {
+            video.onended = () => {
                 if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-                if (video.ended) {
-                    startCanvasOnce('video_ended_watchdog');
+                if (currentVideoStage === 'logo' && !mainVideoStarted) {
+                    startMainVideoOnce('logo_ended');
                     return;
                 }
-                const currentVideoTime = Number(video.currentTime) || 0;
-                if (currentVideoTime > lastVideoTime + 0.03) {
-                    lastVideoTime = currentVideoTime;
-                    stallWindowStartedAt = Date.now();
-                    return;
+                completePlaybackOnce('main_video_ended');
+            };
+            video.ontimeupdate = () => {
+                if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
+                if (currentVideoStage === 'logo' && !mainVideoStarted) {
+                    const current = Number(video.currentTime) || 0;
+                    if (current >= INTRO_LOGO_MAX_SECONDS) {
+                        startMainVideoOnce('logo_trim_3s');
+                    }
                 }
-                if (video.paused) return;
-                if ((Date.now() - stallWindowStartedAt) >= CONFIG.videoStallTimeoutMs) {
-                    startCanvasOnce('video_stalled_timeout');
-                }
-            }, 350);
+            };
+            video.onerror = () => handleVideoFailure('video_error');
+
+            armVideoWatchers((failReason) => {
+                handleVideoFailure(`logo_${failReason}`);
+            });
 
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise.catch(err => {
                     if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-                    console.warn('[Cinematic] Video autoplay blocked, starting canvas directly:', err);
-                    startCanvasOnce('video_play_rejected');
+                    console.warn('[Cinematic] Intro logo video autoplay blocked:', err);
+                    handleVideoFailure('video_play_rejected');
                 });
             }
         } else {
             if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-            // 鍮꾨뵒???놁쑝硫?諛붾줈 罹붾쾭???쒖옉
-            canvas.classList.remove('hidden');
-            startCanvasAnimation(onComplete);
+            // 비디오가 없으면 구버전 캔버스 재생 없이 바로 로비로 종료한다.
+            stop('video_missing');
+            markAsWatched();
+            if (typeof onComplete === 'function') onComplete();
         }
     }
 
@@ -320,7 +468,6 @@
         console.log('[Cinematic] stop()', reason);
         cinematicSessionToken += 1;
         cinematicStopped = true;
-        clearCinematicAudioTimer();
         clearVideoPreviewTimers();
         clearSkipEnableTimer();
         if (animationId) {
@@ -335,6 +482,7 @@
             video.currentTime = 0;
             video.onended = null;
             video.onerror = null;
+            video.ontimeupdate = null;
         }
         const skipBtn = document.getElementById('cinematic-skip-btn');
         if (skipBtn) {
@@ -344,11 +492,8 @@
         }
 
         // ?ㅻ뵒???뺣━
-        if (cinematicAudio) {
-            cinematicAudio.pause();
-            cinematicAudio.currentTime = 0;
-            cinematicAudio = null;
-        }
+        stopIntroLogoBgm();
+        stopMainCinematicBgm();
         if (impactSfxAudio) {
             impactSfxAudio.pause();
             impactSfxAudio.currentTime = 0;
@@ -776,7 +921,7 @@
             const endElapsed = getPhaseElapsed(endStartedAt);
             const fadeAlpha = Math.min(1, endElapsed / CONFIG.endFadeFrames);
 
-            if (fadeAlpha > 0.3) {
+            if (CONFIG.showEndingLogo && fadeAlpha > 0.3) {
                 ctx.fillStyle = `rgba(255,255,255,${fadeAlpha})`;
                 ctx.font = 'bold 72px Arial';
                 ctx.textAlign = 'center';

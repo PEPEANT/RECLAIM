@@ -4544,7 +4544,7 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-grid {
     width: min(100%, 1920px);
-    min-width: 760px;
+    min-width: 0;
     max-width: 1920px;
     aspect-ratio: 24 / 14;
     display: grid;
@@ -4552,13 +4552,7 @@ input[type=range]::-webkit-slider-runnable-track {
     padding: 8px;
     border-radius: 0;
     border: none;
-    background:
-        radial-gradient(circle at 18% 12%, rgba(255, 255, 255, 0.17), transparent 34%),
-        radial-gradient(circle at 82% 18%, rgba(255, 255, 255, 0.1), transparent 28%),
-        repeating-linear-gradient(35deg,
-            rgba(56, 121, 49, 0.12) 0 18px,
-            rgba(78, 145, 63, 0.08) 18px 36px),
-        linear-gradient(180deg, #75c95c 0%, #5ca54a 56%, #4f9542 100%);
+    background: linear-gradient(180deg, #74bf5d 0%, #5ba84d 58%, #4b9440 100%);
     box-shadow:
         inset 0 0 0 1px rgba(255, 255, 255, 0.1),
         0 14px 28px rgba(0, 0, 0, 0.25);
@@ -4569,6 +4563,8 @@ input[type=range]::-webkit-slider-runnable-track {
     display: flex;
     align-items: center;
     justify-content: center;
+    min-width: 0;
+    min-height: 0;
     border-radius: 0;
     border: none;
     padding: 0;
@@ -4589,41 +4585,39 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-cell.ground-grass {
-    background: transparent;
+    background: rgba(110, 172, 76, 1);
 }
 
 .city-cell.ground-concrete {
-    background: transparent;
+    background: rgba(176, 191, 205, 0.93);
 }
 
 .city-cell.ground-dirt {
-    background: transparent;
+    background: rgba(126, 103, 74, 0.96);
 }
 
 .city-cell.ground-asphalt {
-    background: transparent;
+    background: rgba(60, 65, 75, 0.93);
 }
 
 .city-cell-readonly.ground-grass {
-    background: rgba(118, 176, 87, 0.9);
+    background: transparent;
 }
 
 .city-cell-readonly.ground-concrete {
-    background: rgba(176, 191, 205, 0.9);
+    background: transparent;
 }
 
 .city-cell-readonly.ground-dirt {
-    background:
-        linear-gradient(180deg, rgba(171, 146, 112, 0.5), rgba(110, 86, 58, 0.45)),
-        rgba(125, 101, 71, 0.95);
+    background: transparent;
 }
 
 .city-cell-readonly.ground-asphalt {
-    background: rgba(60, 65, 75, 0.9);
+    background: transparent;
 }
 
 .city-ground-surface {
-    --ground-fill: rgba(168, 182, 198, 0.93);
+    --ground-fill: rgba(168, 182, 198, 1);
     position: absolute;
     inset: 0;
     z-index: 0;
@@ -4633,6 +4627,22 @@ input[type=range]::-webkit-slider-runnable-track {
     box-shadow: none;
 }
 
+.city-ground-surface.ground-grass {
+    --ground-fill: rgba(110, 172, 76, 1);
+    background:
+        repeating-linear-gradient(80deg,
+            rgba(49, 104, 38, 0.14) 0 1px,
+            transparent 1px 7px),
+        repeating-linear-gradient(103deg,
+            rgba(182, 222, 136, 0.12) 0 1px,
+            transparent 1px 9px),
+        var(--ground-fill);
+    background-size: 12px 12px, 14px 14px, auto;
+    background-position: 1px 2px, 5px 4px, 0 0;
+    box-shadow: none;
+    filter: none;
+}
+
 .city-ground-surface.ground-concrete {
     --ground-fill: rgba(176, 191, 205, 0.93);
 }
@@ -4640,12 +4650,32 @@ input[type=range]::-webkit-slider-runnable-track {
 .city-ground-surface.ground-dirt {
     --ground-fill: rgba(126, 103, 74, 0.96);
     background:
-        linear-gradient(180deg, rgba(164, 137, 103, 0.52), rgba(95, 74, 52, 0.46)),
+        radial-gradient(circle at 20% 28%, rgba(157, 132, 99, 0.24) 0 1.1px, transparent 1.2px),
+        radial-gradient(circle at 64% 44%, rgba(92, 74, 53, 0.20) 0 1.3px, transparent 1.4px),
+        radial-gradient(circle at 78% 76%, rgba(173, 148, 117, 0.18) 0 0.9px, transparent 1px),
         var(--ground-fill);
+    background-size: 14px 14px, 18px 18px, 12px 12px, auto;
+    background-position: 1px 1px, 6px 5px, 3px 8px, 0 0;
+    box-shadow: none;
+    filter: none;
 }
 
 .city-ground-surface.ground-asphalt {
     --ground-fill: rgba(60, 65, 75, 0.93);
+    background:
+        linear-gradient(180deg, rgba(101, 108, 120, 0.08), rgba(33, 38, 47, 0.08)),
+        repeating-linear-gradient(0deg,
+            rgba(149, 156, 167, 0.08) 0 1px,
+            transparent 1px 4px),
+        repeating-linear-gradient(90deg,
+            rgba(21, 25, 32, 0.1) 0 1px,
+            transparent 1px 6px),
+        radial-gradient(circle at 30% 35%, rgba(176, 182, 193, 0.1) 0 0.8px, transparent 0.9px),
+        var(--ground-fill);
+    background-size: 100% 100%, 10px 10px, 14px 14px, 12px 12px, auto;
+    background-position: 0 0, 0 0, 3px 2px, 2px 5px, 0 0;
+    box-shadow: none;
+    filter: none;
 }
 
 .city-cell-icon {
@@ -4943,10 +4973,10 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-cell-sprite {
     position: absolute;
-    left: 2%;
-    top: -2%;
-    width: 96%;
-    height: 96%;
+    left: 0.5%;
+    top: -0.5%;
+    width: 99%;
+    height: 99%;
     object-fit: contain;
     z-index: 1;
     pointer-events: none;
@@ -4976,10 +5006,10 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-cell.tile-airport .city-cell-sprite {
-    left: -0.5%;
-    top: -0.5%;
-    width: 101%;
-    height: 101%;
+    left: -1.25%;
+    top: -1.25%;
+    width: 102.5%;
+    height: 102.5%;
     object-fit: fill;
     image-rendering: auto;
 }
@@ -5760,7 +5790,10 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-cell-ground-ghost {
-    position: relative;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     z-index: 2;
     min-width: 22px;
     min-height: 16px;
@@ -7552,6 +7585,14 @@ input[type=range]::-webkit-slider-runnable-track {
     line-height: 1;
 }
 
+.city-unit-profile-skillslot-item-img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+    border-radius: 3px;
+    display: block;
+}
+
 .city-unit-profile-skillslot-index {
     color: #60a5fa;
     font-size: 0.58rem;
@@ -7753,6 +7794,11 @@ input[type=range]::-webkit-slider-runnable-track {
         font-size: 0.6rem;
     }
 
+    .city-unit-profile-skillslot-item-img {
+        width: 18px;
+        height: 18px;
+    }
+
     .city-unit-profile-skillslot-name {
         font-size: 0.52rem;
     }
@@ -7896,6 +7942,11 @@ input[type=range]::-webkit-slider-runnable-track {
 
     .city-unit-profile-skillslot-icon {
         font-size: 0.56rem;
+    }
+
+    .city-unit-profile-skillslot-item-img {
+        width: 16px;
+        height: 16px;
     }
 
     .city-unit-profile-skillslot-name {
@@ -9796,6 +9847,11 @@ input[type=range]::-webkit-slider-runnable-track {
 
 #cinematic-video {
     position: absolute;
+    z-index: 100;
+    background: #000;
+}
+
+#cinematic-video.cinematic-video-logo {
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
@@ -9803,7 +9859,17 @@ input[type=range]::-webkit-slider-runnable-track {
     max-height: 60%;
     width: auto;
     height: auto;
-    z-index: 100;
+    object-fit: contain;
+    object-position: center;
+}
+
+#cinematic-video.cinematic-video-main {
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    transform: none;
+    object-fit: contain;
+    object-position: center;
 }
 
 #cinematic-video.hidden {
@@ -9865,8 +9931,7 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 @media (max-width: 640px) {
-    #cinematic-video {
-        position: absolute;
+    #cinematic-video.cinematic-video-logo {
         top: 50%;
         left: 50%;
         transform: translate(-50%, -50%);
@@ -9875,6 +9940,16 @@ input[type=range]::-webkit-slider-runnable-track {
         height: auto;
         max-height: 46vh;
         object-fit: contain;
+        object-position: center;
+    }
+
+    #cinematic-video.cinematic-video-main {
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        transform: none;
+        object-fit: contain;
+        object-position: center;
     }
 
     #cinematic-skip-btn {
@@ -10036,6 +10111,148 @@ input[type=range]::-webkit-slider-runnable-track {
 /* Keep lobby/hidden-state authoritative even when desktop split forces display */
 #hud-footer.hidden {
     display: none !important;
+}
+
+/* Mobile direct control overlay (simple fire pad) */
+.mobile-direct-ui {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 88;
+}
+
+.mobile-direct-ui.hidden {
+    display: none !important;
+}
+
+.mobile-direct-stick-wrap {
+    position: absolute;
+    left: max(12px, env(safe-area-inset-left, 0px));
+    bottom: calc(var(--hud-main-height, 108px) + env(safe-area-inset-bottom, 0px) + 6px);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    pointer-events: none;
+}
+
+.mobile-direct-stick-zone {
+    width: 96px;
+    height: 96px;
+    border-radius: 999px;
+    border: 2px solid rgba(148, 163, 184, 0.58);
+    background: radial-gradient(circle at 35% 35%, rgba(71, 85, 105, 0.28) 0%, rgba(2, 6, 23, 0.68) 72%);
+    box-shadow: 0 8px 18px rgba(2, 6, 23, 0.6);
+    pointer-events: auto;
+    touch-action: none;
+    position: relative;
+}
+
+.mobile-direct-stick {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 36px;
+    height: 36px;
+    margin-left: -18px;
+    margin-top: -18px;
+    border-radius: 999px;
+    border: 2px solid rgba(226, 232, 240, 0.8);
+    background: radial-gradient(circle at 35% 30%, rgba(203, 213, 225, 0.9) 0%, rgba(71, 85, 105, 0.92) 80%);
+    box-shadow: 0 4px 12px rgba(2, 6, 23, 0.65);
+    transition: transform 0.05s linear;
+    will-change: transform;
+    pointer-events: none;
+}
+
+.mobile-direct-fire-label {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.4px;
+    color: rgba(226, 232, 240, 0.78);
+    text-shadow: 0 1px 4px rgba(2, 6, 23, 0.78);
+    pointer-events: none;
+}
+
+.mobile-direct-status {
+    min-width: 96px;
+    text-align: center;
+    padding: 3px 6px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.44);
+    background: rgba(2, 6, 23, 0.64);
+    color: rgba(226, 232, 240, 0.92);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    letter-spacing: 0.2px;
+}
+
+@media (pointer: coarse) and (max-width: 1024px) {
+    #hud-footer.hud-mobile-direct-active #hud-left {
+        flex: 0 0 56px !important;
+        width: 56px !important;
+        padding: 3px !important;
+        border-color: rgba(96, 165, 250, 0.72);
+    }
+
+    #hud-footer.hud-mobile-direct-active #hud-minimap-wrapper {
+        width: 46px !important;
+        min-height: 46px !important;
+        height: 46px !important;
+        margin: 0 auto !important;
+        position: relative;
+        border-radius: 12px !important;
+        border: 1px solid rgba(148, 163, 184, 0.72);
+        overflow: hidden;
+    }
+
+    #hud-footer.hud-mobile-direct-active #hud-minimap-wrapper::after {
+        content: 'MAP';
+        position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%, -50%);
+        font-size: 9px;
+        font-weight: 800;
+        color: rgba(226, 232, 240, 0.9);
+        text-shadow: 0 1px 4px rgba(2, 6, 23, 0.7);
+        pointer-events: none;
+    }
+
+    #hud-footer.hud-mobile-direct-active ~ #mobile-direct-ui .mobile-direct-stick-wrap {
+        left: calc(max(8px, env(safe-area-inset-left, 0px)) + 58px);
+        bottom: calc(var(--hud-main-height, 108px) + env(safe-area-inset-bottom, 0px) + 4px);
+    }
+}
+
+@media (pointer: coarse) and (max-width: 680px) {
+    .mobile-direct-stick-zone {
+        width: 86px;
+        height: 86px;
+    }
+
+    .mobile-direct-stick {
+        width: 32px;
+        height: 32px;
+        margin-left: -16px;
+        margin-top: -16px;
+    }
+
+    .mobile-direct-status {
+        min-width: 86px;
+        font-size: 9px;
+    }
+}
+
+@media (pointer: fine) {
+    .mobile-direct-ui {
+        display: none !important;
+    }
 }
 
 /* Legacy overlay unit panel must stay hidden unless HUD moves it into right slot/production area */

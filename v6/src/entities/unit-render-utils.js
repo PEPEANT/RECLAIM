@@ -14,7 +14,7 @@
         apc: 26,    // Slightly larger APC model/height requires a bit more snap.
         mbt: 24,    // Tracked hull bottom (y=15) * current V2 battle scale ~= 24.
         spg: 24,    // Same tracked baseline with current V2 battle scale.
-        aa_tank: 2,
+        aa_tank: 18, // V2 aa_tank track bottom (y=15) * current battle world scale ~= 18.
         icbm: 4,
         icbm_enemy: 4
     };
@@ -230,6 +230,110 @@
         ctx.strokeRect(barX - w / 2, barY, w, h);
     }
 
+    function getUnitIconProfile(unitKey, unitDef, options) {
+        const key = String(unitKey || '').trim();
+        const def = unitDef || {};
+        const opts = options || {};
+
+        const centerX = Number.isFinite(Number(opts.centerX)) ? Number(opts.centerX) : 32;
+        const bottomY = Number.isFinite(Number(opts.bottomY)) ? Number(opts.bottomY) : 44;
+        let scale = Number.isFinite(Number(opts.baseScale)) ? Number(opts.baseScale) : 0.8;
+        let offsetY = Number.isFinite(Number(opts.baseOffsetY)) ? Number(opts.baseOffsetY) : 0;
+
+        if (key === 'drone_suicide') {
+            scale = 1.02;
+            offsetY = -4;
+        } else if (key === 'drone_at') {
+            scale = 0.96;
+            offsetY = -4;
+        } else if (key === 'blackhawk' || key === 'chinook') {
+            scale = 0.35;
+            offsetY = -15;
+        } else if (key === 'bomber') {
+            scale = 0.30;
+            offsetY = -10;
+        } else if (key === 'apache' || key === 'fighter') {
+            scale = 0.45;
+            offsetY = -12;
+        } else if (key === 'humvee') {
+            scale = 0.60;
+            offsetY = -14;
+        } else if (key === 'apc' || key === 'aa_tank') {
+            scale = 0.56;
+            offsetY = -10;
+        } else if (key === 'mbt' || key === 'spg') {
+            scale = 0.52;
+            offsetY = -10;
+        } else if (key === 'icbm' || key === 'icbm_enemy') {
+            scale = 0.34;
+            offsetY = -8;
+        } else if (key === 'emp' || key === 'nuke' || key === 'tactical_missile') {
+            scale = 0.70;
+            offsetY = -8;
+        } else if ((Number(def.width) || 0) > 60) {
+            scale = 0.46;
+            offsetY = -5;
+        } else if ((Number(def.width) || 0) > 40) {
+            scale = 0.55;
+            offsetY = -3;
+        } else if (def.type === 'air') {
+            scale = 0.60;
+            offsetY = -8;
+        }
+
+        return { centerX, bottomY, scale, offsetY };
+    }
+
+    function drawUnitIconToCanvas(ctx, unitKey, unitDef, options) {
+        if (!ctx) return false;
+        const key = String(unitKey || '').trim();
+        if (!key) return false;
+        const def = unitDef || {};
+        const opts = options || {};
+        const profile = getUnitIconProfile(key, def, opts);
+
+        let drew = false;
+        try {
+            ctx.save();
+            ctx.translate(profile.centerX, profile.bottomY + profile.offsetY);
+            ctx.scale(profile.scale, profile.scale);
+
+            const registry = (typeof globalScope !== 'undefined' && globalScope && globalScope.UnitRenderV2Registry)
+                ? globalScope.UnitRenderV2Registry
+                : null;
+            const renderer = registry && registry[key];
+            if (renderer && typeof renderer.drawIcon === 'function') {
+                drew = (renderer.drawIcon(ctx, { iconScale: 1 }) === true);
+            }
+
+            if (!drew && typeof Unit !== 'undefined') {
+                const dummy = new Unit(key, 0, 0, 'player');
+                dummy.hideHp = true;
+                dummy.disableFeetSnap = true;
+                dummy.iconRenderBackTurret = true;
+                if (dummy.stats && dummy.stats.type === 'air') dummy.y = 0;
+                dummy.draw(ctx);
+                drew = true;
+            }
+            ctx.restore();
+        } catch (_) {
+            try { ctx.restore(); } catch (_) { }
+            drew = false;
+        }
+
+        if (!drew && opts.drawFallback !== false) {
+            const w = Math.max(10, Math.min(50, Math.round((Number(def.width) || 30) * 0.9)));
+            const h = Math.max(6, Math.min(26, Math.round((Number(def.height) || 16) * 0.9)));
+            ctx.fillStyle = def.color || '#38bdf8';
+            ctx.globalAlpha = 0.9;
+            ctx.fillRect((60 - w) / 2, (40 - h) / 2 + 6, w, h);
+            ctx.globalAlpha = 1;
+            return true;
+        }
+
+        return drew;
+    }
+
     globalScope.UnitRenderUtils = {
         shouldFeetSnap,
         getFeetYFromSkin,
@@ -237,6 +341,8 @@
         getFeetYForRender,
         computeFeetSnapDy,
         renderSkinLayers,
-        drawUnitHpBar
+        drawUnitHpBar,
+        getUnitIconProfile,
+        drawUnitIconToCanvas
     };
 })(typeof window !== 'undefined' ? window : globalThis);

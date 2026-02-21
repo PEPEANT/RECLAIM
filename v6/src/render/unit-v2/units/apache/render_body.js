@@ -107,8 +107,9 @@
         // Step → 전방 조종석 (CPG, 낮고 경사)
         ctx.lineTo( 44, -22);
         ctx.lineTo( 62, -22);
-        // 기수 사면 (날카로운 웨지)
-        ctx.lineTo( 86,  -4);
+        // 기수 사면 (완만한 이중 경사)
+        ctx.lineTo( 74, -14);  // 중간점 추가
+        ctx.lineTo( 88,  -3);
         ctx.lineTo( 98,   0);
         ctx.lineTo(104,   6);  // 노즈 포인트
         // 기수 하단 / 턱
@@ -131,7 +132,8 @@
         ctx.beginPath();
         ctx.moveTo(-6, -16); ctx.lineTo(14, -16);
         ctx.lineTo(44, -22); ctx.lineTo(62, -22);
-        ctx.lineTo(86, -4);  ctx.lineTo(98,  0);
+        ctx.lineTo(74, -14); ctx.lineTo(88, -3);
+        ctx.lineTo(98,  0);
         ctx.stroke();
 
         // ── 7. T700 엔진 나셀 ─────────────────────────────────────────
@@ -168,27 +170,42 @@
         ctx.stroke();
 
         // ── 8. 조종석 캐노피 ──────────────────────────────────────────
-        // 후방 Pilot: 좁고 높은 박스형
+        // 후방 Pilot: 후방 상단에 곡선 슬로프
         ctx.fillStyle = c.glass;
-        poly(ctx, [18, -32,  40, -32,  42, -46,  24, -48,  17, -38]);
+        ctx.beginPath();
+        ctx.moveTo(18, -32);
+        ctx.lineTo(40, -32);
+        ctx.lineTo(42, -46);
+        ctx.quadraticCurveTo(33, -51, 24, -48);
+        ctx.lineTo(17, -38);
+        ctx.closePath();
         ctx.fill();
-        // 전방 CPG: 넓고 낮은 랩어라운드
+        // 전방 CPG: 랩어라운드 곡선 앞유리
         ctx.fillStyle = c.glass;
-        poly(ctx, [46, -21,  62, -21,  82, -4,  44, -4]);
+        ctx.beginPath();
+        ctx.moveTo(44, -4);
+        ctx.lineTo(46, -21);
+        ctx.lineTo(62, -21);
+        ctx.quadraticCurveTo(78, -10, 84, -2);
+        ctx.closePath();
         ctx.fill();
         // 프레임
         ctx.strokeStyle = c.body; ctx.lineWidth = 3.5;
         ctx.beginPath(); ctx.moveTo(43, -48); ctx.lineTo(43, -4); ctx.stroke();
         ctx.lineWidth = 2.5;
         ctx.beginPath(); ctx.moveTo(24, -48); ctx.lineTo(17, -38); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(62, -21); ctx.lineTo(72,  -4); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(62, -21); ctx.lineTo(76,  -3); ctx.stroke();
         ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(18, -32); ctx.lineTo(43, -32); ctx.stroke();
         // 반사광
         ctx.strokeStyle = c.glassRef; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(27, -45); ctx.lineTo(37, -43); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(48, -18); ctx.lineTo(58, -18); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(64, -12); ctx.lineTo(72,  -7); ctx.stroke();
+        // CPG 앞유리 곡선 반사
+        ctx.beginPath();
+        ctx.moveTo(49, -19);
+        ctx.quadraticCurveTo(63, -15, 74, -6);
+        ctx.stroke();
         ctx.strokeStyle = 'rgba(80,140,200,0.22)'; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(28, -42); ctx.lineTo(36, -40); ctx.stroke();
 
@@ -202,55 +219,58 @@
         ctx.beginPath(); ctx.arc(99, -1, 1.8, 0, Math.PI * 2); ctx.fill();
         // TADS 마운트
         ctx.fillStyle = c.dark; ctx.fillRect(87, 8, 12, 5);
+        // 짐벌 링 (외부 마운트)
+        ctx.strokeStyle = c.metal; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.arc(97, 18, 12, 0, Math.PI * 2); ctx.stroke();
         // TADS 터렛 구체
         ctx.fillStyle = '#1c2028';
         ctx.beginPath(); ctx.arc(97, 18, 10, 0, Math.PI * 2); ctx.fill();
         ctx.fillStyle = c.dark;
         ctx.beginPath(); ctx.arc(97, 18, 8,  0, Math.PI * 2); ctx.fill();
-        // 렌즈
+        // 렌즈 삼각 배치: FLIR(좌) + DVO(우) + LRFD 레이저(하단)
         ctx.fillStyle = '#080e18';
-        ctx.beginPath(); ctx.arc(101, 14, 4.5, 0, Math.PI * 2); ctx.fill();
-        ctx.beginPath(); ctx.arc(101, 22, 3.2, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(20,60,120,0.6)';
-        ctx.beginPath(); ctx.arc(102, 13, 2.2, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(20,60,120,0.4)';
-        ctx.beginPath(); ctx.arc(102, 21, 1.5, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(93, 14, 3.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(101, 14, 3.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(97, 21, 2.8, 0, Math.PI * 2); ctx.fill();
+        ctx.fillStyle = 'rgba(20,60,120,0.55)';
+        ctx.beginPath(); ctx.arc(94, 13, 1.8, 0, Math.PI * 2); ctx.fill();
+        ctx.beginPath(); ctx.arc(102, 13, 1.8, 0, Math.PI * 2); ctx.fill();
 
         // ── 10. 스터브 윙 & 무장 파일런 ──────────────────────────────
         ctx.fillStyle = c.body;
-        poly(ctx, [6, 4,  32, 4,  34, 10,  30, 16,  6, 14]);
+        poly(ctx, [6, 4,  36, 4,  40, 10,  36, 18,  6, 14]);
         ctx.fill();
         ctx.fillStyle = c.dark;
-        poly(ctx, [6, 10,  30, 10,  30, 16,  6, 14]);
+        poly(ctx, [6, 10,  36, 10,  36, 18,  6, 14]);
         ctx.fill();
         ctx.strokeStyle = c.accent; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.moveTo(6, 4); ctx.lineTo(32, 4); ctx.lineTo(34, 10); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(6, 4); ctx.lineTo(36, 4); ctx.lineTo(40, 10); ctx.stroke();
 
         // 파일런
         ctx.fillStyle = c.weapon;
-        ctx.beginPath(); ctx.roundRect(20, 16, 10, 8, 2); ctx.fill();
-        ctx.beginPath(); ctx.roundRect(2,  16, 10, 8, 2); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(24, 18, 10, 8, 2); ctx.fill();
+        ctx.beginPath(); ctx.roundRect(4,  18, 10, 8, 2); ctx.fill();
 
         // AGM-114 헬파이어 미사일 (2열)
-        var missileYs = [24, 31];
+        var missileYs = [26, 33];
         for (var m = 0; m < missileYs.length; m++) {
             var my = missileYs[m];
             ctx.fillStyle = c.weapon;
-            ctx.beginPath(); ctx.roundRect(2, my, 36, 5.5, 2); ctx.fill();
+            ctx.beginPath(); ctx.roundRect(4, my, 36, 5.5, 2); ctx.fill();
             ctx.fillStyle = '#1e2228';
-            ctx.fillRect(4, my + 0.5, 28, 4.5);
+            ctx.fillRect(6, my + 0.5, 28, 4.5);
             // 탄두
             ctx.fillStyle = '#2c3038';
             ctx.beginPath();
-            ctx.moveTo(32, my + 0.5); ctx.lineTo(38, my + 2.75); ctx.lineTo(32, my + 5);
+            ctx.moveTo(34, my + 0.5); ctx.lineTo(40, my + 2.75); ctx.lineTo(34, my + 5);
             ctx.fill();
             // 식별띠
-            ctx.fillStyle = '#b45309'; ctx.fillRect(18, my, 2.5, 5.5);
-            ctx.fillStyle = '#d97706'; ctx.fillRect(9,  my, 2,   5.5);
+            ctx.fillStyle = '#b45309'; ctx.fillRect(20, my, 2.5, 5.5);
+            ctx.fillStyle = '#d97706'; ctx.fillRect(11, my, 2,   5.5);
             // 꼬리핀
             ctx.fillStyle = c.dark;
-            ctx.fillRect(2, my + 0.5, 5, 2);
-            ctx.fillRect(2, my + 3,   5, 2);
+            ctx.fillRect(4, my + 0.5, 5, 2);
+            ctx.fillRect(4, my + 3,   5, 2);
         }
 
         // M261 하이드라 70 로켓포드 (내측)
@@ -317,9 +337,14 @@
         ctx.fillRect(5, -22, 2, 28);
 
         ctx.fillStyle = c.dark;
-        ctx.fillRect(-10, -44, 28, 18);
+        ctx.beginPath();
+        ctx.roundRect(-10, -46, 28, 20, [2, 2, 4, 4]);
+        ctx.fill();
+        // 상단 허브 캡 (반원)
+        ctx.fillStyle = c.metal;
+        ctx.beginPath(); ctx.arc(4, -46, 10, Math.PI, 0); ctx.fill();
         // 스워시 플레이트
-        ctx.strokeStyle = '#222629'; ctx.lineWidth = 2;
+        ctx.strokeStyle = c.accent; ctx.lineWidth = 2;
         ctx.beginPath(); ctx.moveTo(-10, -36); ctx.lineTo(18, -36); ctx.stroke();
         // 피치 링크
         ctx.strokeStyle = '#282c30'; ctx.lineWidth = 1.5;
@@ -329,8 +354,6 @@
             ctx.lineTo(-8 + p * 5.5, -28);
             ctx.stroke();
         }
-        ctx.fillStyle = c.accent;
-        ctx.fillRect(-10, -46, 28, 4);
 
         // ── 14. AN/APG-78 롱보우 레이더 돔 ───────────────────────────
         ctx.fillStyle = c.body;

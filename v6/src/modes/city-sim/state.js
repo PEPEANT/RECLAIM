@@ -617,14 +617,6 @@
         for (let i = 0; i < game.citySim.ground.length; i++) {
             game.citySim.ground[i] = normalizeGroundType(game.citySim.ground[i]);
         }
-        applyPerimeterGround(
-            game.citySim.ground,
-            Math.max(1, Math.floor(Number(game.citySim.cols) || DEFAULT_COLS)),
-            Math.max(1, Math.floor(Number(game.citySim.rows) || DEFAULT_ROWS)),
-            'grass',
-            1
-        );
-
         if (!game.citySim.hud || typeof game.citySim.hud !== 'object') {
             game.citySim.hud = {
                 level: MIN_CITY_LEVEL,

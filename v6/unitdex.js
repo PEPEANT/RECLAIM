@@ -179,68 +179,27 @@ const UnitDex = {
         const canvas = document.createElement('canvas');
         canvas.width = 64;
         canvas.height = 48;
-
-        // Check if Unit class is available
-        if (typeof Unit === 'undefined') {
-            // Fallback: just fill with placeholder
-            const ctx = canvas.getContext('2d');
-            ctx.fillStyle = unit.color || '#3b82f6';
-            ctx.fillRect(16, 12, 32, 24);
-            return canvas;
-        }
-
         const ctx = canvas.getContext('2d');
-        ctx.save();
+        if (!ctx) return canvas;
 
-        // 유닛은 (0,0)에서 위쪽으로 그려지므로 캔버스 하단 중앙으로 translate
-        const canvasCenterX = 32;
-        const canvasBottomY = 44;
+        const iconUtils = (typeof UnitRenderUtils !== 'undefined') ? UnitRenderUtils : null;
+        const drew = !!(iconUtils && typeof iconUtils.drawUnitIconToCanvas === 'function'
+            && iconUtils.drawUnitIconToCanvas(ctx, key, unit, {
+                centerX: 32,
+                bottomY: 44,
+                baseScale: 0.7,
+                baseOffsetY: 0,
+                drawFallback: false
+            }));
 
-        // 유닛 크기에 따라 스케일 및 Y 위치 조정
-        let scale = 0.7;
-        let offsetY = 0;
-
-        // 헬기/큰 유닛 특별 처리
-        if (key === 'blackhawk' || key === 'chinook') {
-            scale = 0.35;
-            offsetY = -15;
-        } else if (key === 'bomber') {
-            scale = 0.3;
-            offsetY = -10;
-        } else if (key === 'apache' || key === 'fighter') {
-            scale = 0.45;
-            offsetY = -12;
-        } else if (key === 'humvee') {
-            // 험비: 특수한 feetY 오프셋 보정
-            scale = 0.65;
-            offsetY = -18;
-        } else if (key === 'emp' || key === 'nuke' || key === 'tactical_missile') {
-            // 스킬 유닛: 중앙 배치
-            scale = 0.7;
-            offsetY = -8;
-        } else if (unit.width > 60) {
-            scale = 0.45;
-            offsetY = -5;
-        } else if (unit.width > 40) {
-            scale = 0.55;
-            offsetY = -3;
-        } else if (unit.type === 'air') {
-            scale = 0.6;
-            offsetY = -8;
+        if (!drew) {
+            const w = Math.max(10, Math.min(50, Math.round((Number(unit?.width) || 30) * 0.9)));
+            const h = Math.max(6, Math.min(26, Math.round((Number(unit?.height) || 16) * 0.9)));
+            ctx.fillStyle = unit?.color || '#3b82f6';
+            ctx.globalAlpha = 0.9;
+            ctx.fillRect((60 - w) / 2, (40 - h) / 2 + 6, w, h);
+            ctx.globalAlpha = 1;
         }
-
-        ctx.translate(canvasCenterX, canvasBottomY + offsetY);
-        ctx.scale(scale, scale);
-
-        // Create dummy unit for rendering
-        const dummy = new Unit(key, 0, 0, 'player');
-        dummy.hideHp = true;
-        dummy.disableFeetSnap = true;
-        dummy.iconRenderBackTurret = true;
-        if (dummy.stats.type === 'air') dummy.y = 0;
-
-        dummy.draw(ctx);
-        ctx.restore();
 
         return canvas;
     },

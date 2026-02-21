@@ -2,7 +2,8 @@
 (function attachUnitRenderV2_blackhawk(globalScope) {
     'use strict';
 
-    var BATTLE_MODEL_SCALE = 1.40;
+    var BATTLE_MODEL_SCALE = 2.12;
+    var ICON_MODEL_SCALE = 1.40;
     var BATTLE_BASE_DRAW_SCALE = 1.4;
     var BATTLE_WORLD_SCALE = BATTLE_BASE_DRAW_SCALE * BATTLE_MODEL_SCALE;
 
@@ -18,6 +19,8 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (team === 'ally') team = 'player';
+        if (team === 'foe') team = 'enemy';
         if (team === 'enemy') {
             return {
                 body: '#a88f69',
@@ -33,7 +36,6 @@
                 enemyPattern: true
             };
         }
-        if (team !== 'player') return null;
         return {
             body: '#2e3136',
             dark: '#1c1e20',
@@ -65,9 +67,12 @@
         if (!Number.isFinite(facing) || facing === 0) {
             facing = Number(state && state.facing) || 1;
         }
+        facing = facing >= 0 ? 1 : -1;
 
         ctx.save();
-        if (facing < 0) ctx.scale(-1, 1);
+        // Source UH-60 vector is drawn facing left in local space.
+        // World facing(+1 right / -1 left) must be inverted for the model transform.
+        if (facing > 0) ctx.scale(-1, 1);
 
         if (Number.isFinite(modelScale) && modelScale > 0 && modelScale !== 1) {
             ctx.scale(modelScale, modelScale);
@@ -131,7 +136,7 @@
             team: 'player',
             iconMode: true,
             iconScale: Number(options && options.iconScale),
-            modelScale: BATTLE_MODEL_SCALE
+            modelScale: ICON_MODEL_SCALE
         });
     }
 

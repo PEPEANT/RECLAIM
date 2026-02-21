@@ -50,7 +50,7 @@
             cinematicLoaderStarted = true;
 
             const candidates = [
-                'src/ui/cinematic.js?v=20260214c3',
+                'src/ui/cinematic.js?v=20260221c4',
                 'src/ui/cinematic.js'
             ];
 

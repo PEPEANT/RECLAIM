@@ -11,6 +11,482 @@
     game.selectedUnits = new Set();
 
     // ============================================
+    // A-2) Direct Control runtime (combat units only)
+    //  - Toggle with E key / HUD interact command
+    //  - Eligible: mbt, spg, aa_tank, apache
+    //  - Transport heli keeps DROP/transport interaction flow
+    // ============================================
+    const DIRECT_CONTROL_ELIGIBLE_IDS = new Set(['mbt', 'spg', 'aa_tank', 'apache']);
+
+    function ensureDirectControlState() {
+        if (!game.directControl || typeof game.directControl !== 'object') {
+            game.directControl = {};
+        }
+        const state = game.directControl;
+        if (typeof state.active !== 'boolean') state.active = false;
+        if (!Object.prototype.hasOwnProperty.call(state, 'unit')) state.unit = null;
+        if (!state.keys || typeof state.keys !== 'object') state.keys = {};
+        if (state.weaponMode !== 'sub') state.weaponMode = 'main';
+
+        const keys = state.keys;
+        if (typeof keys.w !== 'boolean') keys.w = false;
+        if (typeof keys.a !== 'boolean') keys.a = false;
+        if (typeof keys.s !== 'boolean') keys.s = false;
+        if (typeof keys.d !== 'boolean') keys.d = false;
+        if (typeof keys.arrowLeft !== 'boolean') keys.arrowLeft = false;
+        if (typeof keys.arrowRight !== 'boolean') keys.arrowRight = false;
+        return state;
+    }
+
+    function clearDirectControlKeys() {
+        const state = ensureDirectControlState();
+        const keys = state.keys;
+        keys.w = false;
+        keys.a = false;
+        keys.s = false;
+        keys.d = false;
+        keys.arrowLeft = false;
+        keys.arrowRight = false;
+    }
+
+    function isDirectControlEligibleUnit(unit) {
+        if (!unit || unit.dead || !unit.stats) return false;
+        if (unit.team !== 'player') return false;
+        const id = String(unit.stats.id || '');
+        return DIRECT_CONTROL_ELIGIBLE_IDS.has(id);
+    }
+
+    function getSelectedDirectControlCandidate() {
+        if (!game.selectedUnits || game.selectedUnits.size !== 1) return null;
+        const it = game.selectedUnits.values().next();
+        const unit = (it && !it.done) ? it.value : null;
+        return isDirectControlEligibleUnit(unit) ? unit : null;
+    }
+
+    function syncDirectControlSelection(unit) {
+        if (!unit || unit.dead || !game.selectedUnits) return;
+        let changed = false;
+        game.selectedUnits.forEach((u) => {
+            if (u !== unit && u && !u.dead && u.isSelected) {
+                u.isSelected = false;
+                changed = true;
+            }
+        });
+        if (game.selectedUnits.size !== 1 || !game.selectedUnits.has(unit)) {
+            game.selectedUnits.clear();
+            game.selectedUnits.add(unit);
+            changed = true;
+        }
+        unit.isSelected = true;
+        if (game.selectedBuilding) {
+            game.selectedBuilding = null;
+            changed = true;
+        }
+        if (changed && typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') {
+            app.markUiDirty();
+        }
+    }
+
+    function getDirectControlEnemyPools(unit) {
+        if (!unit || unit.team !== 'player') {
+            return { enemies: [], enemyBuildings: [] };
+        }
+        const enemies = Array.isArray(game.enemies) ? game.enemies : [];
+        const enemyBuildings = Array.isArray(game.enemyBuildings)
+            ? game.enemyBuildings
+            : (Array.isArray(game.buildings) ? game.buildings.filter((b) => b && b.team === 'enemy') : []);
+        return { enemies, enemyBuildings };
+    }
+
+    function resolveDirectControlAutoTarget(unit) {
+        if (!unit || unit.dead || typeof unit.findNearestEnemy !== 'function') return null;
+        const pools = getDirectControlEnemyPools(unit);
+        const target = unit.findNearestEnemy(pools.enemies, pools.enemyBuildings);
+        if (!target || target.dead) return null;
+
+        const id = String((unit.stats && unit.stats.id) || '');
+        const unitRange = Number(unit.getEffectiveRange ? unit.getEffectiveRange() : (unit.stats && unit.stats.range)) || 0;
+        const missileRange = Number(unit.getEffectiveMissileRange ? unit.getEffectiveMissileRange() : unitRange) || unitRange;
+        const usesExtendedMissileRange = (id === 'apc' || id === 'engineer' || id === 'rpg');
+        const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
+        const dist = Math.abs((Number(target.x) || 0) - (Number(unit.x) || 0));
+        if (dist > Math.max(140, activeRange)) return null;
+        return target;
+    }
+
+    function resolveDirectControlAim(unit) {
+        if (!unit || unit.dead) return null;
+
+        const mx = Number(unit.manualAimX);
+        const my = Number(unit.manualAimY);
+        if (Number.isFinite(mx) && Number.isFinite(my)) {
+            return { x: mx, y: my };
+        }
+
+        const target = resolveDirectControlAutoTarget(unit);
+        if (target && Number.isFinite(Number(target.x))) {
+            const targetY = Number(target.y) - ((Number(target.height) || 0) * 0.35);
+            return {
+                x: Number(target.x),
+                y: Number.isFinite(targetY) ? targetY : Number(unit.y)
+            };
+        }
+
+        const facingRaw = Number(unit.facing);
+        const facing = Number.isFinite(facingRaw) && facingRaw < 0 ? -1 : 1;
+        const id = String((unit.stats && unit.stats.id) || '');
+        const baseDist = (id === 'spg') ? 900 : (id === 'mbt' ? 700 : 520);
+        return {
+            x: Number(unit.x) + (facing * baseDist),
+            y: Number(unit.y) - ((Number(unit.height) || 0) * 0.55)
+        };
+    }
+
+    function unitHasDirectSubWeapon(unit) {
+        const id = String((unit && unit.stats && unit.stats.id) || '');
+        return id === 'mbt';
+    }
+
+    function getDirectControlWeaponMode(unit = null) {
+        const state = ensureDirectControlState();
+        const activeUnit = unit || ((typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null);
+        if (!activeUnit || activeUnit.dead || !unitHasDirectSubWeapon(activeUnit)) return 'main';
+        return (state.weaponMode === 'sub') ? 'sub' : 'main';
+    }
+
+    function setDirectControlWeaponMode(mode) {
+        const state = ensureDirectControlState();
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!unit || unit.dead || !unitHasDirectSubWeapon(unit)) {
+            state.weaponMode = 'main';
+            return false;
+        }
+
+        const nextMode = (mode === 'sub') ? 'sub' : 'main';
+        state.weaponMode = nextMode;
+
+        if (nextMode !== 'sub') {
+            unit.manualMgHeld = false;
+            if (typeof unit.stopManualTankMG === 'function') {
+                unit.stopManualTankMG(true);
+            } else if (typeof unit._stopTankMGSound === 'function') {
+                unit._stopTankMGSound();
+            }
+        }
+        return true;
+    }
+
+    function getDirectControlWeaponToggleInfo() {
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!unit || unit.dead || !unitHasDirectSubWeapon(unit)) {
+            return {
+                enabled: false,
+                currentMode: 'main',
+                nextMode: 'main',
+                currentLabel: '포탑',
+                nextLabel: '포탑'
+            };
+        }
+        const currentMode = getDirectControlWeaponMode(unit);
+        const nextMode = (currentMode === 'sub') ? 'main' : 'sub';
+        const currentLabel = (currentMode === 'sub') ? '기관총' : '포탑';
+        const nextLabel = (nextMode === 'sub') ? '기관총' : '포탑';
+        return {
+            enabled: true,
+            currentMode,
+            nextMode,
+            currentLabel,
+            nextLabel
+        };
+    }
+
+    function toggleDirectControlWeaponMode() {
+        const info = getDirectControlWeaponToggleInfo();
+        if (!info.enabled) return false;
+        const ok = setDirectControlWeaponMode(info.nextMode);
+        if (!ok) return false;
+
+        if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+            ui.showToast(`무기 전환: ${info.nextLabel}`);
+        }
+        if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+        if (typeof window !== 'undefined'
+            && window.MobileDirectControlUI
+            && typeof window.MobileDirectControlUI.refresh === 'function') {
+            window.MobileDirectControlUI.refresh();
+        }
+        return true;
+    }
+
+    function fireDirectControlAuto(unit, opts = null) {
+        if (!unit || unit.dead) return false;
+        const id = String((unit.stats && unit.stats.id) || '');
+        const target = resolveDirectControlAutoTarget(unit);
+        if (!target) return false;
+
+        const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
+        const channel = (opts && opts.channel === 'sub') ? 'sub' : 'main';
+        const key = (channel === 'sub') ? '_mobileDirectSubLastFireFrame' : '_mobileDirectMainLastFireFrame';
+        const defaultRate = (id === 'aa_tank') ? 10 : (id === 'apache' ? 18 : 24);
+        const rate = Math.max(4, Math.floor(Number(opts && opts.rate) || defaultRate));
+        const lastFrame = Number(unit[key]);
+        if (Number.isFinite(lastFrame) && (frameNow - lastFrame) < rate) return false;
+
+        try {
+            unit.attack(target);
+            unit.lastAttack = frameNow;
+            unit[key] = frameNow;
+            unit.attackTarget = target;
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function getDirectControlMobileProfile(unit) {
+        const id = String((unit && unit.stats && unit.stats.id) || '');
+        if (id === 'mbt') {
+            return {
+                mainLabel: '주포',
+                subLabel: '기관총',
+                hasSub: true,
+                subHold: true,
+                mainRate: 120,
+                subRate: 3
+            };
+        }
+        if (id === 'spg') {
+            return {
+                mainLabel: '포격',
+                subLabel: '보조',
+                hasSub: false,
+                subHold: false,
+                mainRate: 420,
+                subRate: 0
+            };
+        }
+        if (id === 'aa_tank') {
+            return {
+                mainLabel: '기관포',
+                subLabel: '속사',
+                hasSub: true,
+                subHold: false,
+                mainRate: 10,
+                subRate: 6
+            };
+        }
+        if (id === 'apache') {
+            return {
+                mainLabel: '로켓',
+                subLabel: '보조',
+                hasSub: false,
+                subHold: false,
+                mainRate: 18,
+                subRate: 0
+            };
+        }
+        return {
+            mainLabel: '발사',
+            subLabel: '보조',
+            hasSub: false,
+            subHold: false,
+            mainRate: 24,
+            subRate: 0
+        };
+    }
+
+    function mobileDirectMainFire() {
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!isDirectControlEligibleUnit(unit)) return false;
+
+        const id = String((unit.stats && unit.stats.id) || '');
+        const aim = resolveDirectControlAim(unit);
+        if (aim && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
+            unit.manualAimX = aim.x;
+            unit.manualAimY = aim.y;
+            if (Number.isFinite(game.frame)) unit.manualAimFrame = game.frame;
+        }
+
+        if (id === 'mbt' && typeof unit.tryManualTankMainFire === 'function') {
+            return !!unit.tryManualTankMainFire(aim && aim.x, aim && aim.y);
+        }
+        if (id === 'spg' && typeof unit.tryManualSpgMainFire === 'function') {
+            return !!unit.tryManualSpgMainFire(aim && aim.x, aim && aim.y);
+        }
+
+        const profile = getDirectControlMobileProfile(unit);
+        return fireDirectControlAuto(unit, { channel: 'main', rate: profile.mainRate });
+    }
+
+    function mobileDirectSubFireStart() {
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!isDirectControlEligibleUnit(unit)) return false;
+
+        const id = String((unit.stats && unit.stats.id) || '');
+        const profile = getDirectControlMobileProfile(unit);
+        if (!profile.hasSub) return false;
+
+        if (id === 'mbt') {
+            const aim = resolveDirectControlAim(unit);
+            if (aim && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
+                unit.manualAimX = aim.x;
+                unit.manualAimY = aim.y;
+                if (Number.isFinite(game.frame)) unit.manualAimFrame = game.frame;
+            }
+            unit.manualMgHeld = true;
+            if (typeof unit.tryManualTankMGFire === 'function') {
+                return !!unit.tryManualTankMGFire(aim && aim.x, aim && aim.y);
+            }
+            return true;
+        }
+
+        return fireDirectControlAuto(unit, { channel: 'sub', rate: profile.subRate });
+    }
+
+    function mobileDirectSubFireStop() {
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!unit || unit.dead || !unit.stats) return false;
+        if (String(unit.stats.id || '') !== 'mbt') return false;
+
+        unit.manualMgHeld = false;
+        if (typeof unit.stopManualTankMG === 'function') {
+            unit.stopManualTankMG(true);
+        } else if (typeof unit._stopTankMGSound === 'function') {
+            unit._stopTankMGSound();
+        }
+        return true;
+    }
+
+    function startDirectControl(unit) {
+        const state = ensureDirectControlState();
+        if ((game.buildMode && game.buildMode.active) || game.targetingType) {
+            if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+                ui.showToast('타게팅/건설 모드에서는 조종을 시작할 수 없습니다.');
+            }
+            return false;
+        }
+        const target = isDirectControlEligibleUnit(unit) ? unit : getSelectedDirectControlCandidate();
+        if (!target) {
+            if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+                ui.showToast('조종 가능한 유닛 1개를 선택하세요. (전차/자주포/대공전차/아파치)');
+            }
+            return false;
+        }
+
+        if (state.active && state.unit === target) {
+            syncDirectControlSelection(target);
+            return true;
+        }
+
+        if (state.active && state.unit && state.unit !== target) {
+            stopDirectControl('internal');
+        }
+
+        state.active = true;
+        state.unit = target;
+        clearDirectControlKeys();
+        state.weaponMode = 'main';
+
+        target.commandMode = 'stop';
+        target.returnToBase = false;
+        target.targetX = null;
+        target.targetY = null;
+        target.commandTargetX = null;
+        target.lockedTarget = null;
+        target.attackTarget = null;
+
+        syncDirectControlSelection(target);
+
+        if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+            const label = target.stats && target.stats.name ? target.stats.name : (target.stats && target.stats.id ? target.stats.id : 'UNIT');
+            ui.showToast(`조종 시작: ${label} (E: 조종취소)`);
+        }
+        if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+        if (typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') app.markUiDirty();
+        if (typeof window !== 'undefined'
+            && window.MobileDirectControlUI
+            && typeof window.MobileDirectControlUI.refresh === 'function') {
+            window.MobileDirectControlUI.refresh();
+        }
+        return true;
+    }
+
+    function stopDirectControl(reason = '') {
+        const state = ensureDirectControlState();
+        if (!state.active && !state.unit) return false;
+
+        const unit = state.unit;
+        state.active = false;
+        state.unit = null;
+        clearDirectControlKeys();
+        state.weaponMode = 'main';
+
+        if (unit && !unit.dead) {
+            unit.commandMode = 'stop';
+            unit.returnToBase = false;
+            unit.targetX = null;
+            unit.targetY = null;
+            unit.commandTargetX = null;
+            unit.lockedTarget = null;
+            unit.attackTarget = null;
+            if (unit.stats && unit.stats.id === 'mbt' && typeof unit.stopManualTankMG === 'function') {
+                unit.stopManualTankMG(true);
+            }
+        }
+
+        if (reason !== 'internal' && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+            ui.showToast('조종 취소');
+        }
+        if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+        if (typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') app.markUiDirty();
+        if (typeof window !== 'undefined'
+            && window.MobileDirectControlUI
+            && typeof window.MobileDirectControlUI.refresh === 'function') {
+            window.MobileDirectControlUI.refresh();
+        }
+        return true;
+    }
+
+    function toggleDirectControl(unit) {
+        const state = ensureDirectControlState();
+        if (state.active) return stopDirectControl('toggle');
+        return startDirectControl(unit);
+    }
+
+    ensureDirectControlState();
+    game.isDirectControlEligible = isDirectControlEligibleUnit;
+    game.getDirectControlSelectedCandidate = getSelectedDirectControlCandidate;
+    game.isDirectControlActive = function () {
+        const state = ensureDirectControlState();
+        return !!(state.active && state.unit && !state.unit.dead);
+    };
+    game.getDirectControlUnit = function () {
+        return this.isDirectControlActive() ? ensureDirectControlState().unit : null;
+    };
+    game.startDirectControl = startDirectControl;
+    game.stopDirectControl = stopDirectControl;
+    game.toggleDirectControl = toggleDirectControl;
+    game.setDirectControlKeyState = function (key, pressed) {
+        const state = ensureDirectControlState();
+        const k = String(key || '');
+        if (!Object.prototype.hasOwnProperty.call(state.keys, k)) return false;
+        state.keys[k] = !!pressed;
+        return true;
+    };
+    game.clearDirectControlKeys = clearDirectControlKeys;
+    game.getDirectControlWeaponMode = getDirectControlWeaponMode;
+    game.setDirectControlWeaponMode = setDirectControlWeaponMode;
+    game.toggleDirectControlWeaponMode = toggleDirectControlWeaponMode;
+    game.getDirectControlWeaponToggleInfo = getDirectControlWeaponToggleInfo;
+    game.getDirectControlMobileProfile = function (unit) {
+        const target = unit || ((typeof this.getDirectControlUnit === 'function') ? this.getDirectControlUnit() : null);
+        return getDirectControlMobileProfile(target);
+    };
+    game.mobileDirectMainFire = mobileDirectMainFire;
+    game.mobileDirectSubFireStart = mobileDirectSubFireStart;
+    game.mobileDirectSubFireStop = mobileDirectSubFireStop;
+
+    // ============================================
     // [NEW] Custom cursor + move marker (PC)
     //  - system cursor is hidden via CSS (#game-canvas{cursor:none;})
     //  - we draw cursor + right-click move marker in-canvas
@@ -76,6 +552,119 @@
         // [FIX] Builder buildTask priority: allow construction movement even when selected
         if (this.stats.isBuilder && this.buildTask) {
             __origUpdate.call(this, enemies, buildings);
+            return;
+        }
+
+        // [NEW] Direct control priority (player combat units)
+        const directControlUnit = (typeof game.getDirectControlUnit === 'function')
+            ? game.getDirectControlUnit()
+            : null;
+        if (directControlUnit && directControlUnit === this) {
+            if (!isDirectControlEligibleUnit(this)) {
+                if (typeof game.stopDirectControl === 'function') game.stopDirectControl('internal');
+                return;
+            }
+
+            const dcState = ensureDirectControlState();
+            const keys = dcState.keys || {};
+            const unitId = String((this.stats && this.stats.id) || '');
+
+            // Keep transient fire effects decaying while direct-control override is active.
+            if (this.recoil && this.recoil > 0) {
+                this.recoil = Math.max(0, this.recoil - 0.6);
+            }
+            if (this.missileFlash && this.missileFlash > 0) {
+                this.missileFlash = Math.max(0, this.missileFlash - 1);
+            }
+
+            this.commandMode = 'stop';
+            this.returnToBase = false;
+            this.targetX = null;
+            this.targetY = null;
+            this.commandTargetX = null;
+            this.lockedTarget = null;
+
+            let moveAxis = 0;
+            if (keys.a || keys.arrowLeft) moveAxis -= 1;
+            if (keys.d || keys.arrowRight) moveAxis += 1;
+            if (unitId !== 'apache') {
+                if (keys.w) moveAxis += 1;
+                if (keys.s) moveAxis -= 1;
+            }
+            if (moveAxis > 1) moveAxis = 1;
+            if (moveAxis < -1) moveAxis = -1;
+
+            const baseSpeed = Math.max(0.45, Number(this.stats && this.stats.speed) || 0.45);
+            const moveSpeed = baseSpeed * ((this.stats && this.stats.type === 'air') ? 1.35 : 1.2);
+            if (moveAxis !== 0) {
+                this.x += moveAxis * moveSpeed;
+                this.facing = (moveAxis > 0) ? 1 : -1;
+            }
+
+            if (unitId === 'apache') {
+                let verticalAxis = 0;
+                if (keys.w) verticalAxis -= 1;
+                if (keys.s) verticalAxis += 1;
+                if (verticalAxis !== 0) {
+                    const climbSpeed = Math.max(0.6, baseSpeed * 0.9);
+                    this.y += verticalAxis * climbSpeed;
+                }
+                const minY = game.groundY - 620;
+                const maxY = game.groundY - 300;
+                if (this.y < minY) this.y = minY;
+                if (this.y > maxY) this.y = maxY;
+                this.rotorAngle += 1.0;
+            } else if (this.stats.type === 'air') {
+                this.rotorAngle += 0.9;
+            } else {
+                this.y = game.groundY;
+            }
+
+            // Keep MBT manual MG hold behavior consistent with base update path.
+            if (unitId === 'mbt') {
+                const hasManualAim = Number.isFinite(Number(this.manualAimX)) && Number.isFinite(Number(this.manualAimY));
+                const buildActive = !!(game && game.buildMode && game.buildMode.active);
+                const targetingActive = !!(game && game.targetingType);
+                if (this.manualMgHeld === true && hasManualAim && !buildActive && !targetingActive) {
+                    if (typeof this.tryManualTankMGFire === 'function') {
+                        this.tryManualTankMGFire(this.manualAimX, this.manualAimY);
+                    }
+                } else if (this.manualMgModeActive === true && typeof this.stopManualTankMG === 'function') {
+                    this.stopManualTankMG(false);
+                }
+            }
+
+            const halfWidth = Math.max(8, (Number(this.width) || 16) / 2);
+            const mapWidth = Number((typeof CONFIG !== 'undefined' && CONFIG) ? CONFIG.mapWidth : NaN);
+            if (Number.isFinite(mapWidth) && mapWidth > 0) {
+                if (this.x < halfWidth) this.x = halfWidth;
+                if (this.x > mapWidth - halfWidth) this.x = mapWidth - halfWidth;
+            }
+            this._lastX = this.x;
+
+            const target = this.findNearestEnemy(enemies, buildings);
+            const unitRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats.range || 0));
+            const missileRange = Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : unitRange);
+            const usesExtendedMissileRange = (unitId === 'apc' || unitId === 'engineer' || unitId === 'rpg');
+            const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
+            const canAttack = (target && Math.abs(target.x - this.x) <= activeRange);
+
+            if (canAttack) {
+                this.attackTarget = target;
+                let rate = 60;
+                if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(unitId)) rate = 15;
+                else if (unitId === 'spg') rate = 300;
+                else if (unitId === 'sniper') rate = 210;
+
+                if (game.frame - this.lastAttack > rate) {
+                    if (unitId !== 'spg' || (typeof this._canSpgFireNow === 'function' ? this._canSpgFireNow() : true)) {
+                        this.attack(target);
+                        this.lastAttack = game.frame;
+                    }
+                }
+            } else if (this.attackTarget && (this.attackTarget.dead || Math.abs((Number(this.attackTarget.x) || 0) - this.x) > (activeRange + 80))) {
+                this.attackTarget = null;
+            }
             return;
         }
 
@@ -383,6 +972,23 @@
                     }
                     btns.forEach(b => b.classList.remove('active'));
                     this.classList.add('active');
+                    return;
+                }
+
+                if (cmd === 'control') {
+                    if (typeof game.toggleDirectControl === 'function') {
+                        const selected = (typeof game.getDirectControlSelectedCandidate === 'function')
+                            ? game.getDirectControlSelectedCandidate()
+                            : null;
+                        const changed = game.toggleDirectControl(selected);
+                        if (changed) {
+                            btns.forEach(b => b.classList.remove('active'));
+                            if (typeof game.isDirectControlActive === 'function' && game.isDirectControlActive()) {
+                                this.classList.add('active');
+                            }
+                            if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+                        }
+                    }
                     return;
                 }
 
@@ -951,6 +1557,17 @@
                 this.selectedUnits.delete(u);
             }
         });
+
+        const directUnit = (typeof this.getDirectControlUnit === 'function')
+            ? this.getDirectControlUnit()
+            : null;
+        if (directUnit) {
+            if (directUnit.dead || !isDirectControlEligibleUnit(directUnit)) {
+                if (typeof this.stopDirectControl === 'function') this.stopDirectControl('internal');
+            } else {
+                syncDirectControlSelection(directUnit);
+            }
+        }
     };
 
     // [RECON] 선택 유닛에 recon이 있을 때만 정찰 버튼 노출
@@ -993,6 +1610,25 @@
                 dropBtn.classList.toggle('hidden', !hasTransport);
                 dropBtn.disabled = !canDrop;
                 dropBtn.classList.toggle('disabled', !canDrop);
+            }
+
+            const controlBtn = document.getElementById('cmd-control-btn');
+            if (controlBtn) {
+                const active = (typeof this.isDirectControlActive === 'function') && this.isDirectControlActive();
+                const canStart = (typeof this.getDirectControlSelectedCandidate === 'function') && !!this.getDirectControlSelectedCandidate();
+                const visible = active || canStart;
+                controlBtn.classList.toggle('hidden', !visible);
+                controlBtn.disabled = !visible;
+                controlBtn.classList.toggle('disabled', !visible);
+                controlBtn.classList.toggle('active', !!active);
+
+                const labelEl = controlBtn.querySelector('[data-direct-control-label]') || controlBtn.querySelector('span:last-child');
+                if (labelEl) {
+                    const isEn = (typeof Lang !== 'undefined' && Lang && Lang.current === 'en');
+                    labelEl.textContent = active
+                        ? (isEn ? 'Control Off (E)' : '조종취소(E)')
+                        : (isEn ? 'Control On (E)' : '조종시작(E)');
+                }
             }
 
             // [NEW] Missile 버튼: 미사일 명령 유닛 선택 시 노출

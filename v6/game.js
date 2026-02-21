@@ -1607,6 +1607,9 @@ const game = {
             ? veteranMeta.loadout.skillItemKeys
             : [];
         const isOperator = (unit.typeKey === 'drone_operator') || unit.stats?.operator === true;
+        const isInfantryCategory = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.units)
+            ? String(CONFIG.units[unit.typeKey]?.category || '').trim().toLowerCase() === 'infantry'
+            : false;
         const loadoutSkillItemKeys = ['', '', ''];
         if (isOperator) {
             for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
@@ -1618,10 +1621,19 @@ const game = {
             if (!loadoutSkillItemKeys[1] && (rawItemKey === 'drone_suicide_item' || rawItemKey === 'drone_at_item')) {
                 loadoutSkillItemKeys[1] = rawItemKey;
             }
+        } else if (isInfantryCategory) {
+            // 보병 카테고리: 스킬 슬롯 1,2에서 smoke_grenade, medkit_c 읽기
+            for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
+                const key = String(rawSkillItemKeys[slotIndex] || '').trim();
+                if (key === 'smoke_grenade' || key === 'medkit_c') {
+                    loadoutSkillItemKeys[slotIndex] = key;
+                }
+            }
         }
         const normalizedRawItemKey = supportedLoadoutItemKeys.has(rawItemKey) ? rawItemKey : '';
         const passiveLoadoutItemKey = (normalizedRawItemKey
-            && !(isOperator && (normalizedRawItemKey === 'drone_suicide_item' || normalizedRawItemKey === 'drone_at_item')))
+            && !(isOperator && (normalizedRawItemKey === 'drone_suicide_item' || normalizedRawItemKey === 'drone_at_item'))
+            && !((normalizedRawItemKey === 'smoke_grenade' || normalizedRawItemKey === 'medkit_c') && isInfantryCategory && loadoutSkillItemKeys.includes(normalizedRawItemKey)))
             ? normalizedRawItemKey
             : '';
         const loadoutItemKey = passiveLoadoutItemKey
@@ -1671,14 +1683,14 @@ const game = {
             unit.hp = unit.maxHp;
         }
 
-        // [ITEM] 연막탄: 스킬 장전 (special_forces 기본값 제거됨, 아이템으로만 부여)
-        if (unit.veteranLoadoutItemKey === 'smoke_grenade') {
+        // [ITEM] 연막탄: 패시브 또는 스킬 슬롯 장착 시 스킬 장전
+        if (unit.veteranLoadoutItemKey === 'smoke_grenade' || loadoutSkillItemKeys.includes('smoke_grenade')) {
             unit.smokeChargesLeft = 2;
             unit.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
         }
 
-        // [ITEM] 의료 키트: 스킬 장전
-        if (unit.veteranLoadoutItemKey === 'medkit_c') {
+        // [ITEM] 의료 키트: 패시브 또는 스킬 슬롯 장착 시 스킬 장전
+        if (unit.veteranLoadoutItemKey === 'medkit_c' || loadoutSkillItemKeys.includes('medkit_c')) {
             unit.medkitChargesLeft = 2;
         }
     },
@@ -3921,7 +3933,7 @@ const game = {
 
             const drone = new Unit(key, 50, this.groundY, 'player', null);
             drone.x = 50;
-            drone.y = this.groundY - 420;
+            drone.y = this.groundY - 640;
             drone.targetX = x;
             this.players.push(drone);
             ui.showToast(`${u.name} 출격!`);
@@ -3948,9 +3960,9 @@ const game = {
             const drone = new Unit(key, 50, this.groundY, 'player', target);
             if (key === 'blackhawk' || key === 'chinook') {
                 drone.x = 40;
-                drone.y = this.groundY - 190;
+                drone.y = this.groundY - 450;
                 drone.targetX = x;
-                drone.targetY = this.groundY - 190;
+                drone.targetY = this.groundY - 450;
             } else if (!target) {
                 drone.x = x; drone.y = y;
             }

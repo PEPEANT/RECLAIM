@@ -102,8 +102,7 @@
         { itemKey: 'smoke_grenade', weight: 4 },
         { itemKey: 'medkit_c', weight: 3 },
         { itemKey: 'drone_suicide_item', weight: 3 },
-        { itemKey: 'drone_at_item', weight: 2 },
-        { itemKey: 'bp_missile', weight: 1 }
+        { itemKey: 'drone_at_item', weight: 2 }
     ];
 
     var CONFIDENTIAL_ITEM_POOL = [
@@ -111,7 +110,6 @@
         { itemKey: 'medkit_c', weight: 5 },
         { itemKey: 'drone_suicide_item', weight: 5 },
         { itemKey: 'drone_at_item', weight: 5 },
-        { itemKey: 'bp_missile', weight: 8 },
         { itemKey: 'body_armor_d', weight: 4 },
         { itemKey: 'scope_d', weight: 3 }
     ];

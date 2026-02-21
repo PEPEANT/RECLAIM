@@ -188,7 +188,7 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="style.css?v=20260220s23">
+    <link rel="stylesheet" href="style.css?v=20260222s35">
     <link rel="stylesheet" href="src/modes/city-sim/tutorial/tutorial.css?v=20260220tc1">
     <link rel="stylesheet" href="src/styles/campaign.css">
     <link rel="stylesheet" href="src/styles/city-shop.css">
@@ -320,6 +320,10 @@
                     <button data-cmd="camera" class="cmd-btn-action">
                         <span class="cmd-ico"><i class="fa-solid fa-video"></i></span>
                         <span data-lang="cmd_camera">CAMERA</span>
+                    </button>
+                    <button data-cmd="control" id="cmd-control-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-gamepad"></i></span>
+                        <span data-direct-control-label data-lang="cmd_control_start">CONTROL</span>
                     </button>
                     <button data-cmd="move" class="cmd-btn-action hidden">
                         <span class="cmd-ico"><i class="fa-solid fa-up-down-left-right"></i></span>
@@ -1318,7 +1322,7 @@
     <!-- Cinematic Modal -->
     <div id="cinematic-modal" class="hidden fixed inset-0 z-[100] bg-black">
         <!-- Video Logo (plays first) -->
-        <video id="cinematic-video" class="hidden absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 max-w-[60%] max-h-[60%]" muted playsinline>
+        <video id="cinematic-video" class="hidden absolute" muted playsinline preload="auto">
             <source src="assets/tutorial/videos/grok_video.mp4" type="video/mp4">
         </video>
 
@@ -1608,6 +1612,17 @@
         </section>
     </footer>
 
+    <!-- Mobile direct-control overlay (simple fire/aim pad) -->
+    <div id="mobile-direct-ui" class="mobile-direct-ui hidden" aria-hidden="true">
+        <div class="mobile-direct-stick-wrap">
+            <div id="mobile-direct-stick-zone" class="mobile-direct-stick-zone">
+                <div id="mobile-direct-stick" class="mobile-direct-stick"></div>
+                <div class="mobile-direct-fire-label">조준/발사</div>
+            </div>
+            <div id="mobile-direct-status" class="mobile-direct-status">무기: 포탑</div>
+        </div>
+    </div>
+
     <!-- Portrait Mode Overlay (blocks game in portrait) -->
     <div id="portrait-overlay" class="portrait-overlay">
         <div class="portrait-content">
@@ -1624,18 +1639,19 @@
     <script src="unit-params.js"></script>
     <!-- [ADD] IngameRenderer for unit wreckage rendering -->
     <script src="unit-editor/js/ingame-renderer.js"></script>
-    <script src="src/entities/unit-render-utils.js"></script>
-    <script src="classes.js"></script>
+    <script src="src/entities/unit-render-utils.js?v=20260222ur2"></script>
+    <script src="classes.js?v=20260222air10"></script>
     <script src="projectile-designs.js"></script>
     <!-- VFX (explosions / particles) -->
     <script src="src/vfx/explosion.js"></script>
     <script src="buildings.js"></script>
     <script src="projectiles.js"></script>
     <script src="chat_panel.js?v=20260216cp2"></script>
-    <script src="ui.js?v=20260216u3"></script>
+    <script src="ui.js?v=20260222u4"></script>
     <script src="src/maps/core/registry.js"></script>
     <script src="src/maps/core/adapter.js"></script>
     <script src="src/maps/maps/plain/definition.js"></script>
+    <script src="src/maps/maps/plain/render_base.js?v=20260222pb5"></script>
     <script src="src/maps/maps/city/definition.js"></script>
     <script src="src/maps/maps/city/render_buildings.js"></script>
     <script src="src/maps/maps/mountain/definition.js"></script>
@@ -1653,7 +1669,7 @@
     <script src="src/maps/maps/landing/definition.js"></script>
     <script src="src/maps/maps/landing/render_base.js"></script>
     <script src="src/maps/maps/landing/render_decor.js"></script>
-    <script src="maps.js"></script>
+    <script src="maps.js?v=20260222m6"></script>
     <!-- 로비 배경 캔버스 -->
     <script src="lobby-background.js?v=20260214lb2"></script>
     <script src="src/ai/ai_core.js"></script>
@@ -1667,17 +1683,17 @@
     <script src="src/ai/tactics/wave_controller.js"></script>
     <script src="src/ai/debug/ai_debug.js"></script>
     <script src="src/audio/audio.js"></script>
-    <script src="lang.js"></script>
-    <script src="version.js?v=20260214v1"></script>
+    <script src="lang.js?v=20260222l2"></script>
+    <script src="version.js?v=20260222v2"></script>
     <script src="src/units/drone/drone-behavior.js"></script>
     <script src="spatial.js"></script>
     <script src="unitdex/lang_kr.js"></script>
     <script src="unitdex/lang_en.js"></script>
-    <script src="unitdex.js"></script>
+    <script src="unitdex.js?v=20260222d1"></script>
     <script src="src/core/camera.js"></script>
     <script src="src/render/news/news_texts.js"></script>
     <script src="src/game/corpse.js"></script>
-    <script src="src/modes/city-sim/state.js?v=20260220st3"></script>
+    <script src="src/modes/city-sim/state.js?v=20260222st4"></script>
     <script src="src/modes/city-sim/quest-mission/constants.js?v=20260216q6"></script>
     <script src="src/modes/city-sim/quest-mission/schema.js?v=20260220q10"></script>
     <script src="src/modes/city-sim/quest-mission/engine.js?v=20260220q10"></script>
@@ -1686,7 +1702,7 @@
     <script src="src/modes/city-sim/network.js"></script>
     <script src="src/modes/city-sim/chat.js"></script>
     <script src="src/modes/city-sim/visit-actions/index.js?v=fix7"></script>
-    <script src="src/modes/city-sim/visit-renderer.js?v=fix8"></script>
+    <script src="src/modes/city-sim/visit-renderer.js?v=fix10"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"
         onerror="console.error('[Boot] Firebase SDK load failed: firebase-app-compat.js', this && this.src)"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"
@@ -1697,7 +1713,7 @@
         onerror="console.error('[Boot] Firebase bridge load failed: src/firebase/firebase-bridge.js')"></script>
     <script src="src/modes/city-sim/auth.js?v=20260216a5"></script>
     <script src="src/modes/city-sim/economy.js?v=20260216e5"></script>
-    <script src="src/modes/city-sim/building.js"></script>
+    <script src="src/modes/city-sim/building.js?v=20260222b1"></script>
     <script src="src/modes/city-sim/drillground-bubbles/config.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/drillground-bubbles/runtime.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/drillground-bubbles/render.js?v=20260219b2"></script>
@@ -1711,25 +1727,31 @@
     <script src="src/render/unit-v2/units/humvee/render_body.js"></script>
     <script src="src/render/unit-v2/units/humvee/render_parts.js"></script>
     <script src="src/render/unit-v2/units/humvee/fx.js"></script>
-    <script src="src/render/unit-v2/units/humvee/index.js"></script>
+    <script src="src/render/unit-v2/units/humvee/index.js?v=20260222hv1"></script>
     <script src="src/render/unit-v2/units/apc/state.js"></script>
     <script src="src/render/unit-v2/units/apc/weapons.js"></script>
     <script src="src/render/unit-v2/units/apc/render_body.js"></script>
     <script src="src/render/unit-v2/units/apc/render_parts.js"></script>
     <script src="src/render/unit-v2/units/apc/fx.js"></script>
-    <script src="src/render/unit-v2/units/apc/index.js"></script>
+    <script src="src/render/unit-v2/units/apc/index.js?v=20260222ap1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/state.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/weapons.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/render_body.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/render_parts.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/fx.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/index.js?v=20260222aa2"></script>
     <script src="src/render/unit-v2/units/mbt/state.js"></script>
     <script src="src/render/unit-v2/units/mbt/weapons.js"></script>
     <script src="src/render/unit-v2/units/mbt/render_body.js"></script>
     <script src="src/render/unit-v2/units/mbt/render_parts.js"></script>
     <script src="src/render/unit-v2/units/mbt/fx.js"></script>
-    <script src="src/render/unit-v2/units/mbt/index.js"></script>
+    <script src="src/render/unit-v2/units/mbt/index.js?v=20260222mb1"></script>
     <script src="src/render/unit-v2/units/spg/state.js"></script>
     <script src="src/render/unit-v2/units/spg/weapons.js"></script>
     <script src="src/render/unit-v2/units/spg/render_body.js"></script>
     <script src="src/render/unit-v2/units/spg/render_parts.js"></script>
     <script src="src/render/unit-v2/units/spg/fx.js"></script>
-    <script src="src/render/unit-v2/units/spg/index.js"></script>
+    <script src="src/render/unit-v2/units/spg/index.js?v=20260222sp1"></script>
     <script src="src/render/unit-v2/units/infantry/state.js"></script>
     <script src="src/render/unit-v2/units/infantry/weapons.js"></script>
     <script src="src/render/unit-v2/units/infantry/render_body.js"></script>
@@ -1774,14 +1796,14 @@
     <script src="src/render/unit-v2/units/fighter/fx.js"></script>
     <script src="src/render/unit-v2/units/fighter/index.js"></script>
     <!-- Blackhawk V2 Renderer -->
-    <script src="src/render/unit-v2/units/blackhawk/state.js"></script>
-    <script src="src/render/unit-v2/units/blackhawk/weapons.js"></script>
-    <script src="src/render/unit-v2/units/blackhawk/render_body.js"></script>
-    <script src="src/render/unit-v2/units/blackhawk/render_parts.js"></script>
-    <script src="src/render/unit-v2/units/blackhawk/fx.js"></script>
-    <script src="src/render/unit-v2/units/blackhawk/index.js"></script>
+    <script src="src/render/unit-v2/units/blackhawk/state.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/weapons.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/render_body.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/render_parts.js?v=20260222uh60a7"></script>
+    <script src="src/render/unit-v2/units/blackhawk/fx.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260221uh60a5"></script>
     <script src="src/render/unit-v2/index.js"></script>
-    <script src="src/modes/city-sim/construction.js?v=20260221cs9"></script>
+    <script src="src/modes/city-sim/construction.js?v=20260222cs11"></script>
     <script src="src/modes/city-sim/construction/validation.js?v=20260214cs1"></script>
     <script src="src/modes/city-sim/construction/progress.js"></script>
     <script src="src/modes/city-sim/construction/render.js?v=20260216cs4"></script>
@@ -1797,7 +1819,7 @@
     <script src="src/modes/city-sim/index.js?v=20260220i5"></script>
     <script src="src/data/campaign-occupation-stages.js"></script>
     <script src="src/data/campaign-skirmish-stages.js"></script>
-    <script src="game.js?v=20260220g12"></script>
+    <script src="game.js?v=20260221g13"></script>
     <script src="src/units/drone/drone-manager.js"></script>
     <script src="src/units/drone/drone-commands.js"></script>
     <script src="src/units/drone/drone-control.js"></script>
@@ -1806,7 +1828,7 @@
     <script src="src/game/app_runtime.js"></script>
     <script src="src/game/custom_battle.js"></script>
     <script src="src/game/campaign_map.js"></script>
-    <script src="src/game/input.js"></script>
+    <script src="src/game/input.js?v=20260222dc4"></script>
     <script src="src/game/camera_controls.js"></script>
     <script src="src/game/victory.js?v=20260216v2"></script>
     <script src="src/modes/campaign/skirmish.js?v=20260220sk8"></script>
@@ -1819,13 +1841,13 @@
     <script src="src/game/patches/hud_patch.js"></script>
     <script src="src/game/patches/dev_quickstart_patch.js"></script>
     <!-- /Patch Modules -->
-    <script src="hud.js?v=20260216h1"></script>
-    <script src="unit_commands.js"></script>
+    <script src="hud.js?v=20260222h4"></script>
+    <script src="unit_commands.js?v=20260222uc4"></script>
     <script src="src/render/news/news_intro.js"></script>
     <script src="src/render/news/news_overlay.js"></script>
 
     <!-- Cinematic System -->
-    <script src="src/ui/cinematic.js?v=20260214c3"></script>
+    <script src="src/ui/cinematic.js?v=20260221c4"></script>
     <script>
         // 시작 시 사용자 제스처로 오디오를 먼저 unlock한 뒤 시네마틱 부팅
         (() => {
@@ -1863,7 +1885,7 @@
                 cinematicLoaderStarted = true;
 
                 const candidates = [
-                    'src/ui/cinematic.js?v=20260214c3',
+                    'src/ui/cinematic.js?v=20260221c4',
                     'src/ui/cinematic.js'
                 ];
 

@@ -9,14 +9,14 @@
     const v = {
         brandName: 'RECLAIM',
         major: 6,
-        minor: 0,
+        minor: 2,
         patch: 0,
         build: '2026-02-21.1',
         saveSchema: 1
     };
 
     v.brand = `${v.brandName} ${v.major}`;
-    v.version = `v${v.major}.${v.minor}.${v.patch}`;
+    v.version = `v${v.major}.${v.minor}${Number(v.patch) > 0 ? `.${v.patch}` : ''}`;
     v.label = `${v.brand} | ${v.version} | build ${v.build}`;
 
     window.RECLAIM_VERSION = v;
