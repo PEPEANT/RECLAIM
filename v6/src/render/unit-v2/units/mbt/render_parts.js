@@ -5,16 +5,31 @@
     function drawTracksAndWheels(ctx, state, palette) {
         if (!ctx) return;
         var p = palette || {};
+        var track = p.track || '#222';
         var wheelOuter = p.wheelOuter || '#151515';
         var wheelInner = p.wheelInner || '#3D4825';
         var hub = p.hub || '#222';
         var sprocket = p.sprocket || '#333';
         var offset = Number(state && state.trackOffset) || 0;
 
+        // Track outer silhouette.
+        ctx.fillStyle = track;
+        ctx.beginPath();
+        if (ctx.roundRect) {
+            ctx.roundRect(-80, -15, 160, 30, 15);
+        } else {
+            ctx.moveTo(-65, -15);
+            ctx.lineTo(65, -15);
+            ctx.arc(65, 0, 15, -Math.PI / 2, Math.PI / 2);
+            ctx.lineTo(-65, 15);
+            ctx.arc(-65, 0, 15, Math.PI / 2, -Math.PI / 2);
+        }
+        ctx.fill();
+
+        // Track tread lines.
         ctx.save();
-        // Track tread lines
         ctx.strokeStyle = '#111';
-        ctx.lineWidth = 2;
+        ctx.lineWidth = 2.1;
         ctx.beginPath();
         if (ctx.roundRect) {
             ctx.roundRect(-80, -15, 160, 30, 15);
@@ -51,6 +66,14 @@
             ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
             ctx.fillStyle = hub;
             ctx.beginPath(); ctx.arc(0, 0, 2, 0, Math.PI * 2); ctx.fill();
+            // Rotation marker so wheel motion is visible.
+            ctx.fillStyle = '#101010';
+            for (var b = 0; b < 4; b++) {
+                ctx.rotate(Math.PI / 2);
+                ctx.beginPath();
+                ctx.arc(5.3, 0, 0.9, 0, Math.PI * 2);
+                ctx.fill();
+            }
             ctx.restore();
         }
 

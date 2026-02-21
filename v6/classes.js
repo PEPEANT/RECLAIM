@@ -1847,6 +1847,42 @@ class Unit extends Entity {
             return;
         }
 
+        const category = String((this.stats && this.stats.category) || '');
+        const unitType = String((this.stats && this.stats.type) || '');
+        const isArmoredLike = (category === 'armored' || unitType === 'mech');
+
+        var combatTarget = null;
+        if (this.attackTarget && !this.attackTarget.dead) {
+            combatTarget = this.attackTarget;
+        } else if (this._combatSideTarget && !this._combatSideTarget.dead) {
+            const sideTargetTeam = this._combatSideTarget.team;
+            if (sideTargetTeam && sideTargetTeam !== this.team && sideTargetTeam !== 'neutral') {
+                combatTarget = this._combatSideTarget;
+            }
+        }
+        const frameNow = (typeof game !== 'undefined' && game && Number.isFinite(game.frame)) ? game.frame : NaN;
+        const lastAttackFrame = Number(this.lastAttack);
+        const attackedRecently = Number.isFinite(frameNow) && Number.isFinite(lastAttackFrame) && (frameNow - lastAttackFrame <= 180);
+
+        // Armored units keep hull facing to their combat target.
+        // This prevents humvee/tank/apc back-turning during spacing micro-moves.
+        if (isArmoredLike
+            && combatTarget
+            && (this.attackTarget || attackedRecently || this.commandMode === 'stop' || this.commandMode === 'attack')
+            && this.commandMode !== 'move'
+            && this.commandMode !== 'retreat'
+            && !this.returnToBase) {
+            const tx = Number(combatTarget.x);
+            if (Number.isFinite(tx)) {
+                const dtx = tx - this.x;
+                if (Math.abs(dtx) > 5) {
+                    this.facing = dtx >= 0 ? 1 : -1;
+                }
+                this._lastX = this.x;
+                return;
+            }
+        }
+
         // 이전 x 위치 초기화
         if (this._lastX == null) {
             this._lastX = this.x;
@@ -1861,10 +1897,12 @@ class Unit extends Entity {
         const dx = this.x - this._lastX;
         this._lastX = this.x;
 
-        // Infantry moves in smaller per-frame steps; use a lower threshold
-        // so it does not appear to slide backward at low speed.
-        const isInfantryLike = !!(this.stats && this.stats.category === 'infantry');
-        const facingThreshold = isInfantryLike ? 0.08 : 0.5;
+        // Use category-aware thresholds so slow armored repositioning
+        // still updates facing without jitter.
+        let facingThreshold = 0.5;
+        if (category === 'infantry') facingThreshold = 0.08;
+        else if (category === 'armored' || unitType === 'mech') facingThreshold = 0.06;
+        else if (category === 'air' || unitType === 'air') facingThreshold = 0.12;
         if (Math.abs(dx) > facingThreshold) {
             this.facing = dx > 0 ? 1 : -1;
         }
@@ -2534,14 +2572,40 @@ class Unit extends Entity {
         const targetX = Number(target.x);
         if (!Number.isFinite(targetX)) return;
 
+        const category = String((this.stats && this.stats.category) || '');
+        if (category === 'infantry') {
+            const stateStore = this._renderV2State && this._renderV2State.infantry;
+            if (stateStore) {
+                const stance = String(stateStore.stance || '');
+                const desiredStance = String(stateStore.desiredStance || '');
+                const stationaryFrames = Number(stateStore.stationaryFrames) || 0;
+                const pronePrepHoldFrames = 48; // 0.8s at 60fps.
+                if (stance === 'crouching' && desiredStance === 'prone' && stationaryFrames < pronePrepHoldFrames) {
+                    return;
+                }
+            }
+        }
+
         const holdBase = this._getCombatHoldDistance(effectiveRange);
         let side = (this.x <= targetX) ? -1 : 1;
         const isAir = !!(this.stats && this.stats.type === 'air');
+        const sameTarget = (this._combatSideTarget === target);
+        const lockedSide = Number(this._combatSideSign);
+        if (sameTarget && (lockedSide === -1 || lockedSide === 1)) {
+            side = lockedSide;
+        }
         if (isAir) {
             // Air units keep broad side separation but can switch if they crossed over.
             side = (this.team === 'player') ? -1 : 1;
             if (Math.abs(this.x - targetX) < holdBase * 0.45) side = (this.x <= targetX) ? -1 : 1;
+        } else {
+            // Ground units keep side unless they clearly crossed over target center.
+            const crossMargin = Math.max(18, holdBase * 0.18);
+            if (side < 0 && this.x > targetX + crossMargin) side = 1;
+            if (side > 0 && this.x < targetX - crossMargin) side = -1;
         }
+        this._combatSideTarget = target;
+        this._combatSideSign = side;
 
         const tier = this._getCombatSlotTier(target);
         const slotStep = isAir ? 32 : 24;
@@ -2978,8 +3042,9 @@ class Unit extends Entity {
     draw(ctx) {
         if (this.dead) return;
         const id = this.stats.id;
+        const disableSkinForV2Armor = (id === 'mbt' || id === 'spg' || id === 'humvee' || id === 'apc');
         const skins = (typeof window !== 'undefined' && window.RECLAIM_SKINS) ? window.RECLAIM_SKINS : null;
-        const skin = skins ? (skins[id] || skins[this.typeKey]) : null;
+        const skin = (!disableSkinForV2Armor && skins) ? (skins[id] || skins[this.typeKey]) : null;
         const snapDy = this.computeFeetSnapDy(skin);
         const showHp = !this.hideHp && (this.isSelected || this.hp < this.maxHp);
         const drawHpBar = () => {
@@ -3051,7 +3116,8 @@ class Unit extends Entity {
             || id === 'special_forces'
             || id === 'engineer'
             || id === 'rpg'
-            || id === 'drone_operator')
+            || id === 'drone_operator'
+            || id === 'fighter')
             && typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
             let renderedWithV2 = false;
             try {

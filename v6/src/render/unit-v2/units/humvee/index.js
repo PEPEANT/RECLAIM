@@ -2,7 +2,7 @@
 (function attachUnitRenderV2_humvee(globalScope) {
     'use strict';
 
-    var BATTLE_MODEL_SCALE = 0.70;
+    var BATTLE_MODEL_SCALE = 0.66;
     var BATTLE_BASE_DRAW_SCALE = 1.4 * 1.18;
     var BATTLE_WORLD_SCALE = BATTLE_BASE_DRAW_SCALE * BATTLE_MODEL_SCALE;
     var MANUAL_AIM_STALE_FRAMES = 45;
@@ -84,14 +84,14 @@
             ctx.scale(iconScale, iconScale);
         }
 
-        deps.partsApi.drawWheels(ctx, state, palette);
-
         ctx.save();
         ctx.translate(0, Number(state && state.bounceY) || 0);
         deps.bodyApi.drawBody(unit, ctx, palette, state);
         deps.partsApi.drawTurret(ctx, state, palette, opts);
         if (!iconMode) deps.fxApi.drawExhaust(ctx, state, { alphaMul: 1 });
         ctx.restore();
+        // User request: keep wheels as the foremost layer.
+        deps.partsApi.drawWheels(ctx, state, palette);
 
         ctx.restore();
         return true;

@@ -8,6 +8,9 @@
         stance: 'standing',
         desiredStance: 'standing',
         desiredStanceFrames: 0,
+        stanceStableFrames: 0,
+        stationaryFrames: 0,
+        stationaryAnchorX: null,
         facing: 1,
         recoil: 0,
         muzzleFlash: 0,
@@ -27,6 +30,23 @@
         phaseSeed: 0,
         phaseSeedReady: false
     };
+
+    // ~60fps 기준. 필요한 경우 이 초 단위 값만 조절하면 됨.
+    var STANCE_TIMING_SEC = {
+        crouchMinHold: 1.0,      // 앉은 자세 최소 유지 시간
+        crouchToPronePrep: 0.8,  // 앉은 후 누울 수 있기까지 준비 시간
+        proneMinHold: 1.4        // 누운 자세 최소 유지 시간
+    };
+
+    function secToFrames(sec) {
+        var s = Number(sec);
+        if (!Number.isFinite(s) || s <= 0) return 1;
+        return Math.max(1, Math.round(s * 60));
+    }
+
+    var CROUCH_MIN_HOLD_FRAMES = secToFrames(STANCE_TIMING_SEC.crouchMinHold);
+    var CROUCH_TO_PRONE_PREP_FRAMES = secToFrames(STANCE_TIMING_SEC.crouchToPronePrep);
+    var PRONE_MIN_HOLD_FRAMES = secToFrames(STANCE_TIMING_SEC.proneMinHold);
 
     function clamp(v, min, max) {
         if (!Number.isFinite(v)) return min;
@@ -192,6 +212,31 @@
         if (!state || !desiredInfo) return;
 
         var desired = desiredInfo.stance || 'standing';
+        var moving = desiredInfo.moving === true;
+        var stanceStable = Number(state.stanceStableFrames) || 0;
+        var stationaryFrames = Number(state.stationaryFrames) || 0;
+
+        // Hard rule: standing -> prone direct jump is not allowed.
+        if (state.stance === 'standing' && desired === 'prone') {
+            desired = 'crouching';
+        }
+
+        if (!moving) {
+            // Crouch/prone must hold for a while when stationary.
+            if (state.stance === 'crouching') {
+                // Prone transition requires staying on almost the same spot.
+                if (desired === 'prone' && stationaryFrames < CROUCH_TO_PRONE_PREP_FRAMES) {
+                    desired = 'crouching';
+                } else if (desired === 'standing' && stanceStable < CROUCH_MIN_HOLD_FRAMES) {
+                    desired = 'crouching';
+                }
+            } else if (state.stance === 'prone') {
+                if (desired !== 'prone' && stanceStable < PRONE_MIN_HOLD_FRAMES) {
+                    desired = 'prone';
+                }
+            }
+        }
+
         if (state.stance === desired) {
             state.desiredStance = desired;
             state.desiredStanceFrames = 0;
@@ -257,8 +302,37 @@
         state.moveBlend += (moveTarget - state.moveBlend) * 0.18;
         if (state.moveBlend < 0.001) state.moveBlend = 0;
 
+        // Track "holding position" frames for crouch->prone preparation.
+        var isStationaryNow = (Math.abs(vx) <= 0.03)
+            && (moveTarget <= 0.05)
+            && (unit.commandMode !== 'move');
+        if (isStationaryNow) {
+            var anchorX = Number(state.stationaryAnchorX);
+            if (!Number.isFinite(anchorX)) {
+                state.stationaryAnchorX = xNow;
+                state.stationaryFrames = 1;
+            } else {
+                var drift = Math.abs(xNow - anchorX);
+                if (drift <= 1.8) {
+                    state.stationaryFrames = (Number(state.stationaryFrames) || 0) + 1;
+                } else {
+                    state.stationaryAnchorX = xNow;
+                    state.stationaryFrames = 1;
+                }
+            }
+        } else {
+            state.stationaryAnchorX = xNow;
+            state.stationaryFrames = 0;
+        }
+
         var desiredInfo = chooseDesiredStance(unit, state, frameNow, hp, hpRatio, vx);
+        var prevStance = state.stance;
         applyStanceTransition(state, desiredInfo);
+        if (state.stance === prevStance) {
+            state.stanceStableFrames = (Number(state.stanceStableFrames) || 0) + 1;
+        } else {
+            state.stanceStableFrames = 0;
+        }
 
         var cadence = 0.08 + (0.30 * state.moveBlend) + (speedAbs * 0.20);
         state.walkCycle = (Number(state.walkCycle) + cadence) % TAU;

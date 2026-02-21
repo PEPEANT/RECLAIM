@@ -564,6 +564,7 @@
                     mapId: String(document.getElementById('map-id').value || 'skirmish').trim() || 'skirmish',
                     allySlots: sanitizeSlotList(allySlotsState, defaultAlly),
                     enemySlots: sanitizeSlotList(enemySlotsState, defaultEnemy),
+                    quickstartToken: String(Date.now()) + '-' + String(Math.floor(Math.random() * 1000000)),
                     updatedAt: new Date().toISOString()
                 };
             }

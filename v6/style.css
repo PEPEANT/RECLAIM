@@ -10603,6 +10603,80 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 }
 
+/* Tiny in-game viewport (keep minimap size, shrink command/direction keys only) */
+@media (max-width: 390px) and (max-height: 250px) {
+    #hud-footer {
+        --hud-cmd-gap: 3px;
+        --hud-cmd-min-h: 34px;
+        --hud-cmd-font: 8px;
+        --hud-cmd-icon: 13px;
+        --hud-cmd-col-min: 24px;
+        --hud-cmd-col-max: 36px;
+        --hud-cmd-btn-min: 24px;
+        --hud-cmd-pad-y: 2px;
+        --hud-cmd-pad-x: 1px;
+    }
+
+    #hud-right {
+        padding: 4px !important;
+    }
+
+    #hud-command-grid {
+        gap: 3px !important;
+        padding-bottom: 0 !important;
+    }
+
+    #hud-command-grid .hud-cmd-group {
+        gap: var(--hud-cmd-gap) !important;
+        padding: 1px !important;
+        border-radius: 6px;
+    }
+
+    #hud-command-grid .hud-cmd-group-move {
+        margin-left: 3px;
+    }
+
+    #hud-command-grid .hud-cmd-btn > span:last-child {
+        display: none;
+    }
+
+    .hud-cmd-btn .cmd-icon {
+        margin: 0 auto;
+    }
+}
+
+/* Extreme tiny viewport 360x200: extra compact command area, minimap unchanged */
+@media (max-width: 360px) and (max-height: 200px) {
+    #hud-footer {
+        --hud-cmd-gap: 2px;
+        --hud-cmd-min-h: 30px;
+        --hud-cmd-font: 7px;
+        --hud-cmd-icon: 11px;
+        --hud-cmd-col-min: 20px;
+        --hud-cmd-col-max: 30px;
+        --hud-cmd-btn-min: 20px;
+        --hud-cmd-pad-y: 1px;
+        --hud-cmd-pad-x: 1px;
+    }
+
+    #hud-right {
+        padding: 3px !important;
+    }
+
+    #hud-command-grid {
+        gap: 2px !important;
+    }
+
+    #hud-command-grid .hud-cmd-group {
+        padding: 1px !important;
+        border-radius: 5px;
+    }
+
+    #hud-command-grid .hud-cmd-group-move {
+        margin-left: 2px;
+    }
+}
+
 /* Mobile unit production: move category tabs to left sidebar to save vertical space */
 @media (pointer: coarse) and (orientation: landscape) and (max-width: 960px) {
     #unit-panel-container {

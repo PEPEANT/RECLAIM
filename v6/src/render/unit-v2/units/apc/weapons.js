@@ -2,20 +2,21 @@
 (function attachUnitRenderV2Weapons_apc(globalScope) {
     'use strict';
 
-    var LIMIT_DOWN = 0.15;
+    var LIMIT_DOWN_FRONT = 0.15;
+    var LIMIT_DOWN_BACK = -0.10;
     var LIMIT_UP = -Math.PI / 2.2;
-    var TURRET_PIVOT_X = 0;
-    var TURRET_PIVOT_Y = -35;
-    var AUTO_BARREL_LEN = 46;
-    var TOW_OFFSET_X = 6;
-    var TOW_OFFSET_Y = -7;
-    var TOW_BARREL_LEN = 26;
+    var TURRET_PIVOT_X = -5;
+    var TURRET_PIVOT_Y = -27;
+    var AUTO_BARREL_LEN = 65;
+    var TOW_OFFSET_X = -10;
+    var TOW_OFFSET_Y = -18;
+    var TOW_BARREL_LEN = 0;
 
     function clampTurretAngle(angle) {
         var value = Number(angle);
         if (!Number.isFinite(value)) return -0.08;
         if (value < LIMIT_UP) return LIMIT_UP;
-        if (value > LIMIT_DOWN) return LIMIT_DOWN;
+        if (value > LIMIT_DOWN_FRONT) return LIMIT_DOWN_FRONT;
         return value;
     }
 
@@ -57,7 +58,7 @@
         var angle = Math.atan2(dyWorld, dxLocal);
 
         if (dxLocal < 0) {
-            return dyWorld < 0 ? LIMIT_UP : LIMIT_DOWN;
+            return dyWorld < 0 ? LIMIT_UP : LIMIT_DOWN_BACK;
         }
         return clampTurretAngle(angle);
     }
@@ -125,7 +126,8 @@
     }
 
     globalScope.UnitRenderV2Weapons_apc = {
-        LIMIT_DOWN: LIMIT_DOWN,
+        LIMIT_DOWN_FRONT: LIMIT_DOWN_FRONT,
+        LIMIT_DOWN_BACK: LIMIT_DOWN_BACK,
         LIMIT_UP: LIMIT_UP,
         TURRET_PIVOT_X: TURRET_PIVOT_X,
         TURRET_PIVOT_Y: TURRET_PIVOT_Y,

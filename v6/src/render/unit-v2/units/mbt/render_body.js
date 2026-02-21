@@ -24,15 +24,9 @@
         var main = p.main || '#4E5B31';
         var dark = p.dark || '#3D4825';
         var shadow = p.shadow || '#2C3519';
-        var track = p.track || '#222';
         var accent = p.accent || '#8b1e1e';
         var accent2 = p.accent2 || '#b91c1c';
         var enemyPattern = p.enemyPattern === true;
-
-        // Tracks
-        ctx.fillStyle = track;
-        rr(ctx, -80, -15, 160, 30, 15);
-        ctx.fill();
 
         if (enemyPattern) {
             ctx.strokeStyle = accent;

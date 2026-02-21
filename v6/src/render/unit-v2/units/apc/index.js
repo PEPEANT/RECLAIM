@@ -2,7 +2,7 @@
 (function attachUnitRenderV2_apc(globalScope) {
     'use strict';
 
-    var BATTLE_MODEL_SCALE = 0.68;
+    var BATTLE_MODEL_SCALE = 0.72;
     var BATTLE_BASE_DRAW_SCALE = 1.4 * 1.16;
     var BATTLE_WORLD_SCALE = BATTLE_BASE_DRAW_SCALE * BATTLE_MODEL_SCALE;
     var MANUAL_AIM_STALE_FRAMES = 45;

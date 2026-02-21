@@ -10,10 +10,10 @@
         rpg: 0,
         special_ops: 0,
         drone_operator: 0,
-        humvee: 22, // V2 size down: keep wheels touching ground without sinking.
-        apc: 16,
-        mbt: 0,
-        spg: 6,
+        humvee: 36, // Slightly reduced after humvee model scale down.
+        apc: 26,    // Slightly larger APC model/height requires a bit more snap.
+        mbt: 24,    // Tracked hull bottom (y=15) * current V2 battle scale ~= 24.
+        spg: 24,    // Same tracked baseline with current V2 battle scale.
         aa_tank: 2,
         icbm: 4,
         icbm_enemy: 4

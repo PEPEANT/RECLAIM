@@ -12,84 +12,78 @@
         var accent2 = p.accent2 || '#b91c1c';
         var enemyPattern = p.enemyPattern === true;
 
-        // Upper hull.
+        // Reference design baseline converted to V2 feet baseline (y - 15).
         ctx.fillStyle = base;
         ctx.beginPath();
-        ctx.moveTo(-84, -26);
-        ctx.lineTo(-84, -8);
-        ctx.lineTo(66, -8);
-        ctx.lineTo(88, -18);
-        ctx.lineTo(82, -28);
-        ctx.lineTo(40, -38);
-        ctx.lineTo(-78, -38);
+        ctx.moveTo(65, -32);
+        ctx.lineTo(82, -11);
+        ctx.lineTo(82, 1);
+        ctx.lineTo(75, 7);
+        ctx.lineTo(-75, 7);
+        ctx.lineTo(-80, -11);
+        ctx.lineTo(-80, -37);
+        ctx.lineTo(45, -37);
         ctx.closePath();
         ctx.fill();
 
-        // Front glacis and side shadow.
+        // Side skirt armor.
         ctx.fillStyle = dark;
         ctx.beginPath();
-        ctx.moveTo(40, -38);
-        ctx.lineTo(82, -28);
-        ctx.lineTo(88, -18);
-        ctx.lineTo(58, -13);
-        ctx.lineTo(36, -26);
+        ctx.moveTo(75, -11);
+        ctx.lineTo(-78, -11);
+        ctx.lineTo(-75, 5);
+        ctx.lineTo(72, 5);
         ctx.closePath();
         ctx.fill();
 
-        ctx.fillStyle = 'rgba(0,0,0,0.12)';
-        ctx.beginPath();
-        ctx.moveTo(-84, -26);
-        ctx.lineTo(-84, -8);
-        ctx.lineTo(66, -8);
-        ctx.lineTo(58, -13);
-        ctx.lineTo(0, -13);
-        ctx.lineTo(-42, -16);
-        ctx.lineTo(-72, -20);
-        ctx.closePath();
-        ctx.fill();
-
-        // Side skirt panel lines.
+        // Side armor panel lines.
         ctx.strokeStyle = shadow;
-        ctx.lineWidth = 1.2;
-        var panelXs = [-62, -38, -14, 10, 34, 58];
-        for (var i = 0; i < panelXs.length; i++) {
-            var x = panelXs[i];
-            ctx.beginPath();
-            ctx.moveTo(x, -32);
-            ctx.lineTo(x, -8);
-            ctx.stroke();
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (var px = -60; px <= 60; px += 25) {
+            ctx.moveTo(px, -11);
+            ctx.lineTo(px, 5);
+        }
+        ctx.stroke();
+
+        // Rear storage box + center vent deck.
+        ctx.fillStyle = shadow;
+        ctx.fillRect(-70, -32, 20, 10);
+        ctx.fillRect(10, -32, 30, 8);
+
+        // Vent slits.
+        ctx.fillStyle = '#111';
+        for (var i = 0; i < 6; i++) {
+            ctx.fillRect(12 + i * 4.5, -31, 2, 6);
         }
 
-        // Driver hatch and optics.
-        ctx.fillStyle = dark;
-        ctx.fillRect(20, -34, 16, 5);
-        ctx.fillStyle = '#111';
-        ctx.fillRect(22, -33, 12, 2.5);
+        // Driver sight.
+        ctx.fillStyle = '#2b3842';
+        ctx.fillRect(48, -35, 10, 4);
 
-        // Rear details.
-        ctx.fillStyle = '#202020';
-        ctx.fillRect(-84, -18, 8, 8);
-        ctx.fillStyle = '#8B0000';
-        ctx.fillRect(-85, -20, 3, 6);
+        // Lights.
+        ctx.fillStyle = '#ffcc00';
+        ctx.fillRect(80, -14, 3, 5);
+        ctx.fillStyle = '#ff2200';
+        ctx.fillRect(-80, -21, 2, 6);
 
         if (enemyPattern) {
-            // Desert fragments + red enemy marks.
             ctx.fillStyle = 'rgba(80,64,42,0.26)';
-            ctx.fillRect(-62, -31, 20, 7);
-            ctx.fillRect(-15, -25, 18, 6);
-            ctx.fillRect(26, -20, 14, 5);
+            ctx.fillRect(-62, -30, 20, 7);
+            ctx.fillRect(-15, -24, 18, 6);
+            ctx.fillRect(26, -19, 14, 5);
 
             ctx.strokeStyle = accent;
             ctx.lineWidth = 1.6;
             ctx.beginPath();
-            ctx.moveTo(18, -14);
-            ctx.lineTo(42, -11);
-            ctx.moveTo(16, -10);
-            ctx.lineTo(40, -7);
+            ctx.moveTo(18, -21);
+            ctx.lineTo(42, -18);
+            ctx.moveTo(16, -17);
+            ctx.lineTo(40, -14);
             ctx.stroke();
 
             ctx.fillStyle = accent2;
-            ctx.fillRect(-44, -10, 10, 3);
+            ctx.fillRect(-44, -15, 10, 3);
         }
     }
 

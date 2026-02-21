@@ -83,18 +83,25 @@
         if (this.team === 'player' && this.commandMode === 'move') {
             if (this.stats.type === 'air') this.rotorAngle += 0.8;
             if (this.lastDamagedFrame && game.frame - this.lastDamagedFrame < 10) {
-                this.commandMode = 'stop'; this.targetX = null; return;
+                this.commandMode = 'stop';
+                this.targetX = null;
+                if (typeof this.updateFacing === 'function') this.updateFacing();
+                return;
             }
             const enemy = this.findNearestEnemy(enemies, buildings);
             const unitRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats.range || 0));
             if (enemy && Math.abs(enemy.x - this.x) <= unitRange) {
-                this.commandMode = 'stop'; this.targetX = null; return;
+                this.commandMode = 'stop';
+                this.targetX = null;
+                if (typeof this.updateFacing === 'function') this.updateFacing();
+                return;
             }
             if (this.targetX !== null && this.targetX !== undefined) {
                 const dx = this.targetX - this.x;
                 if (Math.abs(dx) < 10) { this.commandMode = 'stop'; this.targetX = null; }
                 else { this.x += this.stats.speed * Math.sign(dx); }
             } else { this.commandMode = 'stop'; }
+            if (typeof this.updateFacing === 'function') this.updateFacing();
             return;
         }
 
@@ -120,6 +127,7 @@
                 const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
                 const canAttack = (target && Math.abs(target.x - this.x) <= activeRange);
                 if (canAttack) {
+                    this.attackTarget = target;
                     if (typeof this._applyCombatSpacing === 'function') {
                         this._applyCombatSpacing(target, activeRange);
                     }
@@ -132,7 +140,13 @@
                         this.attack(target);
                         this.lastAttack = game.frame;
                     }
+                } else {
+                    const sticky = this.attackTarget;
+                    if (sticky && (sticky.dead || Math.abs((Number(sticky.x) || 0) - this.x) > (activeRange + 80))) {
+                        this.attackTarget = null;
+                    }
                 }
+                if (typeof this.updateFacing === 'function') this.updateFacing();
                 return;
             }
 

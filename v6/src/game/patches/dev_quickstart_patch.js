@@ -2,6 +2,7 @@
     'use strict';
 
     var STORAGE_KEY = 'reclaim_dev_quickstart_v1';
+    var ACK_KEY = STORAGE_KEY + ':ack_token_v1';
     var DEFAULT_MAP_ID = 'skirmish';
     var quickstartTimer = null;
     var DEFAULT_ALLY_SLOTS = [
@@ -66,9 +67,33 @@
             skipBootGate: raw.skipBootGate !== false,
             mapId: String(raw.mapId || DEFAULT_MAP_ID).trim() || DEFAULT_MAP_ID,
             allySlots: sanitizeSlotList(raw.allySlots, DEFAULT_ALLY_SLOTS),
-            enemySlots: sanitizeSlotList(raw.enemySlots, DEFAULT_ENEMY_SLOTS)
+            enemySlots: sanitizeSlotList(raw.enemySlots, DEFAULT_ENEMY_SLOTS),
+            quickstartToken: String(raw.quickstartToken || '').trim()
         };
         return cfg;
+    }
+
+    function readAckToken() {
+        try {
+            return String(globalScope.localStorage.getItem(ACK_KEY) || '').trim();
+        } catch (_) {
+            return '';
+        }
+    }
+
+    function writeAckToken(token) {
+        var t = String(token || '').trim();
+        if (!t) return;
+        try {
+            globalScope.localStorage.setItem(ACK_KEY, t);
+        } catch (_) { }
+    }
+
+    function hasPendingQuickstartToken(cfg) {
+        if (!cfg || cfg.enabled !== true) return false;
+        var token = String(cfg.quickstartToken || '').trim();
+        if (!token) return false;
+        return token !== readAckToken();
     }
 
     function isVisible(id) {
@@ -161,6 +186,7 @@
         if (!isLocalRuntime()) return false;
         var cfg = cfgInput || getConfig();
         if (!cfg || cfg.enabled !== true) return false;
+        if (!hasPendingQuickstartToken(cfg)) return false;
 
         var gameRef = globalScope.game || null;
         if (!gameRef || gameRef.running === true) return false;
@@ -186,6 +212,7 @@
         if (cfg.autoStartCustom === true && opened === true) {
             tryStartCustomBattle(gameRef);
         }
+        if (opened === true) writeAckToken(cfg.quickstartToken);
         return opened;
     }
 
@@ -193,6 +220,7 @@
         if (!isLocalRuntime()) return;
         var cfg = getConfig();
         if (cfg.enabled !== true) return;
+        if (!hasPendingQuickstartToken(cfg)) return;
         stopQuickstartTimer();
 
         var opened = false;
@@ -223,6 +251,7 @@
                 opened = ensureCustomPanel(gameRef, cfg);
                 if (opened) {
                     console.info('[DevQuickstart] custom battle screen opened');
+                    writeAckToken(cfg.quickstartToken);
                 }
             }
 
