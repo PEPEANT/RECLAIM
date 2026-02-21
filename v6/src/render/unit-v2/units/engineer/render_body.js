@@ -62,6 +62,42 @@
         ctx.fillRect(-9.7, -24.2, 4.5, 10.2);
     }
 
+    function drawGripToWeapon(ctx, palette, state, recoil) {
+        var bobX = Number(state.weaponBobX) || 0;
+        var bobY = Number(state.weaponBobY) || 0;
+        var sway = Number(state.weaponSway) || 0;
+        var isLauncher = (state.mode === 'firing');
+
+        var baseX = (isLauncher ? 2 : 3) - (Number(recoil) || 0) * (isLauncher ? 0.48 : 0.38) + bobX;
+        var baseY = (isLauncher ? -22 : -20) - bobY;
+        var ang = (isLauncher ? -0.08 : -0.05) + sway * (isLauncher ? 0.45 : 1);
+
+        var supportD = isLauncher ? 2.2 : 1.0;
+        var gripD = isLauncher ? 6.0 : 4.2;
+        var supportX = baseX + Math.cos(ang) * supportD;
+        var supportY = baseY + Math.sin(ang) * supportD;
+        var gripX = baseX + Math.cos(ang) * gripD;
+        var gripY = baseY + Math.sin(ang) * gripD;
+
+        ctx.strokeStyle = palette.uniform;
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-4.2, -23);
+        ctx.lineTo(supportX, supportY);
+        ctx.moveTo(4.2, -23);
+        ctx.lineTo(gripX, gripY);
+        ctx.stroke();
+
+        ctx.fillStyle = palette.skin || '#d9b08c';
+        ctx.beginPath();
+        ctx.arc(supportX, supportY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(gripX, gripY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     function drawStanding(ctx, palette, state, recoil) {
         var legSwing = Number(state.legSwing) || 0;
         var armSwing = Number(state.armSwing) || 0;
@@ -72,8 +108,8 @@
         var stepSin = Math.sin(cycle);
         var kneeBlend = Math.min(1, Math.abs(legSwing) / 0.55);
 
-        drawLeg(ctx, -2.3, -14, 0.08 + legSwing, 0.2 + Math.max(0, -stepSin) * 0.35 * kneeBlend, palette);
-        drawLeg(ctx, 2.3, -14, 0.08 - legSwing, 0.2 + Math.max(0, stepSin) * 0.35 * kneeBlend, palette);
+        drawLeg(ctx, -2.3, -14, legSwing, 0.2 + Math.max(0, -stepSin) * 0.35 * kneeBlend, palette);
+        drawLeg(ctx, 2.3, -14, -legSwing, 0.2 + Math.max(0, stepSin) * 0.35 * kneeBlend, palette);
 
         ctx.save();
         ctx.translate(0, -bodyBob - idleBreath * 0.2);
@@ -83,6 +119,7 @@
         drawBackpack(ctx, palette, 'standing');
         drawArm(ctx, -4.2, -23, -0.25 + armSwing * 0.75, palette);
         drawArm(ctx, 4.2, -23, 0.18 - armSwing * 0.68 + recoil * 0.05, palette);
+        drawGripToWeapon(ctx, palette, state, recoil);
         drawHead(ctx, 0, -29, palette, state);
         ctx.restore();
     }

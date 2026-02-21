@@ -54,6 +54,39 @@
         ctx.restore();
     }
 
+    function drawGripToWeapon(ctx, palette, state, recoil) {
+        var bobX = Number(state.weaponBobX) || 0;
+        var bobY = Number(state.weaponBobY) || 0;
+        var sway = Number(state.weaponSway) || 0;
+
+        var baseX = 3 - (Number(recoil) || 0) * 0.4 + bobX;
+        var baseY = -20 - bobY;
+        var ang = -0.05 + sway;
+
+        var supportX = baseX + Math.cos(ang) * 1.0;
+        var supportY = baseY + Math.sin(ang) * 1.0;
+        var gripX = baseX + Math.cos(ang) * 4.2;
+        var gripY = baseY + Math.sin(ang) * 4.2;
+
+        ctx.strokeStyle = palette.uniform;
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-4.2, -23);
+        ctx.lineTo(supportX, supportY);
+        ctx.moveTo(4.2, -23);
+        ctx.lineTo(gripX, gripY);
+        ctx.stroke();
+
+        ctx.fillStyle = palette.skin || '#d9b08c';
+        ctx.beginPath();
+        ctx.arc(supportX, supportY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(gripX, gripY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     function drawStanding(ctx, palette, state, recoil) {
         var legSwing = Number(state.legSwing) || 0;
         var armSwing = Number(state.armSwing) || 0;
@@ -64,8 +97,8 @@
         var stepSin = Math.sin(cycle);
         var kneeBlend = Math.min(1, Math.abs(legSwing) / 0.55);
 
-        var leftThigh = 0.08 + legSwing;
-        var rightThigh = 0.08 - legSwing;
+        var leftThigh = legSwing;
+        var rightThigh = -legSwing;
         var leftKnee = 0.20 + Math.max(0, -stepSin) * 0.35 * kneeBlend;
         var rightKnee = 0.20 + Math.max(0, stepSin) * 0.35 * kneeBlend;
 
@@ -81,6 +114,7 @@
 
         drawArm(ctx, -4.2, -23, -0.25 + armSwing * 0.75, palette);
         drawArm(ctx, 4.2, -23, 0.18 - armSwing * 0.68 + recoil * 0.05, palette);
+        drawGripToWeapon(ctx, palette, state, recoil);
 
         drawHead(ctx, 0, -29 + (idleBreath * 0.2), palette);
 

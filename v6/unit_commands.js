@@ -394,6 +394,14 @@
                     return;
                 }
 
+                // [NEW] medkit immediate heal command
+                if (cmd === 'medkit') {
+                    if (typeof game.useMedkitCommand === 'function') {
+                        game.useMedkitCommand();
+                    }
+                    return;
+                }
+
                 // [NEW] transport drop command
                 if (cmd === 'drop') {
                     if (typeof game.prepareDropCommand === 'function') {
@@ -947,6 +955,12 @@
             if (smokeBtn) {
                 const hasSpecial = this.selectedUnits && [...this.selectedUnits].some(u => u && !u.dead && (u.smokeChargesLeft || 0) > 0);
                 smokeBtn.classList.toggle('hidden', !hasSpecial);
+            }
+
+            const medkitBtn = document.getElementById('cmd-medkit-btn');
+            if (medkitBtn) {
+                const hasMedkit = this.selectedUnits && [...this.selectedUnits].some(u => u && !u.dead && (u.medkitChargesLeft || 0) > 0);
+                medkitBtn.classList.toggle('hidden', !hasMedkit);
             }
 
             const dropBtn = document.getElementById('cmd-drop-btn');

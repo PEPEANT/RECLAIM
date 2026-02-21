@@ -1861,9 +1861,11 @@ class Unit extends Entity {
         const dx = this.x - this._lastX;
         this._lastX = this.x;
 
-        // 이동량이 임계값(0.5px) 이상일 때만 facing 변경
-        // 제자리면 마지막 방향 유지
-        if (Math.abs(dx) > 0.5) {
+        // Infantry moves in smaller per-frame steps; use a lower threshold
+        // so it does not appear to slide backward at low speed.
+        const isInfantryLike = !!(this.stats && this.stats.category === 'infantry');
+        const facingThreshold = isInfantryLike ? 0.08 : 0.5;
+        if (Math.abs(dx) > facingThreshold) {
             this.facing = dx > 0 ? 1 : -1;
         }
         // else: 제자리 → facing 유지 (아무것도 안 함)

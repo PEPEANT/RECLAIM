@@ -88,6 +88,66 @@
         ctx.fillRect(-8.5, -36, 1.8, 1.8);
     }
 
+    function drawGripToWeapon(ctx, palette, state, recoil) {
+        var bobX = Number(state.weaponBobX) || 0;
+        var bobY = Number(state.weaponBobY) || 0;
+        var sway = Number(state.weaponSway) || 0;
+        var mode = state.mode || 'rifle';
+
+        var baseX;
+        var baseY;
+        var ang;
+        var supportX;
+        var supportY;
+        var gripX;
+        var gripY;
+
+        if (mode === 'laptop') {
+            baseX = 7 + bobX;
+            baseY = -13 - bobY;
+            ang = -0.2 + sway * 0.2;
+
+            var cosA = Math.cos(ang);
+            var sinA = Math.sin(ang);
+            var leftX = -3.0;
+            var leftY = 1.0;
+            var rightX = 4.8;
+            var rightY = 1.0;
+
+            supportX = baseX + leftX * cosA - leftY * sinA;
+            supportY = baseY + leftX * sinA + leftY * cosA;
+            gripX = baseX + rightX * cosA - rightY * sinA;
+            gripY = baseY + rightX * sinA + rightY * cosA;
+        } else {
+            baseX = 3 - (Number(recoil) || 0) * 0.38 + bobX;
+            baseY = -20 - bobY;
+            ang = -0.05 + sway;
+
+            supportX = baseX + Math.cos(ang) * 1.0;
+            supportY = baseY + Math.sin(ang) * 1.0;
+            gripX = baseX + Math.cos(ang) * 4.2;
+            gripY = baseY + Math.sin(ang) * 4.2;
+        }
+
+        ctx.strokeStyle = palette.uniform;
+        ctx.lineWidth = 2.4;
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(-4.2, -23);
+        ctx.lineTo(supportX, supportY);
+        ctx.moveTo(4.2, -23);
+        ctx.lineTo(gripX, gripY);
+        ctx.stroke();
+
+        ctx.fillStyle = palette.skin || '#d9b08c';
+        ctx.beginPath();
+        ctx.arc(supportX, supportY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(gripX, gripY, 1.2, 0, Math.PI * 2);
+        ctx.fill();
+    }
+
     function drawStanding(ctx, palette, state, recoil) {
         var legSwing = Number(state.legSwing) || 0;
         var armSwing = Number(state.armSwing) || 0;
@@ -98,8 +158,8 @@
         var stepSin = Math.sin(cycle);
         var kneeBlend = Math.min(1, Math.abs(legSwing) / 0.55);
 
-        drawLeg(ctx, -2.3, -14, 0.08 + legSwing, 0.2 + Math.max(0, -stepSin) * 0.35 * kneeBlend, palette);
-        drawLeg(ctx, 2.3, -14, 0.08 - legSwing, 0.2 + Math.max(0, stepSin) * 0.35 * kneeBlend, palette);
+        drawLeg(ctx, -2.3, -14, legSwing, 0.2 + Math.max(0, -stepSin) * 0.35 * kneeBlend, palette);
+        drawLeg(ctx, 2.3, -14, -legSwing, 0.2 + Math.max(0, stepSin) * 0.35 * kneeBlend, palette);
 
         ctx.save();
         ctx.translate(0, -bodyBob - idleBreath * 0.2);
@@ -109,6 +169,7 @@
         drawRadioPack(ctx, palette, 'standing');
         drawArm(ctx, -4.2, -23, -0.25 + armSwing * 0.75, palette);
         drawArm(ctx, 4.2, -23, 0.18 - armSwing * 0.68 + recoil * 0.05, palette);
+        drawGripToWeapon(ctx, palette, state, recoil);
         drawHead(ctx, 0, -29, palette, state);
         ctx.restore();
     }

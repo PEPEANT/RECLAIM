@@ -234,6 +234,56 @@
             return true;
         }
 
+        _drawUnitRenderV2Corpse(ctx, applyFilter) {
+            const id = String(this.typeKey || '').trim();
+            if (!id) return false;
+            if (id === 'civ_a' || id === 'civ_b' || id === 'civ_crowd') return false;
+            if (typeof UnitRenderV2 === 'undefined' || !UnitRenderV2 || typeof UnitRenderV2.draw !== 'function') return false;
+
+            const dummyUnit = {
+                x: 0,
+                y: 0,
+                vx: 0,
+                facing: this.facing || 1,
+                team: this.team,
+                stats: {
+                    id: id,
+                    category: 'infantry',
+                    speed: 0.9,
+                    range: 260
+                },
+                hp: 100,
+                maxHp: 100,
+                dead: false,
+                commandMode: 'stop',
+                attackTarget: null,
+                lastAttack: -1,
+                lastDamagedFrame: -9999
+            };
+
+            if (id === 'drone_operator') {
+                dummyUnit.opState = (this.opState === 'laptop') ? 'laptop' : 'rifle';
+            } else if (id === 'engineer' || id === 'rpg') {
+                dummyUnit.engineerMode = 'carrying';
+            }
+
+            ctx.save();
+            applyFilter();
+            // Battle renderer uses 1.4 as baseline unit model scale.
+            ctx.scale(1.4, 1.4);
+            let ok = false;
+            try {
+                ok = UnitRenderV2.draw(dummyUnit, ctx, {
+                    mode: 'battle',
+                    team: this.team
+                }) === true;
+            } catch (_) {
+                ok = false;
+            }
+            ctx.restore();
+            return ok;
+        }
+
         _drawCorpseBody(ctx, simpleRender, allowFilter) {
             // 총맞음 혈흔 + 소품 드롭 (바닥 고정)
             if (!simpleRender) {
@@ -257,6 +307,9 @@
             }
             else if (this._drawCivilianCorpse(ctx, applyFilter)) {
                 // handled
+            }
+            else if (this._drawUnitRenderV2Corpse(ctx, applyFilter)) {
+                // handled by Unit Render V2 (infantry family)
             }
             else if (this.skin && typeof IngameRenderer !== 'undefined' && IngameRenderer.drawUnitSkin) {
                 const dummyUnit = {
@@ -528,4 +581,3 @@
     // 전역 노출
     window.Corpse = Corpse;
 })();
-
