@@ -44,7 +44,7 @@
           ],
           enemyPreset: [
               { unitId: 'infantry', count: 8 },
-              { unitId: 'special_forces', count: 2 },
+              { unitId: 'infantry', count: 2 },
               { unitId: 'engineer', count: 2 },
               { unitId: 'mbt', count: 15 },
               { unitId: 'apache', count: 2 },

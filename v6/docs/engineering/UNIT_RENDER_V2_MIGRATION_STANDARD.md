@@ -1,15 +1,15 @@
-# Unit Render V2 Migration Standard
+# Unit Render V2 마이그레이션 표준
 
-## Purpose
-- Define one unified process for replacing legacy unit rendering with V2, unit by unit.
-- Ensure every migration has the same structure, validation, rollback path, and status tracking.
+## 목적
+- 레거시 유닛 렌더링을 V2로 교체할 때, 유닛별 작업 방식이 항상 동일하도록 표준을 정의한다.
+- 모든 유닛 교체에서 같은 구조, 검증, 롤백, 상태 추적 규칙을 사용한다.
 
-## Core Rule
-- Migrate **one unit at a time**.
-- Keep legacy renderer active as fallback until each unit is verified.
-- Do not combine renderer rewrite with unrelated world/background rewrites in the same step.
+## 핵심 원칙
+- 한 번에 **유닛 1개씩** 교체한다.
+- 각 유닛 검증이 끝날 때까지 레거시 렌더러를 fallback으로 유지한다.
+- 렌더러 교체와 월드/배경 대규모 스케일 변경을 한 단계에서 섞지 않는다.
 
-## Standard Folder Layout
+## 표준 폴더 구조
 ```text
 src/render/unit-v2/
   index.js
@@ -28,23 +28,23 @@ src/render/unit-v2/
       fx.js
 ```
 
-## Standard Doc Layout
+## 문서 구조
 ```text
 docs/engineering/unit-v2/
   UNIT_V2_SPEC_TEMPLATE.md
   <unit-id>.md
 ```
 
-Each migrated unit must have one spec file:
+교체 대상 유닛은 반드시 1개 문서를 가진다.
 - `docs/engineering/unit-v2/<unit-id>.md`
 
-## Runtime Contract (Mandatory)
-- `registry.js` must expose unit-level renderer lookup by `unit.stats.id`.
-- Unit-level renderer must expose:
+## 런타임 계약 (필수)
+- `registry.js`는 `unit.stats.id` 기준으로 유닛 렌더러를 조회할 수 있어야 한다.
+- 유닛 렌더러는 아래 함수를 제공해야 한다.
 1. `canRender(unit)` -> boolean
-2. `draw(unit, ctx, env)` -> boolean (`true` means draw handled)
+2. `draw(unit, ctx, env)` -> boolean (`true`면 렌더 처리 완료)
 
-- Draw dispatch policy:
+- 디스패치 규칙 예시:
 ```js
 const renderer = UnitRenderV2Registry[unitId];
 if (unit.renderVersion === 'v2' && renderer && renderer.canRender(unit)) {
@@ -54,68 +54,68 @@ if (unit.renderVersion === 'v2' && renderer && renderer.canRender(unit)) {
 LegacyUnitRenderer.draw(unit, ctx);
 ```
 
-## Feature Flag Policy
-- Global flag object:
+## 기능 플래그 규칙
+- 전역 플래그 객체:
 ```js
 window.RENDER_V2_UNITS = window.RENDER_V2_UNITS || {};
 ```
-- Per-unit flags:
+- 유닛별 온/오프:
 ```js
 window.RENDER_V2_UNITS.mbt = true;
 window.RENDER_V2_UNITS.apc = false;
 ```
 
-- Spawn-time assignment:
+- 스폰 시점 할당:
 ```js
 if (window.RENDER_V2_UNITS[unit.stats.id] === true) {
   unit.renderVersion = 'v2';
 }
 ```
 
-## Scale Policy
-- Shared V2 scale tokens only in `src/render/unit-v2/common/scale.js`.
-- Unit code must consume shared tokens, not hardcode random scale constants.
-- Phase order:
-1. Visual inflation only
-2. Hitbox/collision sync
-3. Background/world scale (separate milestone)
+## 스케일 규칙
+- V2 공통 스케일 토큰은 `src/render/unit-v2/common/scale.js`에서만 관리한다.
+- 유닛 코드에서 임의 상수를 흩뿌리지 않는다.
+- 단계 순서:
+1. 시각적 인플레이션만 적용
+2. 히트박스/충돌 판정 동기화
+3. 배경/월드 스케일 변경 (별도 마일스톤)
 
-## Per-Unit Migration Workflow
-1. Create spec file from template (`docs/engineering/unit-v2/<unit-id>.md`).
-2. Add renderer folder (`src/render/unit-v2/units/<unit-id>/`).
-3. Implement V2 renderer with no gameplay behavior changes.
-4. Register unit in V2 registry.
-5. Add feature flag gate for that unit.
-6. Validate checklist (visual + gameplay safety).
-7. Keep legacy fallback; do not delete legacy path yet.
+## 유닛별 작업 절차
+1. 템플릿으로 유닛 스펙 문서 생성 (`docs/engineering/unit-v2/<unit-id>.md`)
+2. 렌더러 폴더 생성 (`src/render/unit-v2/units/<unit-id>/`)
+3. 게임플레이 변경 없이 V2 렌더러 구현
+4. V2 레지스트리 등록
+5. 해당 유닛 기능 플래그 연결
+6. 체크리스트 검증 (시각 + 안정성)
+7. 레거시 fallback 유지 (즉시 삭제 금지)
 
-## Definition of Done (Per Unit)
-1. V2 render works in all playable maps/modes where the unit appears.
-2. No visual ground floating/sinking.
-3. Weapon muzzle/projectile spawn alignment matches expected position.
-4. No new runtime errors in console.
-5. Flag off returns unit to legacy rendering instantly.
-6. Unit spec doc exists and is updated with known limitations.
+## 완료 기준 (유닛 단위)
+1. 유닛이 등장하는 모든 맵/모드에서 V2 렌더 정상 동작
+2. 지면 접지(뜸/묻힘) 이상 없음
+3. 포구/발사체 시작 좌표 정렬 정상
+4. 콘솔 에러 없음
+5. 플래그 OFF 시 즉시 레거시 렌더 복귀
+6. 유닛 스펙 문서 작성 및 제한사항 반영 완료
 
-## Regression Checklist (Mandatory)
-1. Selection ring and HP bar alignment
-2. Facing flip behavior (`player` / `enemy`)
-3. Recoil/animation state continuity
-4. Spawn/despawn effects still visible
-5. Performance impact acceptable in mass-spawn cases
+## 회귀 체크리스트 (필수)
+1. 선택 링/HP 바 정렬
+2. 좌우 반전(`player` / `enemy`) 동작
+3. 반동/애니메이션 상태 연속성
+4. 스폰/소멸 이펙트 표시 유지
+5. 대량 스폰 시 성능 저하 허용 범위 확인
 
-## Rollback Standard
-- Never remove legacy rendering during initial migration.
-- Rollback = disable per-unit flag.
-- Keep V2 files for iterative fixes; do not hot-delete during incident response.
+## 롤백 기준
+- 초기 마이그레이션 동안 레거시 렌더 제거 금지
+- 롤백은 유닛 플래그 OFF로 처리
+- 장애 대응 시 V2 파일 삭제 대신 비활성화 우선
 
-## Naming Convention
-- Renderer module: `src/render/unit-v2/units/<unit-id>/index.js`
-- Spec file: `docs/engineering/unit-v2/<unit-id>.md`
-- Commit scope recommendation: `render-v2(<unit-id>): ...`
+## 네이밍 규칙
+- 렌더러 엔트리: `src/render/unit-v2/units/<unit-id>/index.js`
+- 유닛 문서: `docs/engineering/unit-v2/<unit-id>.md`
+- 커밋 스코프 권장: `render-v2(<unit-id>): ...`
 
-## Tracking Recommendation
-- Maintain a simple status table in each planning doc:
+## 상태 추적 규칙
+- 계획 문서에 아래 상태를 동일하게 사용한다.
 - `planned` -> `in_progress` -> `qa` -> `released`
 
-This status model must be used consistently for all unit migrations.
+모든 유닛 마이그레이션은 이 상태 모델을 공통으로 사용한다.

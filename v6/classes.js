@@ -130,9 +130,9 @@ class Unit extends Entity {
             this.autoDeploy = (team !== 'player');  // 플레이어는 수동 발진만, AI는 자동 발진 유지
         }
 
-        // [NEW] 특수부대 연막탄 — 기본 지급 제거됨
+        // 보병 연막탄 — 기본 지급 제거됨
         // smoke_grenade 아이템 장착 베테랑에게만 applyVeteranStats()에서 부여
-        if (stats.id === 'special_forces') {
+        if (stats.id === 'infantry') {
             this.smokeChargesLeft = 0;
             this.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
         }
@@ -176,21 +176,21 @@ class Unit extends Entity {
             this.transportDropManifest = null;
             if (stats.id === 'chinook') {
                 this.transportDropManifest = [
-                    { type: 'special_forces', count: 4 }, // 보병
-                    { type: 'engineer', count: 1 },       // RPG병
-                    { type: 'sniper', count: 1 },         // 저격수
-                    { type: 'special_ops', count: 2 }     // 특수부대
+                    { type: 'infantry', count: 4 },   // 보병
+                    { type: 'engineer', count: 1 },   // RPG병
+                    { type: 'sniper', count: 1 },     // 저격수
+                    { type: 'special_ops', count: 2 } // 특수부대
                 ];
-                this.transportDropType = 'special_forces';
+                this.transportDropType = 'infantry';
                 this.transportDropCount = 8;
             } else if (stats.id === 'blackhawk') {
-                this.transportDropType = 'special_forces';
+                this.transportDropType = 'infantry';
                 this.transportDropCount = 4;
             } else if (stats.id === 'apc') {
-                this.transportDropType = 'special_forces';
+                this.transportDropType = 'infantry';
                 this.transportDropCount = 4;
             } else if (stats.id === 'humvee') {
-                this.transportDropType = 'special_forces';
+                this.transportDropType = 'infantry';
                 this.transportDropCount = 2;
             }
             this.dropState = null; // approach | landing | dropping | takeoff
@@ -221,6 +221,44 @@ class Unit extends Entity {
 
         const jitter = Math.floor(Math.random() * 2); // 0~1
         return Math.max(6, Math.min(12, base + jitter));
+    }
+
+    getRangeBonus() {
+        const now = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
+        const until = Number(this.tempRangeBonusUntil);
+        if (!Number.isFinite(until) || until <= 0) return 0;
+        if (now > until) {
+            this.tempRangeBonusUntil = 0;
+            this.tempRangeBonus = 0;
+            return 0;
+        }
+        const bonus = Number(this.tempRangeBonus);
+        if (!Number.isFinite(bonus) || bonus <= 0) return 0;
+        return bonus;
+    }
+
+    getEffectiveRange() {
+        const base = Number(this.stats && this.stats.range) || 0;
+        const id = String((this.stats && this.stats.id) || '');
+        const s = this.stats || {};
+        const bonus = this.getRangeBonus();
+        if (base <= 0) return Math.max(0, bonus);
+
+        // Baseline tuning + global range inflation for readability and combat pacing.
+        let tunedBase = base;
+        if (id === 'spg') tunedBase = Math.round(base * 1.45);
+
+        let globalMult = 1.20;
+        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.28);
+        if (s.type === 'mech' || s.category === 'armored') globalMult = Math.max(globalMult, 1.24);
+        if (s.type === 'air' || s.category === 'air') globalMult = Math.max(globalMult, 1.22);
+        if (id === 'sniper') globalMult = 1.12;
+        if (id === 'spg') globalMult = 1.10;
+        if (id === 'bomber') globalMult = 1.28;
+        if (id === 'worker' || id === 'recon') globalMult = 1.00;
+
+        const scaled = Math.round(tunedBase * globalMult);
+        return Math.max(0, scaled + bonus);
     }
 
     shouldFeetSnap() {
@@ -314,6 +352,22 @@ class Unit extends Entity {
 
         // [NEW] 피격 프레임 기록 (이동 중 공격받으면 전투 전환용)
         this.lastDamagedFrame = game.frame;
+
+        // [NEW] 플레이어 MBT에 맞은 적 유닛은 잠시 사거리 버프를 얻는다.
+        if (attacker
+            && attacker.team === 'player'
+            && attacker.stats
+            && attacker.stats.id === 'mbt'
+            && this.team === 'enemy'
+            && this.stats
+            && Number.isFinite(Number(this.stats.range))
+            && this.hp > 0) {
+            const now = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
+            const bonus = 120;
+            const dur = 240; // 약 4초
+            this.tempRangeBonus = Math.max(Number(this.tempRangeBonus) || 0, bonus);
+            this.tempRangeBonusUntil = Math.max(Number(this.tempRangeBonusUntil) || 0, now + dur);
+        }
 
         // [NEW] 거점(건물) 공격 중 피격되면 공격자에게 즉시 타겟 전환
         if (attacker && this.attackTarget && !this.attackTarget.stats) {
@@ -940,6 +994,21 @@ class Unit extends Entity {
 
         if (this.stats.type === 'air') this.rotorAngle += 0.8;
 
+        // Player MBT manual right-click hold fire (PC): keep firing while held.
+        if (this.team === 'player' && this.stats && this.stats.id === 'mbt') {
+            if (this.isSelected !== true) {
+                this.stopManualTankMG(false);
+            } else if (this.manualMgHeld === true
+                && Number.isFinite(Number(this.manualAimX))
+                && Number.isFinite(Number(this.manualAimY))
+                && !(game && game.buildMode && game.buildMode.active)
+                && !(game && game.targetingType)) {
+                this.tryManualTankMGFire(this.manualAimX, this.manualAimY);
+            } else if (this.manualMgModeActive === true) {
+                this.stopManualTankMG(false);
+            }
+        }
+
         // [NEW] 카메라맨 전용 업데이트
         if (this.isCameraman || (this.stats && this.stats.isCameraman)) {
             this.updateCameraman();
@@ -1004,8 +1073,8 @@ class Unit extends Entity {
             if (this.stats.id === 'icbm_enemy' && this.updateEnemyIcbmAnchor()) return;
         }
 
-        // [NEW] 특수부대 AI 연막탄 1회 사용
-        if (this.stats.id === 'special_forces') {
+        // 보병 AI 연막탄 1회 사용
+        if (this.stats.id === 'infantry') {
             if (this.team !== 'player' && (this.smokeChargesLeft || 0) > 0) {
                 if (!Number.isFinite(this.smokeAiTimer)) {
                     this.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
@@ -1139,10 +1208,13 @@ class Unit extends Entity {
             const dir = this.team === 'player' ? 1 : -1;
             this.x += this.stats.speed * dir;
             this.updateFacing();
+            const fighterRange = Math.max(450, Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 600);
+            const fighterLoseRange = fighterRange + 50;
+            const fighterScanRange = Math.max(420, Math.round(fighterRange * 0.92));
 
         if (this.attackTarget && (this.attackTarget.dead ||
             (this.attackTarget.stats && this.attackTarget.stats.invulnerable) ||
-            Math.abs(this.attackTarget.x - this.x) > 600)) {
+            Math.abs(this.attackTarget.x - this.x) > fighterLoseRange)) {
             this.attackTarget = null;
         }
             if (!this.attackTarget) {
@@ -1150,7 +1222,7 @@ class Unit extends Entity {
                     !e.dead && e.stats && !e.stats.invulnerable &&
                     (e.stats.type === 'air' || e.stats.id === 'aa_tank') &&
                     e.stats.category !== 'drone' &&
-                    Math.abs(e.x - this.x) < 550
+                    Math.abs(e.x - this.x) < fighterScanRange
                 );
             }
             const target = this.attackTarget;
@@ -1174,7 +1246,7 @@ class Unit extends Entity {
                 const dist = Math.abs(target.x - this.x);
                 const lastMissile = Number(this.lastFighterMissile) || -9999;
                 const missileReady = (game.frame - lastMissile) > 150;
-                if (!isDrone && dist <= 620 && missileReady) {
+                if (!isDrone && dist <= (fighterRange + 120) && missileReady) {
                     let missileDmg = Number(this.stats.missileDamage);
                     if (!Number.isFinite(missileDmg) || missileDmg <= 0) missileDmg = 420;
                     if (target.stats && target.stats.type === 'air') missileDmg = Math.round(missileDmg * 1.15);
@@ -1193,7 +1265,8 @@ class Unit extends Entity {
         // [?쇰컲 ?꾪닾 濡쒖쭅] (吏???좊떅, ?꾪뙆移? **?꾧컻??釉붾옓?명겕**)
         const isEngineer = this.stats.id === 'engineer';
         const isRpgUnit = (this.stats.id === 'engineer' || this.stats.id === 'rpg');
-        const missileRange = Number(this.stats.missileRange) || this.stats.range;
+        const unitRange = this.getEffectiveRange();
+        const missileRange = Number(this.stats.missileRange) || unitRange;
         const canUseMissile = isRpgUnit && this.missileReady !== false;
         const isEngineerMissileTarget = (t) => {
             if (!t || !t.stats) return false;
@@ -1217,7 +1290,7 @@ class Unit extends Entity {
             const isStealth = this.attackTarget.stats && this.attackTarget.stats.stealth;
             const isInvulnerable = this.attackTarget.stats && this.attackTarget.stats.invulnerable;
             const isCivilianTarget = this.attackTarget.stats && this.attackTarget.stats.civilian;
-            const effRange = (canUseMissile && isEngineerMissileTarget(this.attackTarget)) ? missileRange : this.stats.range;
+            const effRange = (canUseMissile && isEngineerMissileTarget(this.attackTarget)) ? missileRange : unitRange;
 
             if (this.attackTarget.dead ||
                 (restrictForward && isBehind(this.attackTarget.x)) ||
@@ -1259,7 +1332,7 @@ class Unit extends Entity {
                     if (restrictForward && isBehind(e.x)) continue;
 
                     const dist = Math.abs(e.x - this.x);
-                    const effRange = (canUseMissile && isEngineerMissileTarget(e)) ? missileRange : this.stats.range;
+                    const effRange = (canUseMissile && isEngineerMissileTarget(e)) ? missileRange : unitRange;
                     if (dist > effRange) continue;
 
                     let score = dist;
@@ -1278,7 +1351,7 @@ class Unit extends Entity {
                         if (e.stats && e.stats.type === 'air' && !canHitAir) continue;
                         if (restrictForward && isBehind(e.x)) continue;
                         const dist = Math.abs(e.x - this.x);
-                        const effRange = (canUseMissile && isEngineerMissileTarget(e)) ? missileRange : this.stats.range;
+                        const effRange = (canUseMissile && isEngineerMissileTarget(e)) ? missileRange : unitRange;
                         if (dist > effRange) continue;
                         let score = dist;
                         if (score < bestScore) { bestScore = score; this.attackTarget = e; }
@@ -1290,7 +1363,7 @@ class Unit extends Entity {
                     for (let b of buildings) {
                         if (!b || b.dead || b.team === this.team || b.team === 'neutral') continue;
                         const dist = Math.abs(b.x - this.x);
-                        if (dist > this.stats.range + b.width / 2) continue;
+                        if (dist > unitRange + b.width / 2) continue;
                         if (restrictForward && isBehind(b.x)) continue;
                         if (dist < bestScore) { bestScore = dist; this.attackTarget = b; }
                     }
@@ -1303,11 +1376,14 @@ class Unit extends Entity {
         const isAttacking = (target !== null) && !(this.team === 'enemy' && game.empTimer > 0);
 
         if (isAttacking) {
+            const activeRange = (canUseMissile && isEngineerMissileTarget(target)) ? missileRange : unitRange;
+            this._applyCombatSpacing(target, activeRange);
+
             let rate = 60;
             // [?섏젙] 釉붾옓?명겕??鍮좊Ⅸ ?곗궗 (15?꾨젅?? ?곸슜
             if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
             else if (this.stats.id === 'mbt') rate = 120;
-            else if (this.stats.id === 'spg') rate = 300;
+            else if (this.stats.id === 'spg') rate = this._getSpgFireCooldownFrames();
             else if (this.stats.id === 'sniper') rate = 210;
 
             let handledAttackCycle = false;
@@ -1340,8 +1416,12 @@ class Unit extends Entity {
             }
 
             if (!handledAttackCycle && game.frame - this.lastAttack > rate) {
-                this.attack(target);
-                this.lastAttack = game.frame;
+                if (this.stats.id === 'spg' && !this._canSpgFireNow()) {
+                    // Keep tracking target while barrel raises to firing posture.
+                } else {
+                    this.attack(target);
+                    this.lastAttack = game.frame;
+                }
             }
 
             if (this.stats.id === 'mbt') {
@@ -1646,7 +1726,8 @@ class Unit extends Entity {
             }
 
             const target = this.attackTarget;
-            if (target && Math.abs(target.x - this.x) <= stats.range) {
+            const opRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : stats.range) || 0;
+            if (target && Math.abs(target.x - this.x) <= opRange) {
                 // 공격
                 if (game.frame - this.lastAttack > 30) {
                     this.attack(target);
@@ -1884,6 +1965,38 @@ class Unit extends Entity {
         } catch (e) { }
     }
 
+    _playManualMGBurstSound() {
+        // Manual MG sound is now simple: loop while held, stop on release.
+        this.manualMgModeActive = true;
+        this._startTankMGSound();
+    }
+
+    _playManualMGReloadSound() {
+        // No reload sound in simplified manual MG mode.
+    }
+
+    stopManualTankMG(forceStopAudio = true) {
+        this.manualMgHeld = false;
+        this.manualMgBurstEndFrame = 0;
+        this.manualMgReloadEndFrame = 0;
+        this.manualMgLastReloadAt = -1;
+        if (this._manualMgClipAudio) {
+            try {
+                if (this._manualMgClipAudio._manualMgClipTimer) {
+                    clearTimeout(this._manualMgClipAudio._manualMgClipTimer);
+                    this._manualMgClipAudio._manualMgClipTimer = null;
+                }
+                this._manualMgClipAudio.pause();
+                this._manualMgClipAudio.currentTime = 0;
+            } catch (e) { }
+            this._manualMgClipAudio = null;
+        }
+        if (forceStopAudio || this.manualMgModeActive === true) {
+            this._stopTankMGSound();
+        }
+        this.manualMgModeActive = false;
+    }
+
     _stopTankMGSound() {
         if (!this._mgAudio) return;
         try { this._mgAudio.pause(); } catch (e) { }
@@ -1909,8 +2022,342 @@ class Unit extends Entity {
         this._startTankMGSound();
     }
 
+    _resolveTankManualAim(targetX, targetY, opts = {}) {
+        const tx = Number(targetX);
+        const ty = Number(targetY);
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+
+        const weaponType = String(opts.weapon || 'main').trim().toLowerCase();
+        const facingRaw = Number(this.facing);
+        const facing = (Number.isFinite(facingRaw) && facingRaw < 0) ? -1 : 1;
+
+        let worldScale = 1.23424;
+        try {
+            if (typeof UnitRenderV2MBT !== 'undefined'
+                && UnitRenderV2MBT
+                && typeof UnitRenderV2MBT.getBattleWorldScale === 'function') {
+                const s = Number(UnitRenderV2MBT.getBattleWorldScale());
+                if (Number.isFinite(s) && s > 0.01) worldScale = s;
+            }
+        } catch (e) { }
+
+        const pivotX = this.x + (facing * (5 * worldScale));
+        const pivotY = this.y + (-30 * worldScale);
+
+        let angle = -0.1;
+        const weaponApi = (typeof UnitRenderV2Weapons_mbt !== 'undefined' && UnitRenderV2Weapons_mbt)
+            ? UnitRenderV2Weapons_mbt
+            : null;
+        if (weaponApi && typeof weaponApi.computeAimAngleFromPoint === 'function') {
+            angle = Number(weaponApi.computeAimAngleFromPoint(this, tx, ty));
+        } else {
+            const dxLocal = (tx - pivotX) * facing;
+            const dyLocal = ty - pivotY;
+            angle = Math.atan2(dyLocal, dxLocal);
+        }
+        if (weaponApi && typeof weaponApi.clampTurretAngle === 'function') {
+            angle = Number(weaponApi.clampTurretAngle(angle));
+        }
+        if (!Number.isFinite(angle)) angle = -0.1;
+
+        const dirX = facing * Math.cos(angle);
+        const dirY = Math.sin(angle);
+
+        const toWorldFromTurret = (localX, localY) => {
+            return {
+                x: this.x + (facing * ((5 + localX) * worldScale)),
+                y: this.y + ((-30 + localY) * worldScale)
+            };
+        };
+
+        let muzzleLocalX = (10 + (Math.cos(angle) * 70));
+        let muzzleLocalY = (Math.sin(angle) * 70);
+        if (weaponType === 'mg') {
+            const mgOffsetX = 20;
+            const mgOffsetY = -23;
+            const cosA = Math.cos(angle);
+            const sinA = Math.sin(angle);
+            muzzleLocalX = (mgOffsetX * cosA) - (mgOffsetY * sinA);
+            muzzleLocalY = (mgOffsetX * sinA) + (mgOffsetY * cosA);
+        } else if (weaponApi && typeof weaponApi.computeMuzzleLocal === 'function') {
+            const stateStore = (this._renderV2State && this._renderV2State.mbt) ? this._renderV2State.mbt : null;
+            const recoilNow = Math.max(0, Number(stateStore && stateStore.recoil) || Number(this.recoil) || 0);
+            const muzzleLocal = weaponApi.computeMuzzleLocal({ turretAngle: angle, recoil: recoilNow }, { barrelLength: 70 });
+            if (muzzleLocal && Number.isFinite(muzzleLocal.x) && Number.isFinite(muzzleLocal.y)) {
+                muzzleLocalX = muzzleLocal.x;
+                muzzleLocalY = muzzleLocal.y;
+            }
+        }
+
+        const muzzleWorld = toWorldFromTurret(muzzleLocalX, muzzleLocalY);
+        const muzzleX = muzzleWorld.x;
+        const muzzleY = muzzleWorld.y;
+
+        const forward = ((tx - muzzleX) * dirX) + ((ty - muzzleY) * dirY);
+        const minDistance = Math.max(20, Number(opts.minDistance) || 80);
+        const maxDistance = Math.max(minDistance + 20, Number(opts.maxDistance) || 1000);
+        const distance = Math.max(minDistance, Math.min(maxDistance, forward));
+
+        return {
+            angle,
+            dirX,
+            dirY,
+            muzzleX,
+            muzzleY,
+            targetX: muzzleX + (dirX * distance),
+            targetY: muzzleY + (dirY * distance)
+        };
+    }
+
+    _fireTankMGAtPoint(targetX, targetY, opts = null) {
+        if (!game || !game.projectiles) return false;
+        const tx = Number(targetX);
+        const ty = Number(targetY);
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return false;
+        const dmg = 12;
+        const spawnX = (opts && Number.isFinite(Number(opts.spawnX))) ? Number(opts.spawnX) : (this.x + (this.facing || 1) * 16);
+        const spawnY = (opts && Number.isFinite(Number(opts.spawnY))) ? Number(opts.spawnY) : (this.y - (this.height ? this.height * 0.92 : 0));
+        try {
+            game.projectiles.push(new Projectile(spawnX, spawnY, null, dmg, this.team, 'machinegun', {
+                source: this,
+                targetX: tx,
+                targetY: ty
+            }));
+        } catch (e) { return false; }
+        if (typeof game !== 'undefined' && Number.isFinite(game.frame)) {
+            this._mgLastShotFrame = game.frame;
+        }
+        if (!opts || opts.noSound !== true) this._startTankMGSound();
+        return true;
+    }
+
+    tryManualTankMGFire(targetX, targetY) {
+        if (!this || !this.stats || this.stats.id !== 'mbt') return false;
+        if (this.dead || this.stunTimer > 0) return false;
+        if (this.team !== 'player') return false;
+        if (this.isSelected !== true) return false;
+        if (typeof game === 'undefined' || !game) return false;
+        const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
+        const rate = 3; // simple continuous fire cadence while right-click is held
+        if ((frameNow - (Number(this.lastMGAttack) || 0)) <= rate) {
+            this.manualMgModeActive = true;
+            this._startTankMGSound();
+            return false;
+        }
+        const aim = this._resolveTankManualAim(targetX, targetY, { weapon: 'mg', minDistance: 80, maxDistance: 900 });
+        if (!aim) return false;
+        const fired = this._fireTankMGAtPoint(aim.targetX, aim.targetY, {
+            spawnX: aim.muzzleX,
+            spawnY: aim.muzzleY,
+            noSound: true
+        });
+        if (!fired) return false;
+        this.manualMgModeActive = true;
+        this._startTankMGSound();
+        if (game && game.createParticles) {
+            game.createParticles(aim.muzzleX, aim.muzzleY, 2, '#fbbf24');
+        }
+        this.lastMGAttack = frameNow;
+        this.attackTarget = null;
+        return true;
+    }
+
+    tryManualTankMainFire(targetX, targetY) {
+        if (!this || !this.stats || this.stats.id !== 'mbt') return false;
+        if (this.dead || this.stunTimer > 0) return false;
+        if (this.team !== 'player') return false;
+        if (typeof game === 'undefined' || !game || !game.projectiles) return false;
+
+        const aim = this._resolveTankManualAim(targetX, targetY, { weapon: 'main', minDistance: 120, maxDistance: 1400 });
+        if (!aim) return false;
+
+        const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
+        const rate = 120;
+        if ((frameNow - (Number(this.lastAttack) || 0)) <= rate) return false;
+
+        const dmg = Number(this.stats.damage) || 0;
+        const spawnX = aim.muzzleX;
+        const spawnY = aim.muzzleY;
+        const shotOpts = {
+            source: this,
+            targetX: aim.targetX,
+            targetY: aim.targetY,
+            impactVfx: 'tank_shell',
+            impactVfxAir: 'airburst',
+            impactVfxOnly: true
+        };
+
+        try {
+            game.projectiles.push(new Projectile(spawnX, spawnY, null, dmg, this.team, 'shell', shotOpts));
+        } catch (e) { return false; }
+
+        this.recoil = Math.max(this.recoil || 0, 6);
+        if (game && game.createParticles) {
+            game.createParticles(spawnX, spawnY, 44, '#f59e0b');
+            game.createParticles(spawnX, spawnY, 24, '#fff7c2');
+        }
+        this.lastAttack = frameNow;
+        this.attackTarget = null;
+        return true;
+    }
+
+    _getSpgGunAngleDeg() {
+        let angleDeg = Number(this._spgGunAngleDeg);
+        if (!Number.isFinite(angleDeg)) {
+            const stateStore = (this._renderV2State && this._renderV2State.spg) ? this._renderV2State.spg : null;
+            const gunAngle = Number(stateStore && stateStore.gunAngle);
+            if (Number.isFinite(gunAngle)) angleDeg = gunAngle * 180 / Math.PI;
+        }
+        if (!Number.isFinite(angleDeg)) return NaN;
+        while (angleDeg <= -180) angleDeg += 360;
+        while (angleDeg > 180) angleDeg -= 360;
+        return angleDeg;
+    }
+
+    _getSpgFireBlockDeg() {
+        const deg = Number(this._spgFireBlockDeg);
+        return Number.isFinite(deg) ? deg : 140;
+    }
+
+    _getSpgFireReadyAngleDeg() {
+        const deg = Number(this._spgFireReadyAngleDeg);
+        return Number.isFinite(deg) ? deg : -12;
+    }
+
+    _isSpgMovingForPosture() {
+        return Math.abs(Number(this.vx) || 0) > 0.06;
+    }
+
+    _isSpgBarrelRaisedForFire(angleDeg) {
+        const deg = Number.isFinite(angleDeg) ? angleDeg : this._getSpgGunAngleDeg();
+        if (!Number.isFinite(deg)) return false;
+        return deg <= this._getSpgFireReadyAngleDeg();
+    }
+
+    _canSpgFireNow() {
+        if (!this || !this.stats || this.stats.id !== 'spg') return true;
+        if (this._isSpgMovingForPosture()) return false;
+        if (this._spgFireReady === true) return true;
+
+        const angleDeg = this._getSpgGunAngleDeg();
+        if (!Number.isFinite(angleDeg)) return false;
+        if (Math.abs(angleDeg) >= this._getSpgFireBlockDeg()) return false;
+        return this._isSpgBarrelRaisedForFire(angleDeg);
+    }
+
+    _getSpgFireCooldownFrames() {
+        const angleDeg = this._getSpgGunAngleDeg();
+        // Base 7s + extra delay on high-angle lob shots.
+        if (Number.isFinite(angleDeg) && angleDeg <= -60) return 540; // 9.0s at 60fps
+        if (Number.isFinite(angleDeg) && angleDeg <= -45) return 510; // 8.5s
+        return 420; // 7.0s
+    }
+
+    _resolveSpgManualAim(targetX, targetY) {
+        const tx = Number(targetX);
+        const ty = Number(targetY);
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+
+        const facingRaw = Number(this.facing);
+        const facing = (Number.isFinite(facingRaw) && facingRaw < 0) ? -1 : 1;
+
+        const weaponApi = (typeof UnitRenderV2Weapons_spg !== 'undefined' && UnitRenderV2Weapons_spg)
+            ? UnitRenderV2Weapons_spg
+            : null;
+        let angle = -Math.PI / 3.4;
+        if (weaponApi && typeof weaponApi.computeAimAngleFromPoint === 'function') {
+            angle = Number(weaponApi.computeAimAngleFromPoint(this, tx, ty));
+        } else {
+            const dx = tx - this.x;
+            const dy = ty - this.y;
+            angle = Math.atan2(dy, dx * facing);
+        }
+        if (weaponApi && typeof weaponApi.clampGunAngle === 'function') {
+            angle = Number(weaponApi.clampGunAngle(angle));
+        }
+        if (!Number.isFinite(angle)) angle = -Math.PI / 3.4;
+
+        const stateStore = (this._renderV2State && this._renderV2State.spg) ? this._renderV2State.spg : null;
+        let muzzleX = this.x + (facing * 20);
+        let muzzleY = this.y - this.height * 0.55;
+        if (weaponApi && typeof weaponApi.computeMuzzleWorld === 'function') {
+            const muzzle = weaponApi.computeMuzzleWorld(this, { angle: angle, state: stateStore, barrelLength: 155 });
+            if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                muzzleX = muzzle.x;
+                muzzleY = muzzle.y;
+            }
+        }
+
+        const dirX = facing * Math.cos(angle);
+        const dirY = Math.sin(angle);
+        const baseRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 900;
+        const maxDistance = Math.max(900, baseRange);
+        const minDistance = 260;
+        const forward = ((tx - muzzleX) * dirX) + ((ty - muzzleY) * dirY);
+        const distance = Math.max(minDistance, Math.min(maxDistance, forward));
+
+        return {
+            angle: angle,
+            muzzleX: muzzleX,
+            muzzleY: muzzleY,
+            targetX: muzzleX + (dirX * distance),
+            targetY: muzzleY + (dirY * distance)
+        };
+    }
+
+    tryManualSpgMainFire(targetX, targetY) {
+        if (!this || !this.stats || this.stats.id !== 'spg') return false;
+        if (this.dead || this.stunTimer > 0) return false;
+        if (this.team !== 'player') return false;
+        if (this.isSelected !== true) return false;
+        if (typeof game === 'undefined' || !game || !game.projectiles) return false;
+
+        const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
+        const rate = this._getSpgFireCooldownFrames();
+        if ((frameNow - (Number(this.lastAttack) || 0)) <= rate) return false;
+        if (!this._canSpgFireNow()) return false;
+
+        const aim = this._resolveSpgManualAim(targetX, targetY);
+        if (!aim) return false;
+
+        const angleDeg = aim.angle * 180 / Math.PI;
+        if (Math.abs(angleDeg) >= this._getSpgFireBlockDeg()) return false;
+
+        const dmg = Number(this.stats.damage) || 0;
+        const dist = Math.abs(aim.targetX - aim.muzzleX);
+        const shotOpts = {
+            source: this,
+            targetX: aim.targetX,
+            targetY: aim.targetY,
+            arcHeight: Math.max(180, Math.min(460, Math.round(dist * 0.34))),
+            grav: 0.28,
+            hitRadius: 24
+        };
+
+        try {
+            game.projectiles.push(new Projectile(aim.muzzleX, aim.muzzleY, null, dmg, this.team, 'artillery', shotOpts));
+        } catch (e) { return false; }
+
+        this.recoil = Math.max(this.recoil || 0, 5);
+        if (typeof AudioSystem !== 'undefined') {
+            AudioSystem.playGun('self', this.x);
+        }
+        if (game && typeof game.createParticles === 'function') {
+            game.createParticles(aim.muzzleX, aim.muzzleY, 14, '#ff7a00');
+            game.createParticles(aim.muzzleX, aim.muzzleY, 8, '#fff1c2');
+        }
+
+        this.lastAttack = frameNow;
+        this.attackTarget = null;
+        return true;
+    }
+
     _updateTankMG(target) {
         if (this.stats.id !== 'mbt') return;
+        if (this.team === 'player' && this.manualMgHeld === true) {
+            // Manual control path owns firing/audio while RMB is held.
+            return;
+        }
         if (this.stunTimer > 0) {
             this._stopTankMGSound();
             return;
@@ -1929,7 +2376,7 @@ class Unit extends Entity {
         }
 
         const dist = Math.abs(target.x - this.x);
-        const mgRange = Math.min(300, Number(this.stats.range) || 300);
+        const mgRange = Math.max(180, Math.min(420, this.getEffectiveRange() || 300));
         if (dist > mgRange) {
             if (typeof game !== 'undefined' && (game.frame - this._mgLastShotFrame) > 8) {
                 this._stopTankMGSound();
@@ -1950,7 +2397,7 @@ class Unit extends Entity {
 
     _findTankMGTarget(enemies, extraCivilianTargets) {
         if (this.stats.id !== 'mbt') return null;
-        const mgRange = Math.min(300, Number(this.stats.range) || 300);
+        const mgRange = Math.max(180, Math.min(420, this.getEffectiveRange() || 300));
         let best = null;
         let bestDist = Infinity;
         const scanLists = [enemies || [], extraCivilianTargets || []];
@@ -1969,6 +2416,117 @@ class Unit extends Entity {
             }
         }
         return best;
+    }
+
+    _getRuntimeCombatUid(obj) {
+        if (!obj || typeof obj !== 'object') return 0;
+        const cur = Number(obj.__reclaimCombatUid);
+        if (Number.isFinite(cur) && cur > 0) return cur;
+        if (typeof game !== 'undefined' && game) {
+            if (!Number.isFinite(game.__reclaimCombatUidSeq) || game.__reclaimCombatUidSeq < 1) {
+                game.__reclaimCombatUidSeq = 1;
+            }
+            obj.__reclaimCombatUid = game.__reclaimCombatUidSeq++;
+            return obj.__reclaimCombatUid;
+        }
+        obj.__reclaimCombatUid = Math.floor(Math.random() * 1000000) + 1;
+        return obj.__reclaimCombatUid;
+    }
+
+    _getCombatHoldDistance(effectiveRange) {
+        const range = Math.max(0, Number(effectiveRange) || 0);
+        const id = String((this.stats && this.stats.id) || '');
+        const type = String((this.stats && this.stats.type) || '');
+        if (id === 'spg') return Math.max(260, Math.round(range * 0.92));
+        if (id === 'sniper') return Math.max(220, Math.round(range * 0.95));
+        if (id === 'mbt') return Math.max(180, Math.round(range * 0.82));
+        if (type === 'air') return Math.max(160, Math.round(range * 0.78));
+        if (id === 'humvee' || id === 'apc') return Math.max(120, Math.round(range * 0.78));
+        return Math.max(90, Math.round(range * 0.72));
+    }
+
+    _getCombatSlotTier(target) {
+        const selfUid = this._getRuntimeCombatUid(this);
+        const targetUid = this._getRuntimeCombatUid(target);
+        const hash = ((selfUid * 1103515245 + targetUid * 12345) >>> 0);
+        return hash % 5; // 0..4
+    }
+
+    _applyCombatSpacing(target, effectiveRange) {
+        if (!target || target.dead) return;
+        if (this.dead || this.stunTimer > 0) return;
+        const id = String((this.stats && this.stats.id) || '');
+        if (id === 'spg' || id === 'icbm' || id === 'icbm_enemy') return;
+
+        const speed = Number(this.stats && this.stats.speed) || 0;
+        if (speed <= 0) return;
+        const targetX = Number(target.x);
+        if (!Number.isFinite(targetX)) return;
+
+        const holdBase = this._getCombatHoldDistance(effectiveRange);
+        let side = (this.x <= targetX) ? -1 : 1;
+        const isAir = !!(this.stats && this.stats.type === 'air');
+        if (isAir) {
+            // Air units keep broad side separation but can switch if they crossed over.
+            side = (this.team === 'player') ? -1 : 1;
+            if (Math.abs(this.x - targetX) < holdBase * 0.45) side = (this.x <= targetX) ? -1 : 1;
+        }
+
+        const tier = this._getCombatSlotTier(target);
+        const slotStep = isAir ? 32 : 24;
+        let desiredDist = holdBase + (tier * slotStep);
+        const minFront = isAir ? 48 : 62;
+        if (desiredDist < minFront) desiredDist = minFront;
+
+        let desiredX = targetX + (side * desiredDist);
+
+        // Repel nearby allies shooting the same target to reduce stacking.
+        if (typeof game !== 'undefined' && game) {
+            const allies = (this.team === 'player') ? game.players : game.enemies;
+            if (Array.isArray(allies) && allies.length > 1) {
+                const minGap = isAir
+                    ? Math.max(24, Math.round((Number(this.width) || 20) * 0.8))
+                    : Math.max(18, Math.round((Number(this.width) || 20) * 0.55));
+                const repelScope = minGap * 2.2;
+                let repel = 0;
+                const selfUid = this._getRuntimeCombatUid(this);
+
+                for (let i = 0; i < allies.length; i++) {
+                    const u = allies[i];
+                    if (!u || u === this || u.dead) continue;
+                    if (u.attackTarget !== target) continue;
+                    if (u.stats && this.stats && u.stats.type !== this.stats.type) continue;
+                    const dx = this.x - u.x;
+                    const adx = Math.abs(dx);
+                    if (adx > repelScope) continue;
+
+                    if (adx < 0.001) {
+                        const otherUid = this._getRuntimeCombatUid(u);
+                        repel += (selfUid > otherUid) ? 0.5 : -0.5;
+                        continue;
+                    }
+
+                    if (adx < minGap) {
+                        const push = (minGap - adx) / minGap;
+                        repel += (dx >= 0 ? 1 : -1) * push;
+                    }
+                }
+
+                if (repel !== 0) {
+                    desiredX += repel * (isAir ? 16 : 12);
+                }
+            }
+        }
+
+        if (side < 0) desiredX = Math.min(desiredX, targetX - minFront);
+        else desiredX = Math.max(desiredX, targetX + minFront);
+
+        const dxMove = desiredX - this.x;
+        const deadZone = isAir ? 8 : 6;
+        if (Math.abs(dxMove) <= deadZone) return;
+
+        const step = Math.min(Math.max(speed * 0.8, 0.2), Math.abs(dxMove));
+        this.x += Math.sign(dxMove) * step;
     }
 
     attack(target) {
@@ -2080,14 +2638,95 @@ class Unit extends Entity {
             shotOpts = { impactVfx: 'tank_shell', impactVfxAir: 'airburst', impactVfxOnly: true };
         }
 
+        let projectileTarget = target;
+        let shotExtras = null;
+        let artilleryAimX = null;
+        let artilleryAimY = null;
+        if (id === 'spg' && type === 'artillery') {
+            const facingRaw = Number(this.facing);
+            const facingDir = Number.isFinite(facingRaw) && facingRaw !== 0
+                ? (facingRaw > 0 ? 1 : -1)
+                : (this.team === 'player' ? 1 : -1);
+            const stateStore = (this._renderV2State && this._renderV2State.spg) ? this._renderV2State.spg : null;
+            let barrelDeg = Number(this._spgGunAngleDeg);
+            if (!Number.isFinite(barrelDeg)) {
+                const barrelAngle = Number(stateStore && stateStore.gunAngle);
+                if (Number.isFinite(barrelAngle)) barrelDeg = barrelAngle * 180 / Math.PI;
+            }
+            while (Number.isFinite(barrelDeg) && barrelDeg <= -180) barrelDeg += 360;
+            while (Number.isFinite(barrelDeg) && barrelDeg > 180) barrelDeg -= 360;
+            const fireBlockDeg = this._getSpgFireBlockDeg();
+            // 이동 자세(포신 하강)에서는 발사하지 않고, 포신 상승 후에만 발사.
+            if (!this._canSpgFireNow()) {
+                return;
+            }
+            if (Number.isFinite(barrelDeg) && Math.abs(barrelDeg) >= fireBlockDeg) {
+                return;
+            }
+
+            const effRange = Math.max(
+                900,
+                Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 900
+            );
+            const groundY = (game && Number.isFinite(game.groundY)) ? game.groundY : this.y;
+
+            if (this.team === 'enemy') {
+                const targetX = Number(target && target.x);
+                const longShot = effRange * (0.9 + Math.random() * 0.7);
+                let aimX = Number.isFinite(targetX)
+                    ? (targetX + ((Math.random() - 0.5) * 360))
+                    : (this.x + (facingDir * longShot));
+
+                // Enemy SPG shoots by rough estimation (can miss).
+                if (Math.random() < 0.4) {
+                    aimX = this.x + (facingDir * longShot * (0.8 + Math.random() * 0.6));
+                }
+
+                const minForward = this.x + (facingDir * effRange * 0.45);
+                if (facingDir > 0 && aimX < minForward) aimX = minForward + (Math.random() * 120);
+                if (facingDir < 0 && aimX > minForward) aimX = minForward - (Math.random() * 120);
+
+                artilleryAimX = aimX + ((Math.random() - 0.5) * 220);
+                artilleryAimY = groundY + ((Math.random() - 0.5) * 24);
+            } else {
+                const targetX = Number(target && target.x);
+                const targetY = Number(target && target.y);
+                const fallbackDist = effRange * (0.9 + Math.random() * 0.4);
+                artilleryAimX = Number.isFinite(targetX)
+                    ? (targetX + ((Math.random() - 0.5) * 40))
+                    : (this.x + (facingDir * fallbackDist));
+                artilleryAimY = Number.isFinite(targetY)
+                    ? (targetY - ((Number(target && target.height) || 0) * 0.2) + ((Math.random() - 0.5) * 18))
+                    : groundY;
+            }
+
+            // Prevent near-self impact around turret.
+            const minManualDist = 260;
+            if (facingDir > 0 && artilleryAimX < (this.x + minManualDist)) {
+                artilleryAimX = this.x + minManualDist;
+            }
+            if (facingDir < 0 && artilleryAimX > (this.x - minManualDist)) {
+                artilleryAimX = this.x - minManualDist;
+            }
+
+            const travelDist = Math.abs(artilleryAimX - this.x);
+            shotExtras = {
+                targetX: artilleryAimX,
+                targetY: artilleryAimY,
+                arcHeight: Math.max(180, Math.min(460, Math.round(travelDist * 0.34))),
+                grav: 0.28,
+                hitRadius: 24
+            };
+            projectileTarget = null;
+        }
+
         // 총소리 재생 (유닛 타입별)
         const skipGunSFX = (id === 'mbt' && type === 'shell');
-        const shouldPlayGunSFX = (id === 'sniper' || id === 'special_ops') ? true : (Math.random() < 0.3);
+        const shouldPlayGunSFX = (id === 'sniper' || id === 'special_ops' || id === 'spg') ? true : (Math.random() < 0.3);
         if (!skipGunSFX && typeof AudioSystem !== 'undefined' && shouldPlayGunSFX) {
             // [ITEM] M249 장착 베테랑: gun4.mp3 총소리
             if (this.veteranGunType === 'rifle_d') AudioSystem.playGun('rifle_d', this.x);
             else if (id === 'infantry') AudioSystem.playGun('infantry', this.x);
-            else if (id === 'special_forces') AudioSystem.playGun('special', this.x);
             else if (id === 'special_ops') AudioSystem.playGun('special_ops', this.x);
             else if (id === 'sniper') AudioSystem.playGun('sniper', this.x);
             else if (id === 'humvee') AudioSystem.playGun('machine_gun', this.x);
@@ -2112,12 +2751,63 @@ class Unit extends Entity {
         }
 
         try {
+            let spawnX = this.x;
             let spawnY = this.y - this.height / 2;
             if (id === 'mbt' && type === 'shell') {
                 spawnY = this.y - this.height * 0.38; // 포신 (아래쪽)
             }
-            const finalOpts = shotOpts ? Object.assign({ source: this }, shotOpts) : { source: this };
-            game.projectiles.push(new Projectile(this.x, spawnY, target, dmg, this.team, type, finalOpts));
+            if (id === 'humvee' && type === 'humvee_burst') {
+                const targetX = Number(target && target.x);
+                const targetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.30);
+                if (typeof UnitRenderV2Weapons_humvee !== 'undefined'
+                    && UnitRenderV2Weapons_humvee
+                    && typeof UnitRenderV2Weapons_humvee.computeMuzzleWorld === 'function') {
+                    const stateStore = (this._renderV2State && this._renderV2State.humvee) ? this._renderV2State.humvee : null;
+                    const muzzle = UnitRenderV2Weapons_humvee.computeMuzzleWorld(this, {
+                        targetX: targetX,
+                        targetY: targetY,
+                        state: stateStore,
+                        weapon: 'mg'
+                    });
+                    if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                        spawnX = muzzle.x;
+                        spawnY = muzzle.y;
+                    }
+                }
+            }
+            if (id === 'spg' && type === 'artillery') {
+                const fallbackTargetX = Number(target && target.x);
+                const fallbackTargetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.25);
+                const targetX = Number.isFinite(artilleryAimX) ? artilleryAimX : fallbackTargetX;
+                const targetY = Number.isFinite(artilleryAimY) ? artilleryAimY : fallbackTargetY;
+                if (typeof UnitRenderV2Weapons_spg !== 'undefined'
+                    && UnitRenderV2Weapons_spg
+                    && typeof UnitRenderV2Weapons_spg.computeMuzzleWorld === 'function') {
+                    const stateStore = (this._renderV2State && this._renderV2State.spg) ? this._renderV2State.spg : null;
+                    const muzzle = UnitRenderV2Weapons_spg.computeMuzzleWorld(this, {
+                        targetX: targetX,
+                        targetY: targetY,
+                        state: stateStore
+                    });
+                    if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                        spawnX = muzzle.x;
+                        spawnY = muzzle.y;
+                    } else {
+                        spawnY = this.y - this.height * 0.55;
+                    }
+                } else {
+                    spawnY = this.y - this.height * 0.55;
+                }
+            }
+            const finalOpts = Object.assign({ source: this }, shotOpts || {}, shotExtras || {});
+            game.projectiles.push(new Projectile(spawnX, spawnY, projectileTarget, dmg, this.team, type, finalOpts));
+            if (id === 'humvee' && type === 'humvee_burst' && game && typeof game.createParticles === 'function') {
+                game.createParticles(spawnX, spawnY, 3, '#ffcc55');
+            }
+            if (id === 'spg' && type === 'artillery' && game && typeof game.createParticles === 'function') {
+                game.createParticles(spawnX, spawnY, 14, '#ff7a00');
+                game.createParticles(spawnX, spawnY, 8, '#fff1c2');
+            }
             // [ITEM] M249 장착 베테랑: 탄속 +35%
             if (this.veteranGunType === 'rifle_d' && game.projectiles.length > 0) {
                 const lastProj = game.projectiles[game.projectiles.length - 1];
@@ -2182,8 +2872,10 @@ class Unit extends Entity {
         }
 
         const facing = Number.isFinite(this.facing) ? this.facing : (this.team === 'player' ? 1 : -1);
+        const useV2Armor = ((id === 'mbt' && this.team === 'player') || id === 'spg' || (id === 'humvee' && this.team === 'player'));
         const recoilX = (this.recoil || 0) * -facing;
-        if (recoilX) ctx.translate(recoilX, 0);
+        // Player armored V2 (MBT/SPG) already applies barrel-only recoil in renderer.
+        if (!useV2Armor && recoilX) ctx.translate(recoilX, 0);
 
         const renderedWithSkin = (typeof UnitRenderUtils !== 'undefined' && UnitRenderUtils.renderSkinLayers)
             ? UnitRenderUtils.renderSkinLayers(this, ctx, skin)
@@ -2194,12 +2886,27 @@ class Unit extends Entity {
             return;
         }
 
+        // Unit Render V2: player MBT/SPG/humvee + infantry (all teams).
+        if (((id === 'mbt' && this.team === 'player') || id === 'spg' || (id === 'humvee' && this.team === 'player') || id === 'infantry') && typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
+            let renderedWithV2 = false;
+            try {
+                renderedWithV2 = UnitRenderV2.draw(this, ctx, {
+                    mode: 'battle',
+                    team: this.team
+                }) === true;
+            } catch (_) { }
+            if (renderedWithV2) {
+                ctx.restore();
+                drawHpBar();
+                return;
+            }
+        }
+
         // [R 4.2 FIX v3] facing은 update()에서 확정됨 - draw()에서는 단순 적용만
         if (id !== 'drone_at') {
             ctx.scale(this.facing || 1, 1);
         }
-        // [R 2.2] ?좊떅 ?됱긽 ?듭씪 (?덉쇅: blackhawk, chinook, special_forces)
-        const colorExceptions = ['blackhawk', 'chinook', 'special_forces'];
+        const colorExceptions = ['blackhawk', 'chinook'];
         if (colorExceptions.includes(this.stats.id)) {
             ctx.fillStyle = this.stats.color;
         } else {
@@ -2578,17 +3285,6 @@ class Unit extends Entity {
                 ctx.beginPath(); ctx.arc(8, -13 + gunY, 3, 0, Math.PI * 2); ctx.fill();
                 ctx.beginPath(); ctx.arc(1, -14 + gunY, 3, 0, Math.PI * 2); ctx.fill();
             }
-        }
-        // [UPDATED] 특수부대 - 가방맨 디자인
-        else if (id === 'special_forces') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
-            ctx.fillStyle = '#0f172a'; ctx.fillRect(-10, -20, 6, 14); // 가방
-            ctx.fillStyle = teamColor; ctx.fillRect(-6, -20, 12, 20); // 몸통
-            ctx.fillStyle = '#111827'; ctx.fillRect(-6, -20, 12, 10); // 방탄복
-            ctx.fillStyle = teamColor; ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill(); // 머리
-            ctx.fillStyle = '#000000'; ctx.beginPath(); ctx.arc(0, -25, 5.5, Math.PI, 0); ctx.fill(); // 헬멧
-            ctx.fillStyle = '#334155'; ctx.fillRect(2, -26, 4, 2); // 고글
-            ctx.fillStyle = '#000'; ctx.fillRect(2, -18, 10, 3); ctx.fillRect(12, -18, 4, 1.5); // 총
         }
         else if (id === 'humvee') {
             const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';

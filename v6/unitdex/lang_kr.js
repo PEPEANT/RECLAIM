@@ -23,19 +23,14 @@ window.UNITDEX_LANG_KR = {
     // Unit Data (name, role, desc)
     units: {
         infantry: {
-            name: "민병대",
-            role: "기본 민병",
-            desc: "저렴한 비용으로 전선을 유지하는 기본 민병대입니다."
+            name: "보병",
+            role: "기본 보병",
+            desc: "전선을 유지하는 기본 보병입니다."
         },
         rpg: {
             name: "로켓병",
             role: "대전차/대공",
             desc: "지상과 공중의 장갑 목표물을 타격합니다."
-        },
-        special_forces: {
-            name: "보병",
-            role: "주력 보병",
-            desc: "높은 체력과 연사력을 갖춘 전열 보병입니다."
         },
         special_ops: {
             name: "특수부대",

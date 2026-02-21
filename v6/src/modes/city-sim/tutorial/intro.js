@@ -959,7 +959,7 @@
             mapId,
             enemyPreset,
             playerPreset: [
-                { unitId: 'special_forces', count: 10 },
+                { unitId: 'infantry', count: 10 },
                 { unitId: 'humvee', count: 3 },
                 { unitId: 'apache', count: 1 }
             ],

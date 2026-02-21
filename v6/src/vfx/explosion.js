@@ -712,16 +712,16 @@
 
         // 탱크 포탄 명중 (보병에도 충분히 크게 보이도록)
         tank_shell: {
-            life: 0.95,
-            decay: 0.045,
+            life: 0.88,
+            decay: 0.05,
             shake: 12,
-            flash: 0.26,
-            wave: { maxR: 260, speed: 28, width: 12, color: 'rgba(255,225,170,0.7)', life: 1.0 },
-            count: { fire: 52, dust: 34, smoke: 26, spark: 44 },
-            fire: { spdMin: 1.8, spdMax: 10, spread: 0.9, liftMin: 5, liftMax: 13, lifeMin: 22, lifeMax: 52, rMin: 4, rMax: 20 },
-            spark: { spdMin: 10, spdMax: 28, lifeMin: 10, lifeMax: 28, rMin: 1.0, rMax: 3.0 },
-            smoke: { spd: 1.8, liftMin: 1.0, liftMax: 3.0, lifeMin: 45, lifeMax: 90, rMin: 10, rMax: 28 },
-            dust: { spd: 12, lifeMin: 20, lifeMax: 48, rMin: 3, rMax: 10 }
+            flash: 0.32,
+            wave: { maxR: 320, speed: 30, width: 14, color: 'rgba(255,225,170,0.78)', life: 1.0 },
+            count: { fire: 68, dust: 42, smoke: 22, spark: 58 },
+            fire: { spdMin: 1.9, spdMax: 10.8, spread: 0.9, liftMin: 5, liftMax: 14, lifeMin: 24, lifeMax: 56, rMin: 4, rMax: 22 },
+            spark: { spdMin: 11, spdMax: 30, lifeMin: 10, lifeMax: 26, rMin: 1.0, rMax: 3.2 },
+            smoke: { spd: 1.6, liftMin: 0.9, liftMax: 2.6, lifeMin: 28, lifeMax: 64, rMin: 8, rMax: 22 },
+            dust: { spd: 12, lifeMin: 18, lifeMax: 40, rMin: 2.8, rMax: 8.4 }
         }
     };
 
@@ -759,7 +759,7 @@
                 (kind === 'nuke') ? 1.25 :
                     (kind === 'tactical') ? 0.98 :
                         (kind === 'vehicle') ? 0.90 :
-                            (kind === 'tank_shell') ? 0.95 :
+                            (kind === 'tank_shell') ? 1.08 :
                             (kind === 'aircraft') ? 0.80 :
                                 (kind === 'airburst') ? 0.55 :
                                     (kind === 'atm_heavy') ? 0.62 :

@@ -23,19 +23,14 @@ window.UNITDEX_LANG_EN = {
     // Unit Data (name, role, desc)
     units: {
         infantry: {
-            name: "Militia",
-            role: "Basic Militia",
-            desc: "Low-cost militia for sustaining the frontline."
+            name: "Infantry",
+            role: "Basic Infantry",
+            desc: "Basic frontline infantry for holding the line."
         },
         rpg: {
             name: "Rocket Trooper",
             role: "Anti-Armor/Air",
             desc: "Specialized in engaging armored ground and air targets."
-        },
-        special_forces: {
-            name: "Infantry",
-            role: "Frontline Infantry",
-            desc: "Durable frontline infantry with strong sustained firepower."
         },
         special_ops: {
             name: "Special Ops",

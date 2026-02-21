@@ -1,5 +1,5 @@
-﻿# Unit Render V2 Scaffold
+# Unit Render V2 스캐폴드
 
-- `units/<unit-id>/` contains per-unit renderer modules.
-- Keep one unit migration per change set.
-- Keep legacy renderer fallback until each unit is validated.
+- `units/<unit-id>/`는 유닛별 렌더러 모듈 폴더입니다.
+- 변경 단위는 유닛 1개씩 유지합니다.
+- 각 유닛 검증이 끝날 때까지 레거시 렌더러 fallback을 유지합니다.

@@ -8,14 +8,13 @@
         sniper: 0,
         engineer: 0,
         rpg: 0,
-        special_forces: 0,
         special_ops: 0,
         drone_operator: 0,
-        humvee: 24, // C-02: humvee was rendered slightly below ground; lift by +4px
-        apc: -1.6,
-        mbt: 2,
-        spg: 6.3,
-        aa_tank: 2.5,
+        humvee: 22, // V2 size down: keep wheels touching ground without sinking.
+        apc: 0,
+        mbt: 0,
+        spg: 6,
+        aa_tank: 2,
         icbm: 4,
         icbm_enemy: 4
     };

@@ -369,7 +369,7 @@
     const CITY_UNIT_PRODUCTION = {
         barracks: {
             title: '병영 유닛 생산',
-            unitKeys: ['special_forces', 'engineer', 'drone_operator', 'special_ops', 'sniper']
+            unitKeys: ['infantry', 'engineer', 'drone_operator', 'special_ops', 'sniper']
         },
         factory: {
             title: '전차기지 유닛 생산',
@@ -392,7 +392,6 @@
     const CITY_UNIT_COST_OVERRIDES = {
         infantry: 200,
         engineer: 350,
-        special_forces: 200,
         special_ops: 417,
         sniper: 667,
         drone_operator: 500,
@@ -422,7 +421,6 @@
     const UNIT_WEAPON_LABEL_OVERRIDES = {
         infantry: 'K2 소총',
         engineer: '유도 미사일 발사기',
-        special_forces: '보병 전투 소총',
         special_ops: 'K1A 기관단총',
         sniper: 'M24 저격소총',
         drone_operator: '드론 조종기 + 카빈',
@@ -2202,9 +2200,6 @@
     }
 
     function getBlockedProductionChoiceReason(game, tile, unitKey) {
-        if (tile === 'barracks' && unitKey === 'infantry') {
-            return '병영에서는 민병대를 생산할 수 없습니다.';
-        }
         if (tile === 'factory' && isFactoryResearchKey(unitKey) && !isFactoryResearchUnlocked(game, unitKey)) {
             const unitDef = getUnitDefByKey(unitKey);
             const name = getInventoryDisplayName(unitKey, unitDef || undefined);
@@ -3230,20 +3225,21 @@
             return drawDrillgroundMissileIcon(key);
         }
 
-        if (drillgroundUnitIconCache.has(key)) {
-            const cached = drillgroundUnitIconCache.get(key);
+        const cacheKey = (key === 'mbt') ? 'mbt::v2-player::drillground' : key;
+        if (drillgroundUnitIconCache.has(cacheKey)) {
+            const cached = drillgroundUnitIconCache.get(cacheKey);
             return cached || null;
         }
 
         const unitDef = getUnitDefByKey(key);
         if (!unitDef) {
-            drillgroundUnitIconCache.set(key, null);
+            drillgroundUnitIconCache.set(cacheKey, null);
             return null;
         }
 
         if (typeof Unit === 'undefined') {
             const fallbackUrl = drawInventoryUnitIcon(key);
-            drillgroundUnitIconCache.set(key, fallbackUrl || null);
+            drillgroundUnitIconCache.set(cacheKey, fallbackUrl || null);
             return fallbackUrl || null;
         }
 
@@ -3252,7 +3248,7 @@
         canvas.height = 96;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-            drillgroundUnitIconCache.set(key, null);
+            drillgroundUnitIconCache.set(cacheKey, null);
             return null;
         }
 
@@ -3331,13 +3327,15 @@
 
             ctx.translate(72, 82 + offsetY);
             ctx.scale(scale, scale);
-
-            const dummy = new Unit(key, 0, 0, 'player');
-            dummy.hideHp = true;
-            dummy.disableFeetSnap = true;
-            applyInventoryIconRenderTweaks(dummy);
-            if (dummy.stats?.type === 'air') dummy.y = 0;
-            dummy.draw(ctx);
+            const usedV2 = tryDrawPlayerUnitV2Icon(ctx, key, { mode: 'drillground' });
+            if (!usedV2) {
+                const dummy = new Unit(key, 0, 0, 'player');
+                dummy.hideHp = true;
+                dummy.disableFeetSnap = true;
+                applyInventoryIconRenderTweaks(dummy);
+                if (dummy.stats?.type === 'air') dummy.y = 0;
+                dummy.draw(ctx);
+            }
 
             ctx.restore();
             drew = true;
@@ -3349,7 +3347,7 @@
 
         if (!drew) {
             const fallbackUrl = drawInventoryUnitIcon(key);
-            drillgroundUnitIconCache.set(key, fallbackUrl || null);
+            drillgroundUnitIconCache.set(cacheKey, fallbackUrl || null);
             return fallbackUrl || null;
         }
 
@@ -3364,7 +3362,7 @@
             trimBottomSoftLine: false
         });
         const dataUrl = (normalizedCanvas || canvas).toDataURL('image/png');
-        drillgroundUnitIconCache.set(key, dataUrl);
+        drillgroundUnitIconCache.set(cacheKey, dataUrl);
         return dataUrl;
     }
 
@@ -6026,7 +6024,7 @@
             }
             return operatorKeys.slice(0, 3);
         }
-        if (key === 'special_forces') {
+        if (key === 'infantry') {
             push('smoke');
         }
         // [ITEM] 아이템 기반 추가 스킬: smoke_grenade → 연막 커맨드, medkit_c → 치료 커맨드
@@ -6209,7 +6207,7 @@
     }
 
     function getUnitPreviewGunType(unitKey) {
-        if (unitKey === 'special_forces') return 'special';
+        if (unitKey === 'infantry') return 'infantry';
         if (unitKey === 'special_ops') return 'special_ops';
         if (unitKey === 'sniper') return 'sniper';
         if (unitKey === 'humvee') return 'machine_gun';
@@ -6763,13 +6761,46 @@
         dummy.iconRenderBackTurret = true;
     }
 
+    function tryDrawPlayerUnitV2Icon(ctx, unitKey, options) {
+        if (!ctx) return false;
+        const key = String(unitKey || '').trim();
+        let api = null;
+        if (key === 'mbt') {
+            api = (typeof UnitRenderV2MBT !== 'undefined' && UnitRenderV2MBT && typeof UnitRenderV2MBT.drawIcon === 'function')
+                ? UnitRenderV2MBT
+                : null;
+        } else if (key === 'humvee') {
+            api = (typeof UnitRenderV2Humvee !== 'undefined' && UnitRenderV2Humvee && typeof UnitRenderV2Humvee.drawIcon === 'function')
+                ? UnitRenderV2Humvee
+                : null;
+        } else if (key === 'spg') {
+            api = (typeof UnitRenderV2SPG !== 'undefined' && UnitRenderV2SPG && typeof UnitRenderV2SPG.drawIcon === 'function')
+                ? UnitRenderV2SPG
+                : null;
+        } else {
+            return false;
+        }
+        if (!api) return false;
+
+        try {
+            return api.drawIcon(ctx, {
+                team: 'player',
+                mode: String(options?.mode || 'inventory'),
+                iconScale: Number(options?.iconScale) || 1
+            }) === true;
+        } catch (_) {
+            return false;
+        }
+    }
+
     function drawInventoryUnitIcon(key) {
-        if (inventoryIconCache.has(key)) {
-            const cached = inventoryIconCache.get(key);
+        const cacheKey = (key === 'mbt' || key === 'spg' || key === 'humvee') ? `${key}::v2-player::inventory` : key;
+        if (inventoryIconCache.has(cacheKey)) {
+            const cached = inventoryIconCache.get(cacheKey);
             if (cached) return cached;
         }
         if (typeof CONFIG === 'undefined' || !CONFIG?.units?.[key]) {
-            inventoryIconCache.set(key, null);
+            inventoryIconCache.set(cacheKey, null);
             return null;
         }
 
@@ -6778,7 +6809,7 @@
         canvas.height = 48;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-            inventoryIconCache.set(key, null);
+            inventoryIconCache.set(cacheKey, null);
             return null;
         }
 
@@ -6820,13 +6851,15 @@
 
                 ctx.translate(canvasCenterX, canvasBottomY + offsetY);
                 ctx.scale(scale, scale);
-
-                const dummy = new Unit(key, 0, 0, 'player');
-                dummy.hideHp = true;
-                dummy.disableFeetSnap = true;
-                applyInventoryIconRenderTweaks(dummy);
-                if (dummy.stats.type === 'air') dummy.y = 0;
-                dummy.draw(ctx);
+                const usedV2 = tryDrawPlayerUnitV2Icon(ctx, key, { mode: 'inventory' });
+                if (!usedV2) {
+                    const dummy = new Unit(key, 0, 0, 'player');
+                    dummy.hideHp = true;
+                    dummy.disableFeetSnap = true;
+                    applyInventoryIconRenderTweaks(dummy);
+                    if (dummy.stats.type === 'air') dummy.y = 0;
+                    dummy.draw(ctx);
+                }
                 ctx.restore();
                 drew = true;
             } catch (_) {
@@ -6846,19 +6879,20 @@
         }
 
         const dataUrl = canvas.toDataURL('image/png');
-        inventoryIconCache.set(key, dataUrl);
+        inventoryIconCache.set(cacheKey, dataUrl);
         return dataUrl;
     }
 
     function drawInventoryUnitProfileIcon(key) {
         const normalizedKey = String(key || '').trim();
         if (!normalizedKey) return drawInventoryUnitIcon(key);
-        if (inventoryProfileIconCache.has(normalizedKey)) {
-            const cached = inventoryProfileIconCache.get(normalizedKey);
+        const cacheKey = (normalizedKey === 'mbt') ? 'mbt::v2-player::profile' : normalizedKey;
+        if (inventoryProfileIconCache.has(cacheKey)) {
+            const cached = inventoryProfileIconCache.get(cacheKey);
             if (cached) return cached;
         }
         if (typeof CONFIG === 'undefined' || !CONFIG?.units?.[normalizedKey]) {
-            inventoryProfileIconCache.set(normalizedKey, null);
+            inventoryProfileIconCache.set(cacheKey, null);
             return drawInventoryUnitIcon(normalizedKey);
         }
 
@@ -6867,7 +6901,7 @@
         canvas.height = 120;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-            inventoryProfileIconCache.set(normalizedKey, null);
+            inventoryProfileIconCache.set(cacheKey, null);
             return drawInventoryUnitIcon(normalizedKey);
         }
 
@@ -6912,13 +6946,15 @@
 
                 ctx.translate(canvasCenterX, canvasBottomY + offsetY);
                 ctx.scale(scale, scale);
-
-                const dummy = new Unit(normalizedKey, 0, 0, 'player');
-                dummy.hideHp = true;
-                dummy.disableFeetSnap = true;
-                applyInventoryIconRenderTweaks(dummy);
-                if (dummy.stats?.type === 'air') dummy.y = 0;
-                dummy.draw(ctx);
+                const usedV2 = tryDrawPlayerUnitV2Icon(ctx, normalizedKey, { mode: 'profile' });
+                if (!usedV2) {
+                    const dummy = new Unit(normalizedKey, 0, 0, 'player');
+                    dummy.hideHp = true;
+                    dummy.disableFeetSnap = true;
+                    applyInventoryIconRenderTweaks(dummy);
+                    if (dummy.stats?.type === 'air') dummy.y = 0;
+                    dummy.draw(ctx);
+                }
                 ctx.restore();
                 drew = true;
             } catch (_) {
@@ -6938,7 +6974,7 @@
         }
 
         const dataUrl = canvas.toDataURL('image/png');
-        inventoryProfileIconCache.set(normalizedKey, dataUrl);
+        inventoryProfileIconCache.set(cacheKey, dataUrl);
         return dataUrl;
     }
 

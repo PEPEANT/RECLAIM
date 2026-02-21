@@ -189,9 +189,8 @@
                     drops.push({ kind: 'rpg', x: 8 * fx + jx(), y: gy() + jy(), rot: rand(-0.25, 0.25) });
                     drops.push({ kind: 'rocket_cap', x: 14 * fx + jx(), y: gy() + jy(), rot: rand(-0.5, 0.5) });
                     break;
-                case 'special_forces':
-                    drops.push({ kind: 'goggles', x: 4 * fx + jx(), y: gy() + jy(), rot: rand(-0.4, 0.4) });
-                    drops.push({ kind: 'silencer', x: 10 * fx + jx(), y: gy() + jy(), rot: rand(-0.2, 0.2) });
+                case 'infantry':
+                    drops.push({ kind: 'rifle', x: 7 * fx + jx(), y: gy() + jy(), rot: rand(-0.3, 0.3) });
                     break;
                 case 'drone_operator':
                     if (this.opState === 'laptop') {

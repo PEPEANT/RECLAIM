@@ -153,14 +153,12 @@
             click_to_start: "클릭하여 시작",
 
             // Units Names & Desc
-            unit_infantry_name: "민병대",
-            unit_infantry_desc: "기본 민병 유닛입니다. 저비용으로 전선을 유지합니다.",
+            unit_infantry_name: "보병",
+            unit_infantry_desc: "전선을 유지하는 기본 보병입니다.",
             unit_engineer_name: "공병",
             unit_engineer_desc: "기갑/공중에는 유도 미사일, 보병에는 기관총으로 대응합니다.",
             unit_rpg_name: "로켓병",
             unit_rpg_desc: "장갑차량 공격에 효과적인 로켓 보병입니다.",
-            unit_special_forces_name: "보병",
-            unit_special_forces_desc: "강한 체력과 화력을 갖춘 주력 보병입니다.",
             unit_special_ops_name: "특수부대",
             unit_special_ops_desc: "전술 장비를 갖춘 정예 보병입니다.",
             unit_sniper_name: "저격수",
@@ -363,14 +361,12 @@
             click_to_start: "Click to Start",
 
             // Units
-            unit_infantry_name: "Militia",
-            unit_infantry_desc: "Low-cost militia unit for holding the frontline.",
+            unit_infantry_name: "Infantry",
+            unit_infantry_desc: "Basic frontline infantry for holding the line.",
             unit_engineer_name: "Engineer",
             unit_engineer_desc: "Fires guided missiles at armor/air and uses a rifle versus infantry.",
             unit_rpg_name: "Rocket Trooper",
             unit_rpg_desc: "Specialized in anti-armor combat.",
-            unit_special_forces_name: "Infantry",
-            unit_special_forces_desc: "Frontline infantry with strong durability and firepower.",
             unit_special_ops_name: "Special Ops",
             unit_special_ops_desc: "Elite infantry equipped with tactical gear.",
             unit_sniper_name: "Sniper",

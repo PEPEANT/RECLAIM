@@ -22,6 +22,150 @@
     <link rel="apple-touch-icon" href="png/RECLAIM.jpg">
     <script>
         (() => {
+            const CURRENT_BUILD = '2026-02-21.1';
+            const VERSION_KEY = 'RECLAIM_BUILD_VERSION';
+            const CHECK_TIMEOUT_MS = 2200;
+
+            const normalizeLatestUrl = (raw) => {
+                const v = String(raw || '').trim();
+                if (!v) return location.href;
+                try {
+                    return new URL(v, location.href).toString();
+                } catch (_) {
+                    return location.href;
+                }
+            };
+
+            const clearRuntimeCaches = async () => {
+                try {
+                    if ('serviceWorker' in navigator) {
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map((reg) => reg.unregister()));
+                    }
+                } catch (_) { }
+                try {
+                    if ('caches' in window) {
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map((k) => caches.delete(k)));
+                    }
+                } catch (_) { }
+            };
+
+            const showUpdateOverlay = (message, latestUrl) => {
+                if (document.getElementById('version-update-overlay')) return;
+                const root = document.createElement('div');
+                root.id = 'version-update-overlay';
+                root.style.cssText = [
+                    'position:fixed',
+                    'inset:0',
+                    'z-index:2147483647',
+                    'display:flex',
+                    'align-items:center',
+                    'justify-content:center',
+                    'padding:20px',
+                    'background:rgba(2,6,23,0.94)',
+                    'color:#e2e8f0',
+                    'font-family:Segoe UI, Arial, sans-serif',
+                    'text-align:center'
+                ].join(';');
+
+                const card = document.createElement('div');
+                card.style.cssText = [
+                    'max-width:640px',
+                    'width:100%',
+                    'background:#0b1220',
+                    'border:1px solid #334155',
+                    'border-radius:14px',
+                    'padding:24px 20px'
+                ].join(';');
+
+                const title = document.createElement('h2');
+                title.textContent = '최신 버전으로 업데이트되었습니다';
+                title.style.cssText = 'margin:0 0 10px;font-size:22px;color:#f8fafc;font-weight:800;';
+
+                const desc = document.createElement('p');
+                desc.textContent = message || '구버전은 더 이상 지원되지 않습니다. 아래 주소로 접속해 주세요.';
+                desc.style.cssText = 'margin:0 0 14px;line-height:1.6;color:#cbd5e1;';
+
+                const link = document.createElement('a');
+                link.href = latestUrl;
+                link.textContent = latestUrl;
+                link.style.cssText = 'display:block;word-break:break-all;margin:0 0 16px;color:#38bdf8;font-weight:700;';
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = '최신 버전으로 이동';
+                btn.style.cssText = [
+                    'display:inline-block',
+                    'padding:10px 16px',
+                    'border-radius:10px',
+                    'border:none',
+                    'font-weight:800',
+                    'cursor:pointer',
+                    'background:#22c55e',
+                    'color:#052e16'
+                ].join(';');
+                btn.addEventListener('click', () => {
+                    location.replace(latestUrl);
+                });
+
+                card.appendChild(title);
+                card.appendChild(desc);
+                card.appendChild(link);
+                card.appendChild(btn);
+                root.appendChild(card);
+                document.body.appendChild(root);
+            };
+
+            const runVersionGuard = async () => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+                try {
+                    const res = await fetch('./version.json?t=' + Date.now(), {
+                        cache: 'no-store',
+                        signal: controller.signal
+                    });
+                    if (!res.ok) return { blocked: false };
+
+                    const meta = await res.json();
+                    const incomingVersion = String(meta && meta.version || '').trim();
+                    if (!incomingVersion) return { blocked: false };
+                    const isStaleBundle = incomingVersion !== CURRENT_BUILD;
+                    if (!isStaleBundle) {
+                        try { localStorage.setItem(VERSION_KEY, incomingVersion); } catch (_) { }
+                        return { blocked: false };
+                    }
+
+                    await clearRuntimeCaches();
+
+                    const latestUrl = normalizeLatestUrl(meta && meta.latestUrl);
+                    const message = String(meta && meta.message || '').trim();
+                    const hardBlock = (meta && meta.forceUpdate === true);
+
+                    if (hardBlock) {
+                        window.__RECLAIM_FORCE_BLOCK_BOOT__ = true;
+                        if (document.readyState === 'loading') {
+                            window.addEventListener('DOMContentLoaded', () => showUpdateOverlay(message, latestUrl), { once: true });
+                        } else {
+                            showUpdateOverlay(message, latestUrl);
+                        }
+                        return { blocked: true };
+                    }
+
+                    location.replace(latestUrl);
+                    return { blocked: true };
+                } catch (_) {
+                    return { blocked: false };
+                } finally {
+                    clearTimeout(timeout);
+                }
+            };
+
+            window.__RECLAIM_VERSION_GUARD__ = runVersionGuard();
+        })();
+    </script>
+    <script>
+        (() => {
             const root = document.documentElement;
             const updateViewportVars = () => {
                 const vv = window.visualViewport || null;
@@ -1553,7 +1697,36 @@
     <script src="src/modes/city-sim/drillground-bubbles/runtime.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/drillground-bubbles/render.js?v=20260219b2"></script>
     <script src="src/modes/city-sim/drillground-bubbles/index.js?v=20260219b2"></script>
-    <script src="src/modes/city-sim/construction.js?v=20260220cs8"></script>
+    <script src="src/render/unit-v2/registry.js"></script>
+    <script src="src/render/unit-v2/common/scale.js"></script>
+    <script src="src/render/unit-v2/common/palettes.js"></script>
+    <script src="src/render/unit-v2/common/math.js"></script>
+    <script src="src/render/unit-v2/units/humvee/state.js"></script>
+    <script src="src/render/unit-v2/units/humvee/weapons.js"></script>
+    <script src="src/render/unit-v2/units/humvee/render_body.js"></script>
+    <script src="src/render/unit-v2/units/humvee/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/humvee/fx.js"></script>
+    <script src="src/render/unit-v2/units/humvee/index.js"></script>
+    <script src="src/render/unit-v2/units/mbt/state.js"></script>
+    <script src="src/render/unit-v2/units/mbt/weapons.js"></script>
+    <script src="src/render/unit-v2/units/mbt/render_body.js"></script>
+    <script src="src/render/unit-v2/units/mbt/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/mbt/fx.js"></script>
+    <script src="src/render/unit-v2/units/mbt/index.js"></script>
+    <script src="src/render/unit-v2/units/spg/state.js"></script>
+    <script src="src/render/unit-v2/units/spg/weapons.js"></script>
+    <script src="src/render/unit-v2/units/spg/render_body.js"></script>
+    <script src="src/render/unit-v2/units/spg/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/spg/fx.js"></script>
+    <script src="src/render/unit-v2/units/spg/index.js"></script>
+    <script src="src/render/unit-v2/units/infantry/state.js"></script>
+    <script src="src/render/unit-v2/units/infantry/weapons.js"></script>
+    <script src="src/render/unit-v2/units/infantry/render_body.js"></script>
+    <script src="src/render/unit-v2/units/infantry/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/infantry/fx.js"></script>
+    <script src="src/render/unit-v2/units/infantry/index.js"></script>
+    <script src="src/render/unit-v2/index.js"></script>
+    <script src="src/modes/city-sim/construction.js?v=20260221cs9"></script>
     <script src="src/modes/city-sim/construction/validation.js?v=20260214cs1"></script>
     <script src="src/modes/city-sim/construction/progress.js"></script>
     <script src="src/modes/city-sim/construction/render.js?v=20260216cs4"></script>
@@ -1589,6 +1762,7 @@
     <script src="src/game/patches/endgame_flow_patch.js"></script>
     <script src="src/game/patches/boot_cinematic_patch.js"></script>
     <script src="src/game/patches/hud_patch.js"></script>
+    <script src="src/game/patches/dev_quickstart_patch.js"></script>
     <!-- /Patch Modules -->
     <script src="hud.js?v=20260216h1"></script>
     <script src="unit_commands.js"></script>
@@ -1749,6 +1923,11 @@
             };
 
             const prepareBootGate = () => {
+                if (window.__RECLAIM_FORCE_BLOCK_BOOT__ === true) {
+                    const gate = document.getElementById('boot-gate');
+                    if (gate) gate.classList.add('hidden');
+                    return;
+                }
                 if (gatePrepared) return;
                 gatePrepared = true;
 
@@ -1760,6 +1939,7 @@
                 }
 
                 const startBoot = async () => {
+                    if (window.__RECLAIM_FORCE_BLOCK_BOOT__ === true) return;
                     if (gateConsumed) return;
                     gateConsumed = true;
                     playBtn.disabled = true;
@@ -1803,14 +1983,34 @@
                 || location.hostname === '127.0.0.1';
             if (!isSecureContextLike) return;
 
-            window.addEventListener('load', () => {
+            window.addEventListener('load', async () => {
+                try {
+                    const guard = window.__RECLAIM_VERSION_GUARD__;
+                    if (guard && typeof guard.then === 'function') {
+                        const result = await guard.catch(() => ({ blocked: false }));
+                        if (result && result.blocked) return;
+                    }
+                } catch (_) { }
+                if (window.__RECLAIM_FORCE_BLOCK_BOOT__ === true) return;
                 navigator.serviceWorker.register('./sw.js').catch((err) => {
                     console.warn('[PWA] service worker registration failed:', err);
                 });
             }, { once: true });
         })();
     </script>
-    <script type="module" src="./src/core/bootstrap.js"></script>
+    <script type="module">
+        const guard = window.__RECLAIM_VERSION_GUARD__;
+        if (guard && typeof guard.then === 'function') {
+            const result = await guard.catch(() => ({ blocked: false }));
+            if (result && result.blocked) {
+                // 구버전 차단 상태에서는 부트스트랩 실행하지 않음.
+            } else {
+                await import('./src/core/bootstrap.js');
+            }
+        } else if (window.__RECLAIM_FORCE_BLOCK_BOOT__ !== true) {
+            await import('./src/core/bootstrap.js');
+        }
+    </script>
 </body>
 
 </html>

@@ -27,7 +27,7 @@
         if (id === 'spg' || id === 'bomber' || id === 'icbm_enemy') return 'siege';
         if (u.type === 'air') return 'air';
         if (u.category === 'armored') return 'armored';
-        if (['engineer', 'drone_operator', 'sniper', 'special_ops', 'special_forces'].includes(id)) return 'support';
+        if (['engineer', 'drone_operator', 'sniper', 'special_ops'].includes(id)) return 'support';
         return 'infantry';
     },
 
@@ -191,7 +191,7 @@
         if (sec < 420) {
             return { key: '05:00-07:00', sequence: ['fighter', 'apache', 'spg', 'icbm_enemy', 'fighter', 'spg'] };
         }
-        return { key: '07:00+', sequence: ['bomber', 'fighter', 'apache', 'apc', 'mbt', 'spg', 'icbm_enemy', 'infantry', 'engineer', 'humvee', 'special_forces', 'rpg', 'drone_operator', 'aa_tank'] };
+        return { key: '07:00+', sequence: ['bomber', 'fighter', 'apache', 'apc', 'mbt', 'spg', 'icbm_enemy', 'infantry', 'engineer', 'humvee', 'rpg', 'drone_operator', 'aa_tank'] };
     },
 
     _getSequentialUnit(frame) {
@@ -390,7 +390,7 @@
             // 기본 중반 풀 (기갑 포함, 공중 제외)
             const midPool = ['infantry', 'engineer', 'humvee', 'mbt', 'mbt', 'aa_tank'];
             if (isElite) {
-                const eliteMidPool = ['infantry', 'engineer', 'mbt', 'mbt', 'spg', 'special_forces', 'aa_tank'];
+                const eliteMidPool = ['infantry', 'engineer', 'mbt', 'mbt', 'spg', 'aa_tank'];
                 return eliteMidPool[Math.floor(Math.random() * eliteMidPool.length)];
             }
             return midPool[Math.floor(Math.random() * midPool.length)];
@@ -428,7 +428,7 @@
 
         // 5. Default Aggression (후반)
         if (isElite) {
-            const pool = ['mbt', 'apache', 'drone_operator', 'special_forces', 'fighter'];
+            const pool = ['mbt', 'apache', 'drone_operator', 'infantry', 'fighter'];
             return pool[Math.floor(Math.random() * pool.length)];
         } else {
             const pool = ['infantry', 'engineer', 'mbt', 'humvee', 'apache'];

@@ -327,7 +327,7 @@
 
             this.x += this.vx; this.y += this.vy;
             // [FIX] hit 조건을 radius + target hitW와 일치시켜 데미지 누락 방지
-            const hitRadius = (this.type === 'machinegun' || this.type === 'bullet') ? 20 : 30;
+            const hitRadius = (this.type === 'machinegun' || this.type === 'bullet' || this.type === 'humvee_burst') ? 20 : 30;
             if (Math.abs(this.x - this.targetX) < hitRadius && Math.abs(this.y - this.targetY) < hitRadius) this.hit();
             if (this.x < 0 || this.x > CONFIG.mapWidth) this.dead = true;
         }
@@ -689,7 +689,7 @@
             }
         }
 
-        if (this.type === 'machinegun' || this.type === 'bullet') {
+        if (this.type === 'machinegun' || this.type === 'bullet' || this.type === 'humvee_burst') {
             // Single target Logic
             let closest = null;
             let minD = radius + 999;
@@ -803,7 +803,42 @@
         const designs = (typeof ProjectileDesigns !== 'undefined') ? ProjectileDesigns : null;
         ctx.fillStyle = '#fff';
         ctx.beginPath();
-        if (this.type === 'machinegun') { ctx.fillStyle = '#fbbf24'; ctx.fillRect(this.x, this.y, 4, 4); }
+        if (this.type === 'machinegun') {
+            const vx = Number(this.vx) || 0;
+            const vy = Number(this.vy) || 0;
+            const speed = Math.max(0.001, Math.hypot(vx, vy));
+            const len = Math.max(8, Math.min(18, speed * 0.9));
+            const ang = Math.atan2(vy, vx);
+
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(ang);
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = '#fff7c2';
+            ctx.fillRect(-len * 0.8, -1.2, len, 2.4);
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(-len * 0.45, -0.9, len * 0.55, 1.8);
+            ctx.fillStyle = '#ffd166';
+            ctx.fillRect(0, -1.4, 2.2, 2.8);
+            ctx.restore();
+        }
+        else if (this.type === 'humvee_burst') {
+            const vx = Number(this.vx) || 0;
+            const vy = Number(this.vy) || 0;
+            const speed = Math.max(0.001, Math.hypot(vx, vy));
+            const len = Math.max(7, Math.min(14, speed * 0.75));
+            const ang = Math.atan2(vy, vx);
+
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(ang);
+            ctx.globalAlpha = 0.95;
+            ctx.fillStyle = '#ffe8a3';
+            ctx.fillRect(-len * 0.75, -1.0, len, 2.0);
+            ctx.fillStyle = '#f59e0b';
+            ctx.fillRect(-len * 0.42, -0.8, len * 0.52, 1.6);
+            ctx.restore();
+        }
         else if (this.type === 'bullet') { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(this.x, this.y, 3, 3); }
         else if (this.type === 'shell') { ctx.fillStyle = '#fbbf24'; ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill(); }
         else if (this.type === 'aa_shell') { ctx.fillStyle = '#f472b6'; ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill(); }

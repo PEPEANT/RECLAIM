@@ -403,18 +403,36 @@
 
         const slots = team === 'ally' ? this._customAllySlots : this._customEnemySlots;
         const unitList = this._getCustomUnitList();
+        const unitMap = new Map(unitList.map((u) => [u.id, u]));
 
-        // 카테고리별 그룹
-        const categories = { infantry: '보병', armored: '기갑', air: '항공', drone: '드론' };
+        const categoryLabel = {
+            infantry: '보병',
+            armored: '기갑',
+            air: '항공',
+            drone: '드론',
+            support: '지원',
+            unknown: '기타'
+        };
+        const preferredOrder = ['infantry', 'armored', 'air', 'drone', 'support', 'unknown'];
+        const seenCats = new Set(unitList.map((u) => u.category || 'unknown'));
+        const orderedCats = preferredOrder.filter((cat) => seenCats.has(cat));
+        unitList.forEach((u) => {
+            const cat = u.category || 'unknown';
+            if (!orderedCats.includes(cat)) orderedCats.push(cat);
+        });
 
         slots.forEach((slot, idx) => {
             const row = document.createElement('div');
             row.className = 'custom-slot-row';
+            if (!unitMap.has(slot.unitId) && unitList.length > 0) {
+                slot.unitId = unitList[0].id;
+            }
 
             // 유닛 선택 드롭다운
             const sel = document.createElement('select');
             sel.className = 'custom-slot-select';
-            for (const [catId, catName] of Object.entries(categories)) {
+            for (const catId of orderedCats) {
+                const catName = categoryLabel[catId] || catId;
                 const optgroup = document.createElement('optgroup');
                 optgroup.label = catName;
                 const catUnits = unitList.filter(u => u.category === catId);
@@ -476,6 +494,22 @@
             alert('맵을 선택하세요.');
             return;
         }
+        const validUnits = new Set(this._getCustomUnitList().map((u) => u.id));
+        const sanitizeForStart = (slots) => {
+            const out = [];
+            (slots || []).forEach((slot) => {
+                const unitId = String(slot && slot.unitId || '').trim();
+                if (!validUnits.has(unitId)) return;
+                const count = Math.max(1, Math.min(30, parseInt(slot && slot.count, 10) || 1));
+                out.push({ unitId, count });
+            });
+            if (out.length <= 0) out.push({ unitId: 'infantry', count: 1 });
+            return out.slice(0, 10);
+        };
+
+        this._customAllySlots = sanitizeForStart(this._customAllySlots);
+        this._customEnemySlots = sanitizeForStart(this._customEnemySlots);
+
         // 총 유닛 수 검증
         const allyTotal = this._customAllySlots.reduce((s, sl) => s + sl.count, 0);
         const enemyTotal = this._customEnemySlots.reduce((s, sl) => s + sl.count, 0);

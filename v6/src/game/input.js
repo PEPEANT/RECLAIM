@@ -128,6 +128,94 @@
             // Alias for backward compatibility
             const selectHQAt = selectBuildingAt;
 
+            const getSingleSelectedPlayerMbt = () => {
+                if (!this.selectedUnits || this.selectedUnits.size !== 1) return null;
+                const it = this.selectedUnits.values().next();
+                const u = (it && !it.done) ? it.value : null;
+                if (!u || u.dead || !u.stats) return null;
+                if (u.team !== 'player' || u.stats.id !== 'mbt') return null;
+                return u;
+            };
+
+            const getSingleSelectedPlayerSpg = () => {
+                if (!this.selectedUnits || this.selectedUnits.size !== 1) return null;
+                const it = this.selectedUnits.values().next();
+                const u = (it && !it.done) ? it.value : null;
+                if (!u || u.dead || !u.stats) return null;
+                if (u.team !== 'player' || u.stats.id !== 'spg') return null;
+                return u;
+            };
+
+            const getSingleSelectedPlayerManualArmor = () => {
+                if (!this.selectedUnits || this.selectedUnits.size !== 1) return null;
+                const it = this.selectedUnits.values().next();
+                const u = (it && !it.done) ? it.value : null;
+                if (!u || u.dead || !u.stats) return null;
+                if (u.team !== 'player') return null;
+                if (u.stats.id !== 'mbt' && u.stats.id !== 'spg') return null;
+                return u;
+            };
+
+            const isUnitHitAt = (u, wx, wy) => {
+                if (!u || u.dead) return false;
+                const halfW = Number(u.width || 0) / 2;
+                const left = u.x - halfW;
+                const right = u.x + halfW;
+                const top = u.y - Number(u.height || 0);
+                const bottom = u.y;
+                return wx >= left && wx <= right && wy >= top && wy <= bottom;
+            };
+
+            const hasOtherPlayerUnitAt = (wx, wy, ignoreUnit) => {
+                if (!Array.isArray(this.players)) return false;
+                for (let i = this.players.length - 1; i >= 0; i--) {
+                    const u = this.players[i];
+                    if (!u || u === ignoreUnit || u.dead) continue;
+                    if (isUnitHitAt(u, wx, wy)) return true;
+                }
+                return false;
+            };
+
+            const hasSelectableBuildingAt = (wx, wy) => {
+                const selectableTypes = ['hq_player', 'hq_enemy', 'fortress_player', 'fortress_enemy', 'watchtower', 'spawn_flag_player'];
+                if (!Array.isArray(this.buildings)) return false;
+                for (let i = 0; i < this.buildings.length; i++) {
+                    const b = this.buildings[i];
+                    if (!b || b.dead) continue;
+                    if (b.team !== 'player' && b.team !== 'neutral') continue;
+                    if (!selectableTypes.includes(b.type) && !b.canProduce && !b.canShoot) continue;
+                    const padX = 20;
+                    const padY = 15;
+                    if (wx > b.x - b.width / 2 - padX && wx < b.x + b.width / 2 + padX
+                        && wy > b.y - b.height - padY && wy < b.y + padY) {
+                        return true;
+                    }
+                }
+                return false;
+            };
+
+            const updateManualTankAim = (tank, worldX, worldY) => {
+                if (!tank) return;
+                tank.manualAimX = worldX;
+                tank.manualAimY = worldY;
+                if (Number.isFinite(this.frame)) tank.manualAimFrame = this.frame;
+            };
+
+            const clearManualTankMgHold = () => {
+                if (!this.selectedUnits || this.selectedUnits.size <= 0) return;
+                this.selectedUnits.forEach(u => {
+                    if (!u || u.dead || !u.stats) return;
+                    if (u.team === 'player' && u.stats.id === 'mbt') {
+                        if (typeof u.stopManualTankMG === 'function') {
+                            u.stopManualTankMG(true);
+                        } else {
+                            u.manualMgHeld = false;
+                            if (typeof u._stopTankMGSound === 'function') u._stopTankMGSound();
+                        }
+                    }
+                });
+            };
+
             const getTouchDist = (t1, t2) => Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
             const getTouchMid = (t1, t2) => ({
                 x: (t1.clientX + t2.clientX) / 2,
@@ -141,12 +229,23 @@
 
                 const p = getScaledPos(e.clientX, e.clientY);
                 if (!isInsideCanvasClient(e.clientX, e.clientY)) return;
+                const worldX = p.x + this.cameraX;
+                const worldY = p.y;
 
                 if (e.button === 2) {
+                    const manualTank = getSingleSelectedPlayerMbt();
+                    if (manualTank && !this.buildMode.active && !this.targetingType && !e.shiftKey) {
+                        manualTank.manualMgHeld = true;
+                        updateManualTankAim(manualTank, worldX, worldY);
+                        if (typeof manualTank.tryManualTankMGFire === 'function') {
+                            manualTank.tryManualTankMGFire(worldX, worldY);
+                        }
+                        return;
+                    }
+
                     // [NEW] PC 우클릭: 선택 유닛 이동 (기본 RTS 방식)
                     if (this.selectedUnits && this.selectedUnits.size > 0 && !this.buildMode.active && !this.targetingType) {
-                        const worldX = p.x + this.cameraX;
-                        const worldY = p.y;
+                        clearManualTankMgHold();
 
                         this.selectedUnits.forEach(u => {
                             if (!u || u.dead) return;
@@ -184,8 +283,34 @@
                         return;
                     }
                     // 선택 박스 드래그 시작
+                    const manualTank = getSingleSelectedPlayerMbt();
+                    if (manualTank && !e.shiftKey) {
+                        updateManualTankAim(manualTank, worldX, worldY);
+                        const clickedAnotherPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, manualTank);
+                        const clickedSelectableBuilding = hasSelectableBuildingAt(worldX, worldY);
+                        if (!clickedAnotherPlayerUnit && !clickedSelectableBuilding) {
+                            if (typeof manualTank.tryManualTankMainFire === 'function') {
+                                manualTank.tryManualTankMainFire(worldX, worldY);
+                            }
+                            return;
+                        }
+                    }
+
+                    const manualSpg = getSingleSelectedPlayerSpg();
+                    if (manualSpg && !e.shiftKey) {
+                        updateManualTankAim(manualSpg, worldX, worldY);
+                        const clickedAnotherPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, manualSpg);
+                        const clickedSelectableBuilding = hasSelectableBuildingAt(worldX, worldY);
+                        if (!clickedAnotherPlayerUnit && !clickedSelectableBuilding) {
+                            if (typeof manualSpg.tryManualSpgMainFire === 'function') {
+                                manualSpg.tryManualSpgMainFire(worldX, worldY);
+                            }
+                            return;
+                        }
+                    }
+
                     this.selectDragActive = true;
-                    this.selectStartX = p.x + this.cameraX;
+                    this.selectStartX = worldX;
                     this.selectStartY = p.y;
                     this.selectEndX = this.selectStartX;
                     this.selectEndY = this.selectStartY;
@@ -194,6 +319,8 @@
 
             window.addEventListener('mousemove', e => {
                 const p = getScaledPos(e.clientX, e.clientY);
+                const worldX = p.x + this.cameraX;
+                const worldY = p.y;
 
                 // [NEW] 건설 모드 프리뷰 업데이트
                 if (this.buildMode.active) {
@@ -201,6 +328,11 @@
                 }
 
                 // 카메라 드래그 (우클릭)
+                const manualArmor = getSingleSelectedPlayerManualArmor();
+                if (manualArmor && !this.buildMode.active && !this.targetingType && isInsideCanvasClient(e.clientX, e.clientY)) {
+                    updateManualTankAim(manualArmor, worldX, worldY);
+                }
+
                 if (cameraDrag && !this.selectDragActive) {
                     this.cameraX -= (p.x - cameraLastX);
                     this.cameraX = Camera.clampCameraX(this, this.cameraX);
@@ -217,6 +349,7 @@
             window.addEventListener('mouseup', e => {
                 if (e.button === 2) {
                     cameraDrag = false;
+                    clearManualTankMgHold();
                 } else if (e.button === 0 && this.selectDragActive) {
                     this.selectDragActive = false;
                     // 선택 박스가 너무 작으면 단일 클릭으로 처리
@@ -242,8 +375,14 @@
             });
 
             // 우클릭 메뉴 차단 + 드론 명령 + 건설 취소
+            window.addEventListener('blur', () => {
+                cameraDrag = false;
+                clearManualTankMgHold();
+            });
+
             this.canvas.addEventListener('contextmenu', e => {
                 e.preventDefault();
+                clearManualTankMgHold();
                 // [NEW] Block if inside HUD area
                 if (isInsideHUD(e.clientX, e.clientY)) return;
 

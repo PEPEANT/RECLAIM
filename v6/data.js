@@ -94,10 +94,10 @@
             isBuilder: true,  // 건설 가능 플래그
         },
         infantry: {
-            id: 'infantry', name: '민병대', cost: 15, cooldown: 25, maxCount: 40,
-            hp: 50, damage: 8, range: 120, speed: 0.8,
+            id: 'infantry', name: '보병', cost: 30, cooldown: 25, maxCount: 40,
+            hp: 80, damage: 12, range: 130, speed: 0.9,
             width: 15, height: 25, color: '#60a5fa', type: 'bio', category: 'infantry',
-            role: '기본 민병', description: '저렴한 비용으로 전선을 유지하는 민병대입니다.'
+            role: '기본 보병', description: '전선을 유지하는 기본 보병입니다.'
         },
         engineer: {
             id: 'engineer', name: '공병', cost: 30, cooldown: 20, maxCount: 12,
@@ -105,12 +105,6 @@
             width: 14, height: 22, color: '#f87171', type: 'bio', antiAir: true, category: 'infantry',
             role: '대전차/대공', description: '보병에겐 기관총, 기갑/공중에겐 유도 미사일로 공격합니다.',
             hasMissile: true, missileCount: 1, missileAimFrames: 54
-        },
-        special_forces: {
-            id: 'special_forces', name: '보병', cost: 200, cooldown: 60, maxCount: 6,
-            hp: 180, damage: 25, range: 180, speed: 1.2,
-            width: 16, height: 26, color: '#171717', type: 'bio', category: 'infantry',
-            role: '주력 보병', description: '높은 체력과 연사력을 갖춘 전열 보병입니다.'
         },
         // [NEW] 병영 신규 유닛
         sniper: {
@@ -149,7 +143,7 @@
         },
         spg: {
             id: 'spg', name: '자주포', cost: 160, cooldown: 400, maxCount: 6,
-            hp: 200, damage: 150, range: 900, speed: 0.3,
+            hp: 200, damage: 150, range: 1000, speed: 0.3,
             width: 78, height: 48, color: '#fb923c', type: 'mech', category: 'armored',
             role: '장거리 포격', description: '매우 긴 사거리에서 광역 포격을 가합니다.'
         },

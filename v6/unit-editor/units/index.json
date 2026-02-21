@@ -21,12 +21,6 @@
       "file": "engineer.json"
     },
     {
-      "id": "special_forces",
-      "name": "특수부대",
-      "type": "infantry",
-      "file": "special_forces.json"
-    },
-    {
       "id": "humvee",
       "name": "험비",
       "type": "vehicle",
