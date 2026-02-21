@@ -28,6 +28,9 @@
         return { stateApi: stateApi, bodyApi: bodyApi, weaponsApi: weaponsApi, fxApi: fxApi };
     }
 
+    // 기체 크기 배율 (1.4 × FIGHTER_SCALE = 최종 렌더 크기)
+    var FIGHTER_SCALE = 1.35;
+
     function draw(unit, ctx, env) {
         if (!unit || !ctx) return false;
         if (!unit.stats || String(unit.stats.id || '') !== 'fighter') return false;
@@ -40,9 +43,10 @@
         deps.stateApi.updateState(unit, state);
 
         // ctx는 이미 (unit.x, unit.y) 기준 + scale(1.4) 상태.
-        // 부유 오프셋 → facing 한 번만 적용. 추가 스케일 없음.
+        // FIGHTER_SCALE 적용 → 부유 오프셋 → facing 한 번만 적용.
         ctx.save();
-        ctx.translate(0, state.floatOffset);  // 상하 부유 오프셋
+        ctx.scale(FIGHTER_SCALE, FIGHTER_SCALE);
+        ctx.translate(0, state.floatOffset);  // 상하 부유 오프셋 (스케일 내부)
         ctx.scale(state.facing, 1);           // facing 한 번만
 
         deps.bodyApi.drawBody(unit, ctx, state, PALETTE);

@@ -5478,9 +5478,11 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-drillground-unit.city-drillground-unit-key-icbm.city-drillground-unit-span-2 {
-    --dg-top: -6%;
-    --dg-width: 206%;
-    --dg-height: 110%;
+    --dg-top: -4%;
+    --dg-width: 196%;
+    --dg-height: 104%;
+    image-rendering: -webkit-optimize-contrast;
+    image-rendering: crisp-edges;
 }
 
 .city-drillground-unit.city-drillground-unit-key-blackhawk.city-drillground-unit-span-2,
@@ -5508,9 +5510,9 @@ input[type=range]::-webkit-slider-runnable-track {
 .city-drillground-unit.city-drillground-unit-key-mbt.city-drillground-unit-span-2,
 .city-drillground-unit.city-drillground-unit-key-spg.city-drillground-unit-span-2,
 .city-drillground-unit.city-drillground-unit-key-aa_tank.city-drillground-unit-span-2 {
-    --dg-top: -3%;
-    --dg-width: 178%;
-    --dg-height: 96%;
+    --dg-top: -4%;
+    --dg-width: 186%;
+    --dg-height: 100%;
 }
 
 @media (pointer: coarse) and (max-width: 960px) {

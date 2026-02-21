@@ -550,8 +550,8 @@
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = 144;
-        canvas.height = 96;
+        canvas.width = 192;
+        canvas.height = 128;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
             drillgroundUnitIconCache.set(key, null);
@@ -572,8 +572,8 @@
             unitType = type;
             unitCategory = category;
 
-            let scale = 0.94;
-            let offsetY = -3;
+            let scale = 0.98;
+            let offsetY = -4;
             if (category === 'infantry') {
                 scale = 1.34;
                 offsetY = -2;
@@ -601,20 +601,20 @@
                 verticalBias = -3;
             } else if (type === 'mech' || category === 'armored') {
                 if (key === 'icbm') {
-                    scale = 0.6;
-                    offsetY = -4;
+                    scale = 0.84;
+                    offsetY = -14;
                 } else if (width >= 120) {
-                    scale = 0.5;
-                    offsetY = -3;
+                    scale = 0.58;
+                    offsetY = -5;
                 } else if (key === 'humvee' || key === 'apc' || key === 'aa_tank') {
-                    scale = 0.78;
-                    offsetY = -3;
+                    scale = 0.82;
+                    offsetY = -4;
                 } else if (width >= 72 || height >= 42 || key === 'mbt' || key === 'spg') {
-                    scale = 0.54;
-                    offsetY = -3;
+                    scale = (key === 'mbt') ? 0.68 : ((key === 'spg') ? 0.66 : 0.62);
+                    offsetY = -4;
                 } else {
-                    scale = 0.54;
-                    offsetY = -2;
+                    scale = 0.58;
+                    offsetY = -3;
                 }
                 if (key === 'humvee') {
                     offsetY -= 2;
@@ -622,6 +622,10 @@
                 } else if (key === 'apc' || key === 'aa_tank') {
                     offsetY -= 1;
                     verticalBias = -6;
+                } else if (key === 'icbm') {
+                    verticalBias = -6;
+                } else if (key === 'mbt') {
+                    verticalBias = -5;
                 } else {
                     verticalBias = -4;
                 }
@@ -631,7 +635,9 @@
                 verticalBias = -2;
             }
 
-            ctx.translate(72, 82 + offsetY);
+            const canvasCenterX = canvas.width * 0.5;
+            const canvasBottomY = canvas.height - 14;
+            ctx.translate(canvasCenterX, canvasBottomY + offsetY);
             ctx.scale(scale, scale);
 
             const dummy = new Unit(key, 0, 0, 'player');
@@ -659,11 +665,17 @@
             alphaCutoff: (
                 unitType === 'air'
                     ? 4
-                    : ((unitCategory === 'armored' || unitType === 'mech') ? 22 : 20)
+                    : ((unitCategory === 'armored' || unitType === 'mech') ? 18 : 20)
             ),
-            padding: 2,
+            padding: (key === 'icbm') ? 1 : 2,
             verticalBias,
-            trimBottomSoftLine: false
+            trimBottomSoftLine: false,
+            allowUpscale: (unitCategory === 'armored' || unitType === 'mech'),
+            maxUpscale: (
+                key === 'icbm'
+                    ? 1.24
+                    : ((key === 'mbt' || key === 'spg') ? 1.16 : 1.1)
+            )
         });
         const dataUrl = (normalizedCanvas || canvas).toDataURL('image/png');
         drillgroundUnitIconCache.set(key, dataUrl);
@@ -677,6 +689,8 @@
         const padding = Math.max(0, Math.floor(Number(opts.padding) || 2));
         const verticalBias = Number.isFinite(Number(opts.verticalBias)) ? Number(opts.verticalBias) : 0;
         const trimBottomSoftLine = opts.trimBottomSoftLine === true;
+        const allowUpscale = opts.allowUpscale === true;
+        const maxUpscale = Math.max(1, Number(opts.maxUpscale) || 1);
         const width = Math.max(1, Math.floor(Number(canvas.width) || 0));
         const height = Math.max(1, Math.floor(Number(canvas.height) || 0));
         const srcCtx = canvas.getContext('2d');
@@ -739,6 +753,9 @@
         let drawScale = 1;
         if (boxW > maxDrawW || boxH > maxDrawH) {
             drawScale = Math.min(maxDrawW / boxW, maxDrawH / boxH);
+        } else if (allowUpscale) {
+            const upscaleLimit = Math.min(maxDrawW / boxW, maxDrawH / boxH, maxUpscale);
+            if (upscaleLimit > 1) drawScale = upscaleLimit;
         }
 
         const drawW = boxW * drawScale;
@@ -754,6 +771,8 @@
         normalized.height = height;
         const outCtx = normalized.getContext('2d');
         if (!outCtx) return canvas;
+        outCtx.imageSmoothingEnabled = true;
+        if (typeof outCtx.imageSmoothingQuality === 'string') outCtx.imageSmoothingQuality = 'high';
         outCtx.clearRect(0, 0, width, height);
         outCtx.drawImage(canvas, minX, minY, boxW, boxH, drawX, drawY, drawW, drawH);
         return normalized;

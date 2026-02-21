@@ -785,6 +785,44 @@
         const pondH = Math.max(18, Math.round(height * 0.14));
         const pondX = Math.round(width * 0.76);
         const pondY = Math.round(height * 0.18);
+
+        const inPondArea = (x, y, extraRadius) => {
+            const extra = Math.max(0, Number(extraRadius) || 0);
+            const rx = pondW + extra;
+            const ry = pondH + extra;
+            if (rx <= 0 || ry <= 0) return false;
+            const dx = (x - pondX) / rx;
+            const dy = (y - pondY) / ry;
+            return (dx * dx + dy * dy) <= 1;
+        };
+
+        const drawTreeCluster = (cx, cy, scale) => {
+            const s = Math.max(0.8, Number(scale) || 1);
+            // Do not place any cluster that overlaps the pond area.
+            if (
+                inPondArea(cx, cy - 14 * s, 10 * s)
+                || inPondArea(cx - 7 * s, cy - 11 * s, 8 * s)
+                || inPondArea(cx + 8 * s, cy - 11 * s, 8 * s)
+            ) {
+                return;
+            }
+
+            ctx.fillStyle = '#5a3f30';
+            ctx.fillRect(cx - 2.5 * s, cy - 10 * s, 5 * s, 12 * s);
+            ctx.fillStyle = '#2e7d32';
+            ctx.beginPath();
+            ctx.arc(cx, cy - 14 * s, 10 * s, 0, Math.PI * 2);
+            ctx.arc(cx - 7 * s, cy - 11 * s, 7.5 * s, 0, Math.PI * 2);
+            ctx.arc(cx + 8 * s, cy - 11 * s, 7.5 * s, 0, Math.PI * 2);
+            ctx.fill();
+        };
+
+        drawTreeCluster(Math.round(width * 0.2), Math.round(height * 0.3), 1.28);
+        drawTreeCluster(Math.round(width * 0.22), Math.round(height * 0.8), 1.36);
+        drawTreeCluster(Math.round(width * 0.78), Math.round(height * 0.82), 1.24);
+        drawTreeCluster(Math.round(width * 0.86), Math.round(height * 0.58), 1.16);
+
+        // Draw pond after vegetation to keep water surface clean (no trees over lake).
         ctx.fillStyle = '#6bc5f3';
         ctx.beginPath();
         ctx.ellipse(pondX, pondY, pondW, pondH, -0.1, 0, Math.PI * 2);
@@ -792,23 +830,6 @@
         ctx.strokeStyle = 'rgba(255,255,255,0.45)';
         ctx.lineWidth = 2;
         ctx.stroke();
-
-        const drawTreeCluster = (cx, cy, scale) => {
-            const s = Math.max(0.6, Number(scale) || 1);
-            ctx.fillStyle = '#5a3f30';
-            ctx.fillRect(cx - 2 * s, cy - 8 * s, 4 * s, 10 * s);
-            ctx.fillStyle = '#2e7d32';
-            ctx.beginPath();
-            ctx.arc(cx, cy - 12 * s, 8 * s, 0, Math.PI * 2);
-            ctx.arc(cx - 6 * s, cy - 9 * s, 6 * s, 0, Math.PI * 2);
-            ctx.arc(cx + 7 * s, cy - 9 * s, 6 * s, 0, Math.PI * 2);
-            ctx.fill();
-        };
-
-        drawTreeCluster(Math.round(width * 0.2), Math.round(height * 0.28), 1.1);
-        drawTreeCluster(Math.round(width * 0.22), Math.round(height * 0.78), 1.2);
-        drawTreeCluster(Math.round(width * 0.78), Math.round(height * 0.8), 1.05);
-        drawTreeCluster(Math.round(width * 0.82), Math.round(height * 0.42), 0.95);
 
         ctx.fillStyle = '#7a5b3f';
         ctx.fillRect(Math.round(width * 0.36), Math.round(height * 0.22), Math.round(width * 0.08), 3);

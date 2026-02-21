@@ -55,18 +55,18 @@ class Unit extends Entity {
         let startY = groundY;
         // Air lanes: move aerial combat higher into the sky.
         if (stats.id === 'stealth_drone') {
-            startY = groundY - 440 - Math.random() * 70;
+            startY = groundY - 540 - Math.random() * 80;
         } else if (stats.id === 'bomber') {
-            startY = groundY - 330 - Math.random() * 100;
+            startY = groundY - 430 - Math.random() * 110;
         } else if (stats.id === 'fighter' || stats.id === 'recon') {
-            startY = groundY - 280 - Math.random() * 90;
+            startY = groundY - 470 - Math.random() * 120;
         } else if (stats.id === 'apache' || stats.id === 'blackhawk' || stats.id === 'chinook' || stats.id === 'uh60') {
-            startY = groundY - 220 - Math.random() * 70;
+            startY = groundY - 420 - Math.random() * 120;
         // [R 4.2 FIX v4] 자폭/대전차 드론은 발밑에서 시작 (상승 애니메이션용)
         } else if (stats.id === 'drone_suicide' || stats.id === 'drone_at') {
             startY = groundY;
         } else if (stats.type === 'air') {
-            startY = groundY - 240 - Math.random() * 90;
+            startY = groundY - 320 - Math.random() * 90;
         }
 
         super(x, startY, team, stats.hp, stats.width, stats.height);
@@ -1037,7 +1037,25 @@ class Unit extends Entity {
             return;
         }
 
-        if (this.stats.type === 'air') this.rotorAngle += 0.8;
+        if (this.stats.type === 'air') {
+            this.rotorAngle += 0.8;
+            const groundRefY = (typeof game !== 'undefined' && Number.isFinite(game.groundY)) ? game.groundY : null;
+            if (Number.isFinite(groundRefY) && !this.dropState) {
+                let desiredAirY = null;
+                if (this.stats.id === 'fighter' || this.stats.id === 'recon') {
+                    desiredAirY = groundRefY - 490;
+                } else if (this.stats.id === 'apache' || this.stats.id === 'blackhawk' || this.stats.id === 'chinook' || this.stats.id === 'uh60') {
+                    desiredAirY = groundRefY - 430;
+                }
+                if (Number.isFinite(desiredAirY) && this.y > desiredAirY) {
+                    this.y += (desiredAirY - this.y) * 0.12;
+                    if (Math.abs(this.y - desiredAirY) < 0.8) this.y = desiredAirY;
+                    if (this.stats.id === 'blackhawk' || this.stats.id === 'chinook' || this.stats.id === 'uh60') {
+                        this.cruiseY = desiredAirY;
+                    }
+                }
+            }
+        }
 
         // Player MBT manual right-click hold fire (PC): keep firing while held.
         if (this.team === 'player' && this.stats && this.stats.id === 'mbt') {
@@ -2827,7 +2845,7 @@ class Unit extends Entity {
         else if (['apache'].includes(id)) type = 'rocket';
         else if (['aa_tank', 'turret'].includes(id)) type = 'aa_shell';
         else if (['humvee'].includes(id)) type = 'humvee_burst';  // [FIX] 험비는 건물 파괴 가능
-        else if (['apc', 'blackhawk', 'fighter'].includes(id)) type = 'machinegun';
+        else if (['apc', 'blackhawk', 'uh60', 'fighter'].includes(id)) type = 'machinegun';
         if (id === 'apc') {
             shotOpts = { impactVfx: 'shell_hit', impactVfxAir: 'airburst' };
         } else if (id === 'mbt') {
@@ -2990,6 +3008,28 @@ class Unit extends Entity {
                     }
                 }
             }
+            if ((id === 'blackhawk' || id === 'uh60') && type === 'machinegun') {
+                const targetX = Number(target && target.x);
+                const targetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.30);
+                if (typeof UnitRenderV2Weapons_blackhawk !== 'undefined'
+                    && UnitRenderV2Weapons_blackhawk
+                    && typeof UnitRenderV2Weapons_blackhawk.computeMuzzleWorld === 'function') {
+                    const stateStore = (this._renderV2State && this._renderV2State.blackhawk) ? this._renderV2State.blackhawk : null;
+                    const muzzle = UnitRenderV2Weapons_blackhawk.computeMuzzleWorld(this, {
+                        targetX: targetX,
+                        targetY: targetY,
+                        state: stateStore
+                    });
+                    if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
+                        spawnX = muzzle.x;
+                        spawnY = muzzle.y;
+                    }
+                } else {
+                    const facing = Number.isFinite(this.facing) && this.facing !== 0 ? (this.facing > 0 ? 1 : -1) : 1;
+                    spawnX = this.x + (facing * Math.max(12, this.width * 0.26));
+                    spawnY = this.y - this.height * 0.55;
+                }
+            }
             if (id === 'spg' && type === 'artillery') {
                 const fallbackTargetX = Number(target && target.x);
                 const fallbackTargetY = Number(target && target.y) - ((Number(target && target.height) || 0) * 0.25);
@@ -3068,7 +3108,8 @@ class Unit extends Entity {
             apc: 1.16,
             mbt: 1.16,
             spg: 1.16,
-            aa_tank: 1.12
+            aa_tank: 1.12,
+            icbm: 1.16
         };
         const armoredBoost = Number(ARMORED_RENDER_BOOST[id]) || 1;
         const baseRenderScale = 1.4;
@@ -3117,7 +3158,10 @@ class Unit extends Entity {
             || id === 'engineer'
             || id === 'rpg'
             || id === 'drone_operator'
-            || id === 'fighter')
+            || id === 'fighter'
+            || id === 'apache'
+            || id === 'blackhawk'
+            || id === 'uh60')
             && typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
             let renderedWithV2 = false;
             try {

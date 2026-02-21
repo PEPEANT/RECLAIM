@@ -272,7 +272,12 @@ const game = {
 
     triggerIcbmSkillFromCommand(skillKey) {
         if (!this.isIcbmSkillKey(skillKey)) return false;
-        if (!this._skirmishMode || typeof SkirmishMode === 'undefined' || !SkirmishMode.isActive || SkirmishMode.phase !== 'battle') {
+        const inSkirmishButNotBattle = this._skirmishMode && (
+            typeof SkirmishMode === 'undefined' ||
+            !SkirmishMode.isActive ||
+            SkirmishMode.phase !== 'battle'
+        );
+        if (inSkirmishButNotBattle) {
             if (typeof ChatPanel !== 'undefined') {
                 ChatPanel.push('ICBM 스킬은 전투 단계에서만 사용할 수 있습니다.', 'WARN');
             }

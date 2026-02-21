@@ -1,33 +1,37 @@
 // Weapon render/muzzle helpers for: fighter
-// Local coords: nose at +x, origin = body center, facing applied by index.js.
+// 로컬 좌표: 기수 = +x, origin = 기체 중심.
+// getMuzzlePosition: 게임 엔진 발사체 스폰용 월드 좌표 반환.
 (function attachUnitRenderV2Weapons_fighter(globalScope) {
     'use strict';
 
-    // Muzzle tip in local coords (before facing scale)
+    // 기수 끝 (로컬, 발사체 스폰 기준)
     var MUZZLE_LOCAL = { x: 43, y: 0 };
+
+    // 미사일 장착 위치: 주익 아래 (로컬)
+    var MISSILE_Y = 4;   // 동체 하부 기준선
 
     function drawMissile(ctx, palette) {
         if (!ctx || !palette) return;
         ctx.save();
         ctx.lineJoin = 'round';
 
-        // 미사일 동체
+        // 미사일 동체: 주익 중간 아래쪽 (-8 ~ 4, y = MISSILE_Y+1)
         ctx.fillStyle = palette.missile;
-        ctx.fillRect(-6, 7, 12, 3);
+        ctx.fillRect(-8, MISSILE_Y + 1, 12, 2.5);
 
-        // 탄두 (앞쪽 삼각형 = +x 방향)
+        // 탄두 (앞쪽, +x 방향)
         ctx.fillStyle = palette.missileHead;
         ctx.beginPath();
-        ctx.moveTo(6,  8.5);
-        ctx.lineTo(3,  7);
-        ctx.lineTo(3, 10);
+        ctx.moveTo(4,  MISSILE_Y + 2.25);
+        ctx.lineTo(1,  MISSILE_Y + 1);
+        ctx.lineTo(1,  MISSILE_Y + 3.5);
         ctx.closePath();
         ctx.fill();
 
         // 꼬리 날개
         ctx.fillStyle = '#475569';
-        ctx.fillRect(-8,  6, 2, 2);
-        ctx.fillRect(-8,  9, 2, 2);
+        ctx.fillRect(-9, MISSILE_Y,     1.5, 1.5);
+        ctx.fillRect(-9, MISSILE_Y + 3, 1.5, 1.5);
 
         ctx.restore();
     }
@@ -46,8 +50,8 @@
     }
 
     globalScope['UnitRenderV2Weapons_fighter'] = {
-        drawMissile:      drawMissile,
-        getMuzzleLocal:   getMuzzleLocal,
+        drawMissile:       drawMissile,
+        getMuzzleLocal:    getMuzzleLocal,
         getMuzzlePosition: getMuzzlePosition
     };
 })(typeof window !== 'undefined' ? window : globalThis);

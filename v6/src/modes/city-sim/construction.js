@@ -3136,6 +3136,8 @@
         const padding = Math.max(0, Math.floor(Number(opts.padding) || 2));
         const verticalBias = Number.isFinite(Number(opts.verticalBias)) ? Number(opts.verticalBias) : 0;
         const trimBottomSoftLine = opts.trimBottomSoftLine === true;
+        const allowUpscale = opts.allowUpscale === true;
+        const maxUpscale = Math.max(1, Number(opts.maxUpscale) || 1);
         const width = Math.max(1, Math.floor(Number(canvas.width) || 0));
         const height = Math.max(1, Math.floor(Number(canvas.height) || 0));
         const srcCtx = canvas.getContext('2d');
@@ -3198,6 +3200,9 @@
         let drawScale = 1;
         if (boxW > maxDrawW || boxH > maxDrawH) {
             drawScale = Math.min(maxDrawW / boxW, maxDrawH / boxH);
+        } else if (allowUpscale) {
+            const upscaleLimit = Math.min(maxDrawW / boxW, maxDrawH / boxH, maxUpscale);
+            if (upscaleLimit > 1) drawScale = upscaleLimit;
         }
 
         const drawW = boxW * drawScale;
@@ -3213,6 +3218,8 @@
         normalized.height = height;
         const outCtx = normalized.getContext('2d');
         if (!outCtx) return canvas;
+        outCtx.imageSmoothingEnabled = true;
+        if (typeof outCtx.imageSmoothingQuality === 'string') outCtx.imageSmoothingQuality = 'high';
         outCtx.clearRect(0, 0, width, height);
         outCtx.drawImage(canvas, minX, minY, boxW, boxH, drawX, drawY, drawW, drawH);
         return normalized;
@@ -3244,8 +3251,8 @@
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = 144;
-        canvas.height = 96;
+        canvas.width = 192;
+        canvas.height = 128;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
             drillgroundUnitIconCache.set(cacheKey, null);
@@ -3266,8 +3273,8 @@
             unitType = type;
             unitCategory = category;
 
-            let scale = 0.94;
-            let offsetY = -3;
+            let scale = 0.98;
+            let offsetY = -4;
             if (category === 'infantry') {
                 scale = 1.34;
                 offsetY = -2;
@@ -3295,20 +3302,20 @@
                 verticalBias = -3;
             } else if (type === 'mech' || category === 'armored') {
                 if (key === 'icbm') {
-                    scale = 0.6;
-                    offsetY = -4;
+                    scale = 0.84;
+                    offsetY = -14;
                 } else if (width >= 120) {
-                    scale = 0.5;
-                    offsetY = -3;
+                    scale = 0.58;
+                    offsetY = -5;
                 } else if (key === 'humvee' || key === 'apc' || key === 'aa_tank') {
-                    scale = 0.78;
-                    offsetY = -3;
+                    scale = 0.82;
+                    offsetY = -4;
                 } else if (width >= 72 || height >= 42 || key === 'mbt' || key === 'spg') {
-                    scale = 0.54;
-                    offsetY = -3;
+                    scale = (key === 'mbt') ? 0.68 : ((key === 'spg') ? 0.66 : 0.62);
+                    offsetY = -4;
                 } else {
-                    scale = 0.54;
-                    offsetY = -2;
+                    scale = 0.58;
+                    offsetY = -3;
                 }
                 if (key === 'humvee') {
                     offsetY -= 2;
@@ -3316,6 +3323,10 @@
                 } else if (key === 'apc' || key === 'aa_tank') {
                     offsetY -= 1;
                     verticalBias = -6;
+                } else if (key === 'icbm') {
+                    verticalBias = -6;
+                } else if (key === 'mbt') {
+                    verticalBias = -5;
                 } else {
                     verticalBias = -4;
                 }
@@ -3325,9 +3336,15 @@
                 verticalBias = -2;
             }
 
-            ctx.translate(72, 82 + offsetY);
+            const canvasCenterX = canvas.width * 0.5;
+            const canvasBottomY = canvas.height - 14;
+            ctx.translate(canvasCenterX, canvasBottomY + offsetY);
             ctx.scale(scale, scale);
-            const usedV2 = tryDrawPlayerUnitV2Icon(ctx, key, { mode: 'drillground' });
+            const v2IconScale = (key === 'mbt') ? 1.14 : ((key === 'spg') ? 1.08 : ((key === 'humvee') ? 1.03 : 1));
+            const usedV2 = tryDrawPlayerUnitV2Icon(ctx, key, {
+                mode: 'drillground',
+                iconScale: v2IconScale
+            });
             if (!usedV2) {
                 const dummy = new Unit(key, 0, 0, 'player');
                 dummy.hideHp = true;
@@ -3355,11 +3372,17 @@
             alphaCutoff: (
                 unitType === 'air'
                     ? 4
-                    : ((unitCategory === 'armored' || unitType === 'mech') ? 22 : 20)
+                    : ((unitCategory === 'armored' || unitType === 'mech') ? 18 : 20)
             ),
-            padding: 2,
+            padding: (key === 'icbm') ? 1 : 2,
             verticalBias,
-            trimBottomSoftLine: false
+            trimBottomSoftLine: false,
+            allowUpscale: (unitCategory === 'armored' || unitType === 'mech'),
+            maxUpscale: (
+                key === 'icbm'
+                    ? 1.24
+                    : ((key === 'mbt' || key === 'spg') ? 1.16 : 1.1)
+            )
         });
         const dataUrl = (normalizedCanvas || canvas).toDataURL('image/png');
         drillgroundUnitIconCache.set(cacheKey, dataUrl);
@@ -5963,9 +5986,9 @@
     }
 
     const PROFILE_SKILL_COMMAND_META = {
-        icbm_tactical: { langKey: 'cmd_icbm_tactical', fallback: '전술미사일', iconClass: 'fa-solid fa-bullseye' },
-        icbm_emp: { langKey: 'cmd_icbm_emp', fallback: 'EMP', iconClass: 'fa-solid fa-bolt-lightning' },
-        icbm_nuke: { langKey: 'cmd_icbm_nuke', fallback: '핵미사일', iconClass: 'fa-solid fa-radiation' },
+        icbm_tactical: { langKey: 'cmd_icbm_tactical', fallback: '전술미사일', iconClass: 'fa-solid fa-bullseye',      chargeKey: 'tactical' },
+        icbm_emp:      { langKey: 'cmd_icbm_emp',      fallback: 'EMP',        iconClass: 'fa-solid fa-bolt-lightning', chargeKey: 'emp' },
+        icbm_nuke:     { langKey: 'cmd_icbm_nuke',     fallback: '핵미사일',   iconClass: 'fa-solid fa-radiation',      chargeKey: 'nuke' },
         drone_suicide: { langKey: 'cmd_drone_suicide', fallback: '자폭드론', iconClass: 'fa-solid fa-skull-crossbones' },
         drone_at: { langKey: 'cmd_drone_at', fallback: '대전차드론', iconClass: 'fa-solid fa-shield-halved' },
         smoke: { langKey: 'cmd_smoke', fallback: '연막', iconClass: 'fa-solid fa-smog' },
@@ -6092,7 +6115,8 @@
                 commandKey: cmdKey,
                 itemKey: '',
                 isFixed: false,
-                isEditable: false
+                isEditable: false,
+                chargeKey: meta?.chargeKey || null
             };
         });
 
@@ -6374,11 +6398,18 @@
                 const dropAttr = (isVeteranProfile && normalizeUnitKey(unitKey) === 'drone_operator')
                     ? ` data-city-veteran-skill-slot="${slot.index}" data-city-veteran-slot-locked="${isLocked ? '1' : '0'}"`
                     : '';
+                const slotCharges = slot.chargeKey
+                    ? Math.max(0, Number((typeof game !== 'undefined' && game.skillCharges) ? (game.skillCharges[slot.chargeKey] || 0) : 0))
+                    : null;
+                const countBadge = slotCharges !== null
+                    ? `<span class="city-unit-profile-skillslot-count">${slotCharges}</span>`
+                    : '';
                 return (
                     `<div class="city-unit-profile-skillslot${isLocked ? ' is-fixed' : ''}${itemKey ? ' is-filled' : ''}"${dropAttr}${dragAttr}>` +
                 `<span class="city-unit-profile-skillslot-icon" aria-hidden="true"><i class="${slot.iconClass}"></i></span>` +
                 `<span class="city-unit-profile-skillslot-index">${slot.index}</span>` +
                 `<span class="city-unit-profile-skillslot-name">${escapeHtml(slot.name)}</span>` +
+                countBadge +
                 (isVeteranProfile && isLocked
                     ? `<span class="city-unit-profile-skillslot-note">고정</span>`
                     : '') +
@@ -6832,6 +6863,15 @@
                 } else if (key === 'apache' || key === 'fighter') {
                     scale = 0.45;
                     offsetY = -12;
+                } else if (key === 'icbm') {
+                    scale = 0.58;
+                    offsetY = -12;
+                } else if (key === 'mbt') {
+                    scale = 0.58;
+                    offsetY = -10;
+                } else if (key === 'spg') {
+                    scale = 0.56;
+                    offsetY = -10;
                 } else if (key === 'humvee') {
                     scale = 0.65;
                     offsetY = -18;
@@ -6851,7 +6891,11 @@
 
                 ctx.translate(canvasCenterX, canvasBottomY + offsetY);
                 ctx.scale(scale, scale);
-                const usedV2 = tryDrawPlayerUnitV2Icon(ctx, key, { mode: 'inventory' });
+                const v2IconScale = (key === 'mbt') ? 1.12 : ((key === 'spg') ? 1.06 : ((key === 'humvee') ? 1.03 : 1));
+                const usedV2 = tryDrawPlayerUnitV2Icon(ctx, key, {
+                    mode: 'inventory',
+                    iconScale: v2IconScale
+                });
                 if (!usedV2) {
                     const dummy = new Unit(key, 0, 0, 'player');
                     dummy.hideHp = true;
@@ -6924,6 +6968,15 @@
                 } else if (normalizedKey === 'apache' || normalizedKey === 'fighter') {
                     scale = 0.66;
                     offsetY = -22;
+                } else if (normalizedKey === 'icbm') {
+                    scale = 0.86;
+                    offsetY = -18;
+                } else if (normalizedKey === 'mbt') {
+                    scale = 0.92;
+                    offsetY = -10;
+                } else if (normalizedKey === 'spg') {
+                    scale = 0.88;
+                    offsetY = -10;
                 } else if (normalizedKey === 'humvee') {
                     scale = 0.86;
                     offsetY = -12;
@@ -6946,7 +6999,11 @@
 
                 ctx.translate(canvasCenterX, canvasBottomY + offsetY);
                 ctx.scale(scale, scale);
-                const usedV2 = tryDrawPlayerUnitV2Icon(ctx, normalizedKey, { mode: 'profile' });
+                const v2IconScale = (normalizedKey === 'mbt') ? 1.12 : ((normalizedKey === 'spg') ? 1.06 : ((normalizedKey === 'humvee') ? 1.03 : 1));
+                const usedV2 = tryDrawPlayerUnitV2Icon(ctx, normalizedKey, {
+                    mode: 'profile',
+                    iconScale: v2IconScale
+                });
                 if (!usedV2) {
                     const dummy = new Unit(normalizedKey, 0, 0, 'player');
                     dummy.hideHp = true;
