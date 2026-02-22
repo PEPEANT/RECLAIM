@@ -16,6 +16,8 @@
     const BATTLE_VIDEO_FALLBACK_SRC = 'assets/tutorial/videos/chroma_tutorial_08.webm';
     const BATTLE_INGAME_VIDEO_SRC = 'assets/tutorial/videos/chroma_tutorial_08_1.webm';
     const BATTLE_INGAME_VIDEO_FALLBACK_SRC = 'assets/tutorial/videos/chroma_tutorial_08_1.webm';
+    const BATTLE_INGAME_IMPACT_VIDEO_SRC = 'assets/tutorial/videos/chroma_tutorial_08_2.webm';
+    const BATTLE_INGAME_IMPACT_VIDEO_FALLBACK_SRC = 'assets/tutorial/videos/chroma_tutorial_08_2.webm';
     const OUTRO_VIDEO_SRC = 'assets/tutorial/videos/chroma_tutorial_09.webm';
     const OUTRO_VIDEO_FALLBACK_SRC = 'assets/tutorial/videos/chroma_tutorial_09.webm';
     const SKIP_VIDEO_SRC = 'assets/tutorial/videos/chroma_tutorial_02.webm';
@@ -1003,6 +1005,10 @@
         });
     }
 
+    function getAlivePlayerAtDrones(game) {
+        return getAlivePlayerDrones(game).filter((unit) => String(unit?.stats?.id || '').trim() === 'drone_at');
+    }
+
     function getPlayerOperatorDroneChargeSum(game) {
         return getAlivePlayerOperators(game).reduce((sum, operator) => {
             return sum + Math.max(0, Math.floor(Number(operator?.droneChargesLeft) || 0));
@@ -1044,8 +1050,17 @@
         }
 
         const aliveDrones = getAlivePlayerDrones(game);
+        const aliveAtDrones = aliveDrones.filter((unit) => String(unit?.stats?.id || '').trim() === 'drone_at');
         if (aliveDrones.length > 0) {
             tracker.droneSkillUsed = true;
+        }
+        if (aliveAtDrones.length > 0) {
+            tracker.atDroneUsed = true;
+        }
+
+        const impactAt = Math.max(0, Math.floor(Number(tracker.atDroneImpactAt) || 0));
+        if (impactAt > 0) {
+            tracker.atDroneImpactSeen = true;
         }
 
         if (tracker.operatorChargeBaseline <= 0) {
@@ -1073,8 +1088,7 @@
         const lockedSteps = new Set([
             GUIDED_BUILD_STEPS.START_BATTLE,
             GUIDED_BUILD_STEPS.DRONE_CONTROL_MODE,
-            GUIDED_BUILD_STEPS.DRONE_SKILL_USE,
-            GUIDED_BUILD_STEPS.DRONE_LOCKDOWN
+            GUIDED_BUILD_STEPS.DRONE_SKILL_USE
         ]);
         if (!lockedSteps.has(step)) return false;
         if (tracker.lockdownUsed === true) return false;
@@ -1117,6 +1131,58 @@
             if (isOperator || isDrone) return;
             unit.commandMode = nextMode;
         });
+    }
+
+    function setTutorialBattlePaused(game, paused) {
+        if (!game) return;
+        const alivePlayers = Array.isArray(game.players) ? game.players.filter((unit) => !!(unit && !unit.dead)) : [];
+        const aliveEnemies = Array.isArray(game.enemies) ? game.enemies.filter((unit) => !!(unit && !unit.dead)) : [];
+        const units = alivePlayers.concat(aliveEnemies);
+
+        if (paused === true) {
+            units.forEach((unit) => {
+                if (!unit || unit.dead) return;
+                if (unit._tutorialPausedFlag !== true) {
+                    unit._tutorialPausedFlag = true;
+                    unit._tutorialPausedPrevMode = String(unit.commandMode || '').trim() || 'attack';
+                }
+
+                unit.commandMode = 'stop';
+                unit.attackTarget = null;
+                unit.commandTargetX = null;
+                unit.targetX = null;
+                unit.targetY = null;
+
+                const unitId = String(unit?.stats?.id || '').trim();
+                const category = String(unit?.stats?.category || '').trim();
+                const isDrone = category === 'drone' || unitId === 'drone_suicide' || unitId === 'drone_at' || unitId.includes('drone');
+                if (isDrone) {
+                    unit.commandState = 'standby';
+                    unit.swarmTarget = null;
+                    unit.lockedTarget = null;
+                    unit.attackPhase = null;
+                }
+            });
+            game._tutorialBattlePaused = true;
+            return;
+        }
+
+        units.forEach((unit) => {
+            if (!unit || unit.dead) return;
+            if (unit._tutorialPausedFlag === true) {
+                const previousMode = String(unit._tutorialPausedPrevMode || '').trim();
+                if (previousMode) {
+                    unit.commandMode = previousMode;
+                } else if (unit.team === 'enemy') {
+                    unit.commandMode = 'advance';
+                } else {
+                    unit.commandMode = 'attack';
+                }
+            }
+            delete unit._tutorialPausedFlag;
+            delete unit._tutorialPausedPrevMode;
+        });
+        game._tutorialBattlePaused = false;
     }
 
     function cloneStagePreset(preset) {
@@ -1163,7 +1229,7 @@
             storageSlots: 0,
             tutorialVeteranOnlyUnitId: 'drone_operator',
             civilians: templateCivilians,
-            narration: '튜토리얼 전투: 배치된 아군을 유지한 채 베테랑 드론병을 출격시키고 드론 락다운으로 전장을 정리하세요.'
+            narration: '튜토리얼 전투: 베테랑 드론병으로 대전차 드론을 명중시키고 전진 명령으로 전투를 재개하세요.'
         };
     }
 
@@ -1222,6 +1288,7 @@
         restoreQuestHook(flow);
         restoreBattleHook(flow);
         setTutorialSupportUnitsHold(flow.game, false);
+        setTutorialBattlePaused(flow.game, false);
         clearTutorialSkirmishRuntime(flow);
     }
 
@@ -1744,6 +1811,14 @@
             droneSkillUsed: false,
             lockdownUsed: false,
             manualModeUsed: false,
+            atDroneUsed: false,
+            atDroneImpactSeen: false,
+            atDroneImpactAt: 0,
+            atImpactClipPlayed: false,
+            dragSelectBaselineAt: 0,
+            dragSelectDone: false,
+            forwardCommandBaselineAt: 0,
+            forwardCommandDone: false,
             droneLockCursorBaseline: Math.max(0, Math.floor(Number(flow.game.droneLockCursor) || 0)),
             operatorChargeBaseline: 0,
             battleStarted: false,
@@ -1753,6 +1828,10 @@
         };
 
         flow.game._cityTutorialSkirmish = tutorialSkirmishState;
+        flow.game._tutorialLastDragSelectAt = 0;
+        flow.game._tutorialLastDragSelectCount = 0;
+        flow.game._tutorialLastForwardCommandAt = 0;
+        flow.game._tutorialLastForwardCommandSelectionCount = 0;
         if (!wrapTutorialBattleEnd(flow)) return false;
 
         flow.tutorialBattleStarted = true;
@@ -1776,7 +1855,7 @@
                 skirmishData: stageData
             });
             if (typeof ChatPanel !== 'undefined' && ChatPanel && typeof ChatPanel.push === 'function') {
-                ChatPanel.push('튜토리얼: 인게임 안내 영상 후 별 표시(베테랑 탭)에서 드론병 1기를 배치하세요.', 'INFO');
+                ChatPanel.push('튜토리얼: 별(베테랑 탭) → 드론병 배치 → 배치 완료 → 대전차 드론 생성 순서로 진행하세요.', 'INFO');
             }
             return true;
         } catch (err) {
@@ -2380,16 +2459,18 @@
                 () => {
                     if (!flow || flow.active !== true) return;
                     flow.battleIngameClipQueued = false;
+                    setTutorialCharacterVisible(flow.overlay, false);
                     setGuidedStep(flow, GUIDED_BUILD_STEPS.OPEN_VETERAN_TAB);
-                    setFallbackText(flow.overlay, '국지전 시작: 먼저 유닛바의 [★ 베테랑 탭]을 열어주세요.');
+                    setFallbackText(flow.overlay, '별을 누르세요. (베테랑 탭)');
                     tickGuidedFlow(flow);
                 },
                 { startAtSec: 0.2 }
             );
             if (clipStarted !== true) {
                 flow.battleIngameClipQueued = false;
+                setTutorialCharacterVisible(flow.overlay, false);
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.OPEN_VETERAN_TAB);
-                setFallbackText(flow.overlay, '국지전 시작: 먼저 유닛바의 [★ 베테랑 탭]을 열어주세요.');
+                setFallbackText(flow.overlay, '별을 누르세요. (베테랑 탭)');
             }
             return;
         }
@@ -2409,7 +2490,7 @@
             }
             const veteranToggleBtn = findBattleVeteranToggleButton();
             if (!isBattleVeteranModeOpen()) {
-                setFallbackText(flow.overlay, '국지전 배치 1단계: 유닛바의 [★ 베테랑 탭]을 눌러 베테랑 목록을 여세요.');
+                setFallbackText(flow.overlay, '별을 누르세요. (베테랑 탭)');
                 setGuidedHighlights(flow, [
                     veteranToggleBtn || document.getElementById('unit-list-container') || document.getElementById('hud-footer')
                 ]);
@@ -2436,7 +2517,7 @@
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.OPEN_VETERAN_TAB);
                 return;
             }
-            setFallbackText(flow.overlay, `국지전 배치 2단계: 베테랑 드론병을 선택 후 좌측 배치구역을 눌러 배치하세요. (${placed}/${required})`);
+            setFallbackText(flow.overlay, `드론병을 배치하세요. (${placed}/${required})`);
             setGuidedHighlights(flow, [
                 document.getElementById('unit-list-container') || findBattleVeteranToggleButton() || document.getElementById('hud-footer')
             ]);
@@ -2456,7 +2537,7 @@
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.DEPLOY_INFANTRY);
                 return;
             }
-            setFallbackText(flow.overlay, '국지전 진행 중: [전투 시작]을 눌러 전투를 개시하세요.');
+            setFallbackText(flow.overlay, '배치완료를 누르세요.');
             setGuidedHighlights(flow, [document.getElementById('skirmish-ready-btn') || document.getElementById('hud-footer')]);
             return;
         }
@@ -2468,16 +2549,16 @@
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.DEPLOY_VETERAN);
                 return;
             }
-            setTutorialSupportUnitsHold(flow.game, true);
+            setTutorialSupportUnitsHold(flow.game, false);
             if (isTutorialBattleSelectionLockActive(flow)) {
                 pruneSelectionToDroneOperator(flow.game);
             }
             if (!isDroneOperatorSelected(flow.game)) {
-                setFallbackText(flow.overlay, '전투 조작 안내: 드론병을 먼저 선택하세요. PC는 좌클릭 선택/우클릭 명령, 모바일은 유닛 선택 후 목표 터치로 명령합니다.');
+                setFallbackText(flow.overlay, '대전차 드론 생성을 위해 드론병을 먼저 선택하세요.');
                 setGuidedHighlights(flow, [document.getElementById('hud-footer') || document.getElementById('unit-panel-container')]);
                 return;
             }
-            setGuidedStep(flow, GUIDED_BUILD_STEPS.DRONE_CONTROL_MODE);
+            setGuidedStep(flow, GUIDED_BUILD_STEPS.DRONE_SKILL_USE);
             return;
         }
 
@@ -2488,7 +2569,7 @@
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.DEPLOY_VETERAN);
                 return;
             }
-            setTutorialSupportUnitsHold(flow.game, true);
+            setTutorialSupportUnitsHold(flow.game, false);
             if (isTutorialBattleSelectionLockActive(flow)) {
                 pruneSelectionToDroneOperator(flow.game);
             }
@@ -2514,16 +2595,22 @@
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.DEPLOY_VETERAN);
                 return;
             }
-            setTutorialSupportUnitsHold(flow.game, true);
+            setTutorialSupportUnitsHold(flow.game, false);
             if (isTutorialBattleSelectionLockActive(flow)) {
                 pruneSelectionToDroneOperator(flow.game);
             }
-            const aliveDrones = syncTutorialBattleUsageFlags(flow.game, tracker);
-            if (tracker.droneSkillUsed === true || aliveDrones.length > 0) {
+            syncTutorialBattleUsageFlags(flow.game, tracker);
+            const aliveAtDrones = getAlivePlayerAtDrones(flow.game);
+            if (tracker.atDroneImpactSeen === true) {
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.DRONE_LOCKDOWN);
                 return;
             }
-            setFallbackText(flow.overlay, '드론 발진 안내: 드론병 스킬(자폭드론/AT드론)을 1회 사용하세요.');
+            if (tracker.atDroneUsed === true || aliveAtDrones.length > 0) {
+                setFallbackText(flow.overlay, '생성한 대전차 드론을 적에게 명중시키세요.');
+                setGuidedHighlights(flow, [document.getElementById('hud-footer') || document.getElementById('unit-panel-container')]);
+                return;
+            }
+            setFallbackText(flow.overlay, '대전차 드론 생성을 누르세요.');
             setGuidedHighlights(flow, [document.getElementById('hud-footer') || document.getElementById('unit-panel-container')]);
             return;
         }
@@ -2535,24 +2622,89 @@
                 setGuidedStep(flow, GUIDED_BUILD_STEPS.DEPLOY_VETERAN);
                 return;
             }
-            setTutorialSupportUnitsHold(flow.game, true);
-            if (isTutorialBattleSelectionLockActive(flow)) {
-                pruneSelectionToDroneOperator(flow.game);
-            }
+            setTutorialSupportUnitsHold(flow.game, false);
             syncTutorialBattleUsageFlags(flow.game, tracker);
-            if (tracker.lockdownUsed === true) {
-                setTutorialSupportUnitsHold(flow.game, false);
-                setGuidedStep(flow, GUIDED_BUILD_STEPS.WAIT_BATTLE_END);
-                setFallbackText(flow.overlay, '좋습니다. 락다운 지시 완료. 남은 적을 소탕하면 즉시 시티로 복귀합니다.');
-                clearGuidedHighlights(flow);
+            if (tracker.atDroneImpactSeen !== true) {
+                setGuidedStep(flow, GUIDED_BUILD_STEPS.DRONE_SKILL_USE);
                 return;
             }
-            setFallbackText(flow.overlay, '락다운 안내: 수동 모드에서 적을 눌러 [락다운]을 지정하세요.');
-            setGuidedHighlights(flow, [document.getElementById('hud-footer') || document.getElementById('unit-panel-container')]);
+
+            setTutorialBattlePaused(flow.game, true);
+            if (tracker.atImpactClipPlayed !== true) {
+                setFallbackText(flow.overlay, '대전차 드론 명중 확인. 전술 브리핑 영상을 재생합니다.');
+                clearGuidedHighlights(flow);
+                if (flow.battleIngameImpactClipQueued === true) {
+                    return;
+                }
+
+                flow.battleIngameImpactClipQueued = true;
+                const finalizeImpactClipStep = () => {
+                    if (!flow || flow.active !== true) return;
+                    flow.battleIngameImpactClipQueued = false;
+                    tracker.atImpactClipPlayed = true;
+                    tracker.dragSelectBaselineAt = Math.max(0, Math.floor(Number(flow.game?._tutorialLastDragSelectAt) || 0));
+                    tracker.forwardCommandBaselineAt = Math.max(0, Math.floor(Number(flow.game?._tutorialLastForwardCommandAt) || 0));
+                    tracker.dragSelectDone = false;
+                    tracker.forwardCommandDone = false;
+                    setTutorialCharacterVisible(flow.overlay, false);
+                    tickGuidedFlow(flow);
+                };
+
+                const clipStarted = playInlineClip(
+                    flow,
+                    BATTLE_INGAME_IMPACT_VIDEO_SRC,
+                    BATTLE_INGAME_IMPACT_VIDEO_FALLBACK_SRC,
+                    finalizeImpactClipStep,
+                    { startAtSec: 0.1 }
+                );
+                if (clipStarted !== true) {
+                    finalizeImpactClipStep();
+                }
+                return;
+            }
+
+            const dragSelectedAt = Math.max(0, Math.floor(Number(flow.game?._tutorialLastDragSelectAt) || 0));
+            const forwardIssuedAt = Math.max(0, Math.floor(Number(flow.game?._tutorialLastForwardCommandAt) || 0));
+            const dragSelectedCount = Math.max(0, Math.floor(Number(flow.game?._tutorialLastDragSelectCount) || 0));
+            const dragBaselineAt = Math.max(0, Math.floor(Number(tracker.dragSelectBaselineAt) || 0));
+            const forwardBaselineAt = Math.max(0, Math.floor(Number(tracker.forwardCommandBaselineAt) || 0));
+
+            tracker.dragSelectDone = (dragSelectedAt > dragBaselineAt) && dragSelectedCount > 0;
+            tracker.forwardCommandDone = tracker.dragSelectDone && (forwardIssuedAt > forwardBaselineAt);
+
+            if (tracker.dragSelectDone !== true) {
+                setFallbackText(flow.overlay, '아군 유닛을 드래그로 선택하세요. 모바일에서 전진 버튼이 안 보이면 우측 명령 패널을 좌우로 드래그해 [전진] 버튼을 찾으세요.');
+                setGuidedHighlights(flow, [
+                    document.getElementById('game-canvas') || document.getElementById('game-wrapper'),
+                    document.getElementById('hud-footer')
+                ]);
+                return;
+            }
+
+            if (tracker.forwardCommandDone !== true) {
+                setFallbackText(flow.overlay, '선택이 확인되었습니다. 이제 [전진] 명령을 누르세요.');
+                setGuidedHighlights(flow, [
+                    document.getElementById('hud-cmd-forward') || document.getElementById('hud-footer')
+                ]);
+                return;
+            }
+
+            if (flow.game?.selectedUnits && typeof flow.game.selectedUnits.forEach === 'function') {
+                flow.game.selectedUnits.forEach((unit) => {
+                    if (!unit || unit.dead) return;
+                    unit._tutorialPausedPrevMode = 'attack';
+                });
+            }
+            setTutorialBattlePaused(flow.game, false);
+            setTutorialSupportUnitsHold(flow.game, false);
+            setGuidedStep(flow, GUIDED_BUILD_STEPS.WAIT_BATTLE_END);
+            setFallbackText(flow.overlay, '전진 명령 확인. 전투를 계속 진행합니다.');
+            clearGuidedHighlights(flow);
             return;
         }
 
         if (flow.step === GUIDED_BUILD_STEPS.WAIT_BATTLE_END) {
+            setTutorialBattlePaused(flow.game, false);
             if (flow.pendingOutroAfterBattle === true && isCityScreenVisible()) {
                 flow.pendingOutroAfterBattle = false;
                 transitionToOutroFlow(flow);
@@ -2648,7 +2800,8 @@
             pendingOutroAfterBattle: false,
             honorVideoPlayed: false,
             veteranRenameRequestedAt: 0,
-            veteranRenameCompleted: false
+            veteranRenameCompleted: false,
+            battleIngameImpactClipQueued: false
         };
         guidedFlow = flow;
         markCityIntroSeen(game, false);
@@ -2944,8 +3097,8 @@
         const existing = getOverlay();
         if (existing) return existing;
 
-        const cityScreen = document.getElementById('city-screen');
-        if (!cityScreen) return null;
+        const host = document.body || document.getElementById('city-screen');
+        if (!host) return null;
 
         const overlay = document.createElement('aside');
         overlay.id = OVERLAY_ID;
@@ -3011,7 +3164,7 @@
 
         overlay.appendChild(character);
         overlay.appendChild(choicePanel);
-        cityScreen.appendChild(overlay);
+        host.appendChild(overlay);
 
         activeVideo = video;
         activeVideo.onended = () => {
@@ -3124,6 +3277,7 @@
         if (type === 'cleanup' && tracker.active === true) {
             tracker.active = false;
             setTutorialSupportUnitsHold(flow.game, false);
+            setTutorialBattlePaused(flow.game, false);
         }
     }
 

@@ -645,25 +645,29 @@
         <div id="auth-login-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-login-title">
             <div class="auth-modal-panel">
                 <button type="button" class="auth-modal-close" id="auth-login-close" aria-label="닫기">×</button>
-                <h2 id="auth-login-title" class="auth-modal-title">로그인</h2>
-                <p class="auth-modal-subtitle">가입한 이메일(또는 등록 아이디)과 비밀번호를 입력하세요.</p>
+                <div class="auth-title-row">
+                    <h2 id="auth-login-title" class="auth-modal-title">로그인</h2>
+                    <span class="auth-title-note">가입한 이메일 + 비밀번호</span>
+                </div>
                 <form id="auth-login-form" class="auth-form" autocomplete="off">
                     <label class="auth-field">
-                        <span>이메일 / 아이디</span>
-                        <input id="auth-login-id" type="text" placeholder="example@gmail.com 또는 아이디" maxlength="80">
+                        <span class="auth-field-label-row">
+                            <span>이메일</span>
+                            <span class="auth-field-label-note">(아이디는 이메일입니다)</span>
+                        </span>
+                        <input id="auth-login-id" type="text" placeholder="example@gmail.com" maxlength="80">
                     </label>
                     <label class="auth-field">
                         <span>비밀번호</span>
                         <input id="auth-login-password" type="password" placeholder="비밀번호 입력" maxlength="64">
                     </label>
                     <div id="auth-login-error" class="auth-error hidden"></div>
-                    <div class="auth-links">
-                        <span>계정이 없나요?</span>
-                        <button type="button" id="auth-open-signup" class="auth-link-btn">회원가입</button>
-                    </div>
                     <div class="auth-actions">
-                        <button type="button" id="auth-login-cancel" class="auth-btn auth-btn-ghost">취소</button>
+                        <button type="button" id="auth-login-signup" class="auth-btn auth-btn-ghost">회원가입</button>
                         <button type="submit" class="auth-btn auth-btn-primary">로그인</button>
+                    </div>
+                    <div class="auth-login-recovery">
+                        <button type="button" id="auth-login-find-password" class="auth-link-btn">비밀번호 찾기</button>
                     </div>
                 </form>
             </div>
@@ -671,44 +675,64 @@
 
         <!-- AUTH: SIGNUP MODAL -->
         <div id="auth-signup-modal" class="auth-modal hidden" role="dialog" aria-modal="true" aria-labelledby="auth-signup-title">
-            <div class="auth-modal-panel">
+            <div class="auth-modal-panel auth-signup-panel">
                 <button type="button" class="auth-modal-close" id="auth-signup-close" aria-label="닫기">×</button>
-                <h2 id="auth-signup-title" class="auth-modal-title">회원가입</h2>
-                <p class="auth-modal-subtitle">가입 후 인증 메일을 받고, 메일 인증 완료 후 로그인할 수 있습니다.</p>
+                <div class="auth-title-row">
+                    <h2 id="auth-signup-title" class="auth-modal-title">회원가입</h2>
+                    <span class="auth-title-note">프로필/이메일 인증/비밀번호 설정 3단계</span>
+                </div>
                 <form id="auth-signup-form" class="auth-form" autocomplete="off">
-                    <label class="auth-field">
-                        <span>아이디</span>
-                        <input id="auth-signup-id" type="text" placeholder="아이디 입력" maxlength="40">
-                    </label>
-                    <label class="auth-field">
-                        <span>비밀번호</span>
-                        <input id="auth-signup-password" type="password" placeholder="비밀번호 입력" maxlength="64">
-                    </label>
-                    <label class="auth-field">
-                        <span>비밀번호 확인</span>
-                        <input id="auth-signup-password-confirm" type="password" placeholder="비밀번호 다시 입력" maxlength="64">
-                    </label>
-                    <label class="auth-field">
-                        <span>이메일</span>
-                        <div class="auth-inline-row">
-                            <input id="auth-signup-email" type="email" placeholder="example@gmail.com" maxlength="80">
-                            <button type="button" id="auth-signup-send-code" class="auth-inline-btn">이메일 인증</button>
+                    <div id="auth-signup-step-1" class="auth-signup-step active" data-signup-step="1">
+                        <label class="auth-field">
+                            <span>프로필 이미지 (선택)</span>
+                            <div class="auth-avatar-upload-row">
+                                <button type="button" id="auth-signup-avatar-pick" class="auth-avatar-pick-btn" aria-label="프로필 이미지 업로드">
+                                    <span id="auth-signup-avatar-thumb" class="auth-avatar-thumb">+</span>
+                                </button>
+                                <div class="auth-avatar-side">
+                                    <p id="auth-signup-avatar-status" class="auth-verify-inline">이미지 미선택</p>
+                                    <button type="button" id="auth-signup-avatar-clear" class="auth-link-btn auth-avatar-clear-btn hidden">이미지 삭제</button>
+                                </div>
+                            </div>
+                            <input id="auth-signup-avatar-file" type="file" accept="image/*" class="hidden">
+                        </label>
+                        <label class="auth-field">
+                            <span>닉네임 (선택)</span>
+                            <input id="auth-signup-nickname" type="text" placeholder="미입력 시 자동: 지휘관 01" maxlength="24">
+                        </label>
+                        <div class="auth-signup-step-actions">
+                            <button type="button" id="auth-signup-back" class="auth-btn auth-btn-ghost">로그인</button>
+                            <button type="button" id="auth-signup-step1-next" class="auth-btn auth-btn-primary">다음</button>
                         </div>
-                    </label>
-                    <label class="auth-field">
-                        <span>인증 코드</span>
-                        <div class="auth-inline-row">
-                            <input id="auth-signup-code" type="text" inputmode="numeric" maxlength="6" placeholder="6자리 코드">
-                            <button type="button" id="auth-signup-verify-code" class="auth-inline-btn">코드 확인</button>
-                        </div>
-                    </label>
-                    <p id="auth-signup-verify-status" class="auth-verify-inline hidden"></p>
-                    <p id="auth-signup-demo" class="auth-demo-code"></p>
-                    <div id="auth-signup-error" class="auth-error hidden"></div>
-                    <div class="auth-actions">
-                        <button type="button" id="auth-signup-back" class="auth-btn auth-btn-ghost">뒤로</button>
-                        <button type="submit" class="auth-btn auth-btn-primary">회원가입 완료</button>
                     </div>
+
+                    <div id="auth-signup-step-2" class="auth-signup-step" data-signup-step="2">
+                        <label class="auth-field">
+                            <span>이메일</span>
+                            <input id="auth-signup-email" type="email" placeholder="example@gmail.com" maxlength="80">
+                        </label>
+                        <p id="auth-signup-verify-status" class="auth-verify-inline">회원가입 완료 시 인증 메일이 발송됩니다.</p>
+                        <div class="auth-signup-step-actions">
+                            <button type="button" id="auth-signup-step2-prev" class="auth-btn auth-btn-ghost">이전</button>
+                            <button type="button" id="auth-signup-step2-next" class="auth-btn auth-btn-primary">다음</button>
+                        </div>
+                    </div>
+
+                    <div id="auth-signup-step-3" class="auth-signup-step" data-signup-step="3">
+                        <label class="auth-field">
+                            <span>비밀번호</span>
+                            <input id="auth-signup-password" type="password" placeholder="비밀번호 입력" maxlength="64">
+                        </label>
+                        <label class="auth-field">
+                            <span>비밀번호 확인</span>
+                            <input id="auth-signup-password-confirm" type="password" placeholder="비밀번호 다시 입력" maxlength="64">
+                        </label>
+                        <div class="auth-signup-step-actions">
+                            <button type="button" id="auth-signup-step3-prev" class="auth-btn auth-btn-ghost">이전</button>
+                            <button type="submit" id="auth-signup-submit" class="auth-btn auth-btn-primary">시작</button>
+                        </div>
+                    </div>
+                    <div id="auth-signup-error" class="auth-error hidden"></div>
                 </form>
             </div>
         </div>
@@ -1648,7 +1672,7 @@
     <script src="buildings.js"></script>
     <script src="projectiles.js"></script>
     <script src="chat_panel.js?v=20260216cp2"></script>
-    <script src="ui.js?v=20260222u4"></script>
+    <script src="ui.js?v=20260222u5"></script>
     <script src="src/maps/core/registry.js"></script>
     <script src="src/maps/core/adapter.js"></script>
     <script src="src/maps/maps/plain/definition.js"></script>
@@ -1712,7 +1736,7 @@
         onerror="console.error('[Boot] Firebase SDK load failed: firebase-firestore-compat.js', this && this.src)"></script>
     <script src="src/firebase/firebase-bridge.js"
         onerror="console.error('[Boot] Firebase bridge load failed: src/firebase/firebase-bridge.js')"></script>
-    <script src="src/modes/city-sim/auth.js?v=20260216a5"></script>
+    <script src="src/modes/city-sim/auth.js?v=20260222a10"></script>
     <script src="src/modes/city-sim/economy.js?v=20260216e5"></script>
     <script src="src/modes/city-sim/building.js?v=20260222b1"></script>
     <script src="src/modes/city-sim/drillground-bubbles/config.js?v=20260219b2"></script>

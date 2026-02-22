@@ -244,7 +244,7 @@
         },
         drone_suicide: {
             id: 'drone_suicide', name: '자폭드론', cost: 35, cooldown: 60, maxCount: 20,
-            hp: 30, damage: 280, range: 10, speed: 4.2, mobility: 12,
+            hp: 90, damage: 280, range: 10, speed: 4.2, mobility: 12,
             width: 16, height: 8, color: '#94a3b8', type: 'air', stealth: true, lockOn: true, category: 'infantry',
             splashRadius: 120,  // [FIX] 약한 폭발
             role: '자폭 공격', description: '보병/경장갑을 향해 돌진해 폭발하는 1회용 드론.',
@@ -253,7 +253,7 @@
         },
         drone_at: {
             id: 'drone_at', name: 'AT드론', cost: 55, cooldown: 100, maxCount: 12,
-            hp: 40, damage: 700, range: 10, speed: 3.6, mobility: 10,
+            hp: 120, damage: 700, range: 10, speed: 3.6, mobility: 10,
             width: 22, height: 11, color: '#facc15', type: 'air', splash: true, lockOn: true, category: 'infantry',
             splashRadius: 260,  // [FIX] 전술급 폭발
             role: '대전차', description: '장갑/건물을 우선 타격한다. 전술급 폭발로 광역 피해를 준다.',

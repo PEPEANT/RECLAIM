@@ -520,6 +520,10 @@
                     } else {
                         // ??嶺뚮Ĳ?됪뤃??????ｋ?? ?熬곣뫖利당뵓????????ル뒇嶺?????ｋ??
                         if (this.selectUnitsInRect) this.selectUnitsInRect();
+                        this._tutorialLastDragSelectAt = Date.now();
+                        this._tutorialLastDragSelectCount = (this.selectedUnits && typeof this.selectedUnits.size === 'number')
+                            ? this.selectedUnits.size
+                            : 0;
                         this.selectedBuilding = null;
                     }
                 }
@@ -736,6 +740,10 @@
                     } else {
                         // ??嶺뚮Ĳ?됪뤃??????ｋ??
                         if (this.selectUnitsInRect) this.selectUnitsInRect();
+                        this._tutorialLastDragSelectAt = Date.now();
+                        this._tutorialLastDragSelectCount = (this.selectedUnits && typeof this.selectedUnits.size === 'number')
+                            ? this.selectedUnits.size
+                            : 0;
                         this.selectedBuilding = null;
                     }
                 }

@@ -216,16 +216,22 @@
         };
     }
 
-    async function emailSignUp(email, password, displayName) {
+    async function emailSignUp(email, password, displayName, photoURL) {
         ensureReady();
         const cred = await auth.createUserWithEmailAndPassword(String(email || '').trim(), String(password || ''));
         const user = cred && cred.user ? cred.user : null;
-        if (user && displayName) {
+        const safeDisplayName = String(displayName || '').trim();
+        const safePhotoURL = String(photoURL || '').trim();
+        if (user && (safeDisplayName || safePhotoURL)) {
+            const profilePayload = {};
+            if (safeDisplayName) profilePayload.displayName = safeDisplayName;
+            if (safePhotoURL) profilePayload.photoURL = safePhotoURL;
             try {
-                await user.updateProfile({ displayName: String(displayName).trim() });
+                await user.updateProfile(profilePayload);
             } catch (_) { }
         }
         if (user) {
+            auth.languageCode = 'ko';
             await user.sendEmailVerification();
         }
         await auth.signOut();
@@ -235,6 +241,12 @@
     async function emailSignIn(email, password) {
         ensureReady();
         return auth.signInWithEmailAndPassword(String(email || '').trim(), String(password || ''));
+    }
+
+    async function sendPasswordReset(email) {
+        ensureReady();
+        auth.languageCode = 'ko';
+        return auth.sendPasswordResetEmail(String(email || '').trim());
     }
 
     async function googleSignIn() {
@@ -450,6 +462,7 @@
         onAuth,
         emailSignUp,
         emailSignIn,
+        sendPasswordReset,
         googleSignIn,
         anonymousSignIn,
         handleRedirectResult,

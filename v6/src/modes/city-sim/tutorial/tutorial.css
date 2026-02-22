@@ -3,7 +3,7 @@
 .city-tutorial-intro-overlay {
     position: fixed;
     inset: 0;
-    z-index: 72;
+    z-index: 130;
     pointer-events: none;
 }
 

@@ -193,7 +193,7 @@
             const veteranPlaced = requirements.veteranPlaced;
 
             let phase = 'ready';
-            let message = '튜토리얼: [전투 시작]을 눌러 작전을 개시하세요.';
+            let message = '튜토리얼: [배치 완료]를 눌러 작전을 개시하세요.';
             if (infantryRequired > 0 && infantryPlaced < infantryRequired) {
                 phase = 'infantry';
                 message = `튜토리얼: 무료 보병 ${infantryRequired}기를 먼저 배치하세요. (${infantryPlaced}/${infantryRequired})`;

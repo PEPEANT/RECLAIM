@@ -1027,6 +1027,13 @@ const HUD = {
             : (stance === 'backward' ? 'cmd_backward' : 'cmd_forward');
         ui.showToast(`${this.getLangText('cmd_stance', 'STANCE')}: ${this.getLangText(stanceKey, stance.toUpperCase())}`);
 
+        if (stance === 'forward') {
+            game._tutorialLastForwardCommandAt = Date.now();
+            game._tutorialLastForwardCommandSelectionCount = Array.isArray(units)
+                ? units.reduce((count, unit) => count + ((unit && !unit.dead) ? 1 : 0), 0)
+                : 0;
+        }
+
         if (typeof game.updateHUDSelection === 'function') {
             game.updateHUDSelection();
         }

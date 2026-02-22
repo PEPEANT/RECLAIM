@@ -3,6 +3,10 @@
     const VERIFY_DURATION_MS = 3 * 60 * 1000;
     const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     const ACCOUNT_STORAGE_KEY = 'reclaim_auth_accounts_v1';
+    const SIGNUP_COMMANDER_SEQ_KEY = 'reclaim_signup_commander_seq_v1';
+    const COMMANDER_NAME_PREFIX = '지휘관';
+    const SIGNUP_NAME_MAX = 24;
+    const SIGNUP_AVATAR_MAX = 40000;
     const LOGIN_DEBUG_KEY = 'reclaim_login_debug';
 
     let activeGame = null;
@@ -23,12 +27,12 @@
     let googleVerificationExpiresAt = 0;
     let pendingGoogleEmail = '';
     let verifyTimerHandle = null;
+    let authViewportSyncRaf = 0;
 
-    // Signup inline verification state
-    let signupVerificationCode = '';
-    let signupVerificationExpiresAt = 0;
-    let signupEmailVerified = false;
-    let signupVerifiedEmail = '';
+    // Signup modal state
+    let signupAvatarDataUrl = '';
+    let signupAvatarReadToken = 0;
+    let signupStep = 1;
 
     function byId(id) {
         return document.getElementById(id);
@@ -113,18 +117,66 @@
         return false;
     }
 
+    function getAuthViewportRect() {
+        const vv = global.visualViewport || null;
+        const width = Math.max(0, Math.floor((vv && Number(vv.width)) || global.innerWidth || document.documentElement.clientWidth || 0));
+        const height = Math.max(0, Math.floor((vv && Number(vv.height)) || global.innerHeight || document.documentElement.clientHeight || 0));
+        const left = Math.max(0, Math.floor((vv && Number(vv.offsetLeft)) || 0));
+        const top = Math.max(0, Math.floor((vv && Number(vv.offsetTop)) || 0));
+        return { left, top, width: Math.max(1, width), height: Math.max(1, height) };
+    }
+
+    function syncAuthViewportCssVars() {
+        const root = document.documentElement;
+        if (!root || !root.style) return;
+        const rect = getAuthViewportRect();
+        root.style.setProperty('--auth-vx', `${rect.left}px`);
+        root.style.setProperty('--auth-vy', `${rect.top}px`);
+        root.style.setProperty('--auth-vw', `${rect.width}px`);
+        root.style.setProperty('--auth-vh', `${rect.height}px`);
+    }
+
+    function clearAuthViewportCssVars() {
+        const root = document.documentElement;
+        if (!root || !root.style) return;
+        root.style.removeProperty('--auth-vx');
+        root.style.removeProperty('--auth-vy');
+        root.style.removeProperty('--auth-vw');
+        root.style.removeProperty('--auth-vh');
+    }
+
+    function scheduleAuthViewportSync() {
+        if (authViewportSyncRaf) return;
+        const scheduler = (typeof global.requestAnimationFrame === 'function')
+            ? global.requestAnimationFrame.bind(global)
+            : ((cb) => global.setTimeout(cb, 16));
+        authViewportSyncRaf = scheduler(() => {
+            authViewportSyncRaf = 0;
+            if (!isAnyModalOpen()) return;
+            syncAuthViewportCssVars();
+            fitOpenModalPanel();
+        });
+    }
+
     function closeModal(id) {
         const el = byId(id);
         if (!el) return;
         el.classList.add('hidden');
         clearModalFit(el);
+        if (!isAnyModalOpen()) {
+            clearAuthViewportCssVars();
+        }
     }
 
     function openModal(id) {
         const el = byId(id);
         if (!el) return;
         el.classList.remove('hidden');
-        setTimeout(() => fitModalPanel(el), 0);
+        syncAuthViewportCssVars();
+        setTimeout(() => {
+            syncAuthViewportCssVars();
+            fitModalPanel(el);
+        }, 0);
     }
 
     function closeAllModals() {
@@ -139,18 +191,6 @@
         return false;
     }
 
-    function getViewportSize() {
-        const vv = global.visualViewport || null;
-        const width = Math.max(0, Math.floor((vv && Number(vv.width)) || global.innerWidth || document.documentElement.clientWidth || 0));
-        const height = Math.max(0, Math.floor((vv && Number(vv.height)) || global.innerHeight || document.documentElement.clientHeight || 0));
-        return { width, height };
-    }
-
-    function isNarrowMobileViewport() {
-        const size = getViewportSize();
-        return size.width > 0 && size.width <= 640;
-    }
-
     function clearModalFit(modalEl) {
         if (!modalEl || !modalEl.querySelector) return;
         const panel = modalEl.querySelector('.auth-modal-panel');
@@ -160,27 +200,9 @@
     }
 
     function fitModalPanel(modalEl) {
-        if (!modalEl || !modalEl.querySelector || modalEl.classList.contains('hidden')) return;
-        const panel = modalEl.querySelector('.auth-modal-panel');
-        if (!panel) return;
-
+        if (!modalEl || modalEl.classList.contains('hidden')) return;
+        // Full-screen auth modal relies on natural scrolling instead of scale fitting.
         clearModalFit(modalEl);
-        if (!isNarrowMobileViewport()) return;
-
-        const size = getViewportSize();
-        const viewportHeight = size.height;
-        if (!viewportHeight) return;
-
-        const availableHeight = Math.max(260, viewportHeight - 12);
-        const naturalHeight = Math.max(panel.scrollHeight, panel.offsetHeight);
-        if (!naturalHeight) return;
-
-        let scale = availableHeight / naturalHeight;
-        scale = Math.min(1, scale);
-        scale = Math.max(0.72, scale);
-
-        panel.style.setProperty('--auth-modal-scale', scale.toFixed(3));
-        panel.classList.add('auth-fit-enabled');
     }
 
     function fitOpenModalPanel() {
@@ -202,6 +224,244 @@
 
     function normalizeId(value) {
         return String(value || '').trim();
+    }
+
+    function normalizeSignupNickname(value) {
+        const collapsed = String(value || '').replace(/\s+/g, ' ').trim();
+        if (!collapsed) return '';
+        return collapsed.slice(0, SIGNUP_NAME_MAX);
+    }
+
+    function parseSignupAvatarUrl(value) {
+        const raw = String(value || '').trim();
+        if (!raw) return { value: '', invalid: false };
+        if (raw.length > SIGNUP_AVATAR_MAX) return { value: '', invalid: true };
+
+        const lower = raw.toLowerCase();
+        if (lower.startsWith('https://') || lower.startsWith('http://') || lower.startsWith('data:image/')) {
+            return { value: raw, invalid: false };
+        }
+        return { value: '', invalid: true };
+    }
+
+    function setSignupAvatarStatus(message, type) {
+        const el = byId('auth-signup-avatar-status');
+        if (!el) return;
+        const text = String(message || '').trim() || '이미지 미선택';
+        el.textContent = text;
+        el.classList.remove('success');
+        el.classList.remove('error');
+        if (type === 'success') el.classList.add('success');
+        if (type === 'error') el.classList.add('error');
+        fitOpenModalPanel();
+    }
+
+    function setSignupAvatarClearVisible(visible) {
+        const btn = byId('auth-signup-avatar-clear');
+        if (!btn || !btn.classList) return;
+        btn.classList.toggle('hidden', visible !== true);
+    }
+
+    function setSignupAvatarPreview(dataUrl) {
+        const thumb = byId('auth-signup-avatar-thumb');
+        if (!thumb || !thumb.classList) return;
+
+        const parsed = parseSignupAvatarUrl(dataUrl);
+        const safeAvatar = parsed.invalid ? '' : String(parsed.value || '');
+        const hasImage = !!safeAvatar;
+
+        thumb.classList.toggle('has-image', hasImage);
+        if (hasImage) {
+            thumb.textContent = '';
+            thumb.style.backgroundImage = `url("${safeAvatar.replace(/"/g, '\\"')}")`;
+        } else {
+            thumb.textContent = '+';
+            thumb.style.backgroundImage = '';
+        }
+        setSignupAvatarClearVisible(hasImage);
+    }
+
+    function clearSignupAvatarSelection(options = {}) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        signupAvatarReadToken += 1;
+        signupAvatarDataUrl = '';
+        const fileInput = byId('auth-signup-avatar-file');
+        if (fileInput) fileInput.value = '';
+        setSignupAvatarPreview('');
+        if (opts.keepStatus === true) return;
+        setSignupAvatarStatus('이미지 미선택', '');
+    }
+
+    function setSignupStep(step) {
+        const next = Math.max(1, Math.min(3, Math.floor(Number(step) || 1)));
+        signupStep = next;
+
+        const steps = [
+            byId('auth-signup-step-1'),
+            byId('auth-signup-step-2'),
+            byId('auth-signup-step-3')
+        ];
+        for (let i = 0; i < steps.length; i += 1) {
+            const el = steps[i];
+            if (!el || !el.classList) continue;
+            const isActive = (i + 1) === next;
+            el.classList.toggle('active', isActive);
+            if (isActive) {
+                el.removeAttribute('hidden');
+            } else {
+                el.setAttribute('hidden', 'hidden');
+            }
+        }
+
+        const panel = byId('auth-signup-modal')?.querySelector('.auth-signup-panel');
+        if (panel) {
+            panel.dataset.signupStep = String(next);
+        }
+        fitOpenModalPanel();
+    }
+
+    function getSignupStep() {
+        const value = Math.max(1, Math.min(3, Math.floor(Number(signupStep) || 1)));
+        signupStep = value;
+        return value;
+    }
+
+    function validateSignupEmailStep() {
+        const emailValue = normalizeEmail(byId('auth-signup-email')?.value);
+        const firebaseEnabled = !!getFirebaseBridge();
+
+        if (!emailValue) {
+            const msg = '이메일을 입력해주세요.';
+            setSignupVerifyStatus(msg, 'error');
+            setError('auth-signup-error', msg);
+            showToast(msg);
+            return false;
+        }
+
+        if (!isValidEmail(emailValue)) {
+            const msg = '유효한 이메일 형식으로 입력해주세요.';
+            setSignupVerifyStatus(msg, 'error');
+            setError('auth-signup-error', msg);
+            showToast(msg);
+            return false;
+        }
+
+        if (firebaseEnabled) {
+            setSignupVerifyStatus('다음 단계에서 회원가입 완료 시 인증 메일이 발송됩니다.', '');
+        } else {
+            setSignupVerifyStatus('이메일 확인 완료. 다음 단계로 진행하세요.', 'success');
+        }
+        setError('auth-signup-error', '');
+        return true;
+    }
+
+    function validateSignupPasswordStep() {
+        const passwordValue = String(byId('auth-signup-password')?.value || '').trim();
+        const passwordConfirmValue = String(byId('auth-signup-password-confirm')?.value || '').trim();
+
+        if (!passwordValue || !passwordConfirmValue) {
+            const msg = '비밀번호/비밀번호 확인을 모두 입력해주세요.';
+            setError('auth-signup-error', msg);
+            showToast(msg);
+            return false;
+        }
+
+        if (passwordValue !== passwordConfirmValue) {
+            const msg = '비밀번호와 비밀번호 확인이 일치하지 않습니다.';
+            setError('auth-signup-error', msg);
+            showToast(msg);
+            return false;
+        }
+
+        setError('auth-signup-error', '');
+        return true;
+    }
+
+    async function cropSignupAvatarFile(file) {
+        if (!file || !String(file.type || '').startsWith('image/')) {
+            return { value: '', invalid: true, reason: 'not_image' };
+        }
+
+        if (typeof ui !== 'undefined'
+            && ui
+            && typeof ui.openAvatarCropperFromFile === 'function') {
+            try {
+                const cropped = await ui.openAvatarCropperFromFile(file, { title: '회원가입 프로필 이미지 조정' });
+                const parsed = parseSignupAvatarUrl(cropped);
+                return { value: parsed.value, invalid: parsed.invalid, reason: (!cropped ? 'cancel' : '') };
+            } catch (_) {
+                return { value: '', invalid: true, reason: 'crop_failed' };
+            }
+        }
+
+        const readAsDataUrl = (blob) => new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(String(reader.result || ''));
+            reader.onerror = () => reject(new Error('signup_avatar_file_read_failed'));
+            reader.readAsDataURL(blob);
+        });
+
+        try {
+            const raw = await readAsDataUrl(file);
+            const parsed = parseSignupAvatarUrl(raw);
+            return { value: parsed.value, invalid: parsed.invalid, reason: '' };
+        } catch (_) {
+            return { value: '', invalid: true, reason: 'read_failed' };
+        }
+    }
+
+    async function onSignupAvatarFileChange() {
+        const input = byId('auth-signup-avatar-file');
+        const file = input && input.files ? input.files[0] : null;
+        if (!file) return;
+
+        const prevAvatar = String(signupAvatarDataUrl || '');
+        const token = ++signupAvatarReadToken;
+        setSignupAvatarStatus('이미지 편집창 준비 중...', '');
+
+        const result = await cropSignupAvatarFile(file);
+        if (token !== signupAvatarReadToken) return;
+
+        if (input) input.value = '';
+        if (result.reason === 'cancel') {
+            signupAvatarDataUrl = prevAvatar;
+            setSignupAvatarPreview(prevAvatar);
+            if (prevAvatar) {
+                setSignupAvatarStatus('기존 이미지 유지', 'success');
+            } else {
+                setSignupAvatarStatus('이미지 미선택', '');
+            }
+            return;
+        }
+
+        if (result.invalid || !result.value) {
+            signupAvatarDataUrl = prevAvatar;
+            setSignupAvatarPreview(prevAvatar);
+            setSignupAvatarStatus('이미지를 처리할 수 없습니다. 다른 파일을 선택해주세요.', 'error');
+            return;
+        }
+
+        signupAvatarDataUrl = String(result.value || '');
+        setSignupAvatarPreview(signupAvatarDataUrl);
+        setSignupAvatarStatus(`선택 완료: ${String(file.name || '이미지 파일')}`, 'success');
+    }
+
+    function nextCommanderAutoNumber() {
+        let current = 0;
+        try {
+            current = Math.max(0, Math.floor(Number(localStorage.getItem(SIGNUP_COMMANDER_SEQ_KEY)) || 0));
+        } catch (_) {
+            current = 0;
+        }
+        const next = (current % 99) + 1;
+        try {
+            localStorage.setItem(SIGNUP_COMMANDER_SEQ_KEY, String(next));
+        } catch (_) { }
+        return next;
+    }
+
+    function makeDefaultCommanderName() {
+        return `${COMMANDER_NAME_PREFIX} ${String(nextCommanderAutoNumber()).padStart(2, '0')}`;
     }
 
     function accountKey(idValue) {
@@ -233,16 +493,37 @@
         return accounts[key] || null;
     }
 
-    function saveAccount(idValue, passwordValue, emailValue) {
+    function findAccountIdsByEmail(emailValue) {
+        const target = normalizeEmail(emailValue);
+        if (!target) return [];
+        const accounts = readAccounts();
+        const ids = [];
+        Object.keys(accounts || {}).forEach((key) => {
+            const entry = accounts[key];
+            const email = normalizeEmail(entry && entry.email);
+            const id = normalizeId(entry && entry.id);
+            if (!id) return;
+            if (email === target) ids.push(id);
+        });
+        return ids;
+    }
+
+    function saveAccount(idValue, passwordValue, emailValue, profileOptions) {
         const key = accountKey(idValue);
         if (!key) return;
 
+        const profile = (profileOptions && typeof profileOptions === 'object') ? profileOptions : {};
+        const displayName = normalizeSignupNickname(profile.displayName || '');
+        const avatarParsed = parseSignupAvatarUrl(profile.photoURL || '');
         const accounts = readAccounts();
+        const prev = accounts[key] || null;
         accounts[key] = {
             id: normalizeId(idValue),
             password: String(passwordValue || ''),
             email: normalizeEmail(emailValue),
-            createdAt: Date.now()
+            displayName: displayName || '',
+            photoURL: avatarParsed.invalid ? '' : String(avatarParsed.value || ''),
+            createdAt: prev && Number(prev.createdAt) > 0 ? Number(prev.createdAt) : Date.now()
         };
         writeAccounts(accounts);
     }
@@ -267,24 +548,10 @@
     }
 
     function setSignupFirebaseMode(enabled) {
-        const sendBtn = byId('auth-signup-send-code');
-        const verifyBtn = byId('auth-signup-verify-code');
-        const codeInput = byId('auth-signup-code');
-        const demoEl = byId('auth-signup-demo');
-        const statusEl = byId('auth-signup-verify-status');
-
-        if (sendBtn) sendBtn.style.display = enabled ? 'none' : '';
-        if (verifyBtn) verifyBtn.style.display = enabled ? 'none' : '';
-        if (codeInput && codeInput.closest) {
-            const row = codeInput.closest('.auth-field');
-            if (row) row.style.display = enabled ? 'none' : '';
-        }
-
         if (enabled) {
-            setSignupVerifyStatus('회원가입 시 Firebase 인증 메일이 발송됩니다.', '');
-            if (demoEl) demoEl.textContent = '';
+            setSignupVerifyStatus('회원가입 완료 시 인증 메일이 발송됩니다. 메일 링크 인증 후 로그인하세요.', '');
         } else {
-            if (statusEl) statusEl.classList.add('hidden');
+            setSignupVerifyStatus('이메일을 입력하고 다음 단계로 진행하세요.', '');
         }
     }
 
@@ -872,17 +1139,7 @@
     }
 
     function resetSignupVerification() {
-        signupVerificationCode = '';
-        signupVerificationExpiresAt = 0;
-        signupEmailVerified = false;
-        signupVerifiedEmail = '';
         setSignupVerifyStatus('', '');
-
-        const demoEl = byId('auth-signup-demo');
-        if (demoEl) demoEl.textContent = '';
-
-        const codeInput = byId('auth-signup-code');
-        if (codeInput) codeInput.value = '';
     }
 
     function openLoginModal(game, prefillId) {
@@ -905,16 +1162,19 @@
         clearAllErrors();
         closeModal('auth-login-modal');
         openModal('auth-signup-modal');
+        setSignupStep(1);
 
-        ['auth-signup-id', 'auth-signup-password', 'auth-signup-password-confirm', 'auth-signup-email', 'auth-signup-code'].forEach((fieldId) => {
+        ['auth-signup-nickname', 'auth-signup-password', 'auth-signup-password-confirm', 'auth-signup-email'].forEach((fieldId) => {
             const field = byId(fieldId);
             if (field) field.value = '';
         });
 
         resetSignupVerification();
+        setSignupFirebaseMode(!!getFirebaseBridge());
+        clearSignupAvatarSelection();
 
-        const idInput = byId('auth-signup-id');
-        if (idInput) setTimeout(() => idInput.focus(), 0);
+        const nicknameInput = byId('auth-signup-nickname');
+        if (nicknameInput) setTimeout(() => nicknameInput.focus(), 0);
     }
 
     async function loginAndEnter(game) {
@@ -1122,13 +1382,15 @@
     function cancelAuth() {
         closeAllModals();
         clearAllErrors();
+        setSignupStep(1);
 
-        ['auth-login-id', 'auth-login-password', 'auth-signup-id', 'auth-signup-password', 'auth-signup-password-confirm', 'auth-signup-email', 'auth-signup-code', 'auth-google-email', 'auth-verify-code'].forEach((fieldId) => {
+        ['auth-login-id', 'auth-login-password', 'auth-signup-nickname', 'auth-signup-password', 'auth-signup-password-confirm', 'auth-signup-email', 'auth-google-email', 'auth-verify-code'].forEach((fieldId) => {
             const field = byId(fieldId);
             if (field) field.value = '';
         });
 
         resetSignupVerification();
+        clearSignupAvatarSelection();
         clearGoogleVerifyState();
     }
 
@@ -1221,107 +1483,119 @@
         }
     }
 
-    function onSignupSendCode() {
-        if (getFirebaseBridge()) {
-            setError('auth-signup-error', '');
-            setSignupVerifyStatus('Firebase 인증 메일 방식이 활성화되어 코드 입력은 사용하지 않습니다.', '');
+    async function onFindLoginPassword() {
+        const fb = getFirebaseBridge();
+        if (!fb || typeof fb.sendPasswordReset !== 'function') {
+            setError('auth-login-error', 'Firebase 연동 상태에서만 비밀번호 재설정 메일을 보낼 수 있습니다.');
             return;
         }
 
-        const emailValue = normalizeEmail(byId('auth-signup-email')?.value);
-        if (!emailValue) {
-            setError('auth-signup-error', '이메일을 입력해주세요.');
-            return;
+        const idOrEmail = normalizeId(byId('auth-login-id')?.value);
+        let emailValue = '';
+        if (isValidEmail(idOrEmail)) {
+            emailValue = normalizeEmail(idOrEmail);
+        } else if (idOrEmail) {
+            const alias = findAccount(idOrEmail);
+            emailValue = normalizeEmail(alias && alias.email);
         }
+
+        if (!emailValue && typeof global.prompt === 'function') {
+            emailValue = normalizeEmail(global.prompt('비밀번호 재설정 이메일을 입력하세요.') || '');
+        }
+
         if (!isValidEmail(emailValue)) {
-            setError('auth-signup-error', '유효한 이메일 형식으로 입력해주세요.');
+            setError('auth-login-error', '유효한 이메일을 입력해주세요.');
             return;
         }
 
-        setError('auth-signup-error', '');
-
-        signupVerificationCode = generateCode();
-        signupVerificationExpiresAt = Date.now() + VERIFY_DURATION_MS;
-        signupEmailVerified = false;
-        signupVerifiedEmail = '';
-
-        const demoEl = byId('auth-signup-demo');
-        if (demoEl) demoEl.textContent = `테스트 코드: ${signupVerificationCode}`;
-
-        setSignupVerifyStatus('이메일로 코드를 전송했습니다. 코드 확인을 눌러주세요.', '');
-        showToast(`[테스트] ${emailValue} 인증 코드: ${signupVerificationCode}`);
+        try {
+            setError('auth-login-error', '');
+            await fb.sendPasswordReset(emailValue);
+            showToast(`비밀번호 재설정 메일을 보냈습니다: ${emailValue}`);
+        } catch (err) {
+            setError('auth-login-error', mapAuthError(err, '비밀번호 재설정 메일 전송에 실패했습니다.'));
+        }
     }
 
-    function onSignupVerifyCode() {
-        if (getFirebaseBridge()) {
-            setSignupVerifyStatus('Firebase 인증 메일 방식에서는 코드 확인이 필요하지 않습니다.', '');
-            return;
-        }
-
-        const emailValue = normalizeEmail(byId('auth-signup-email')?.value);
-        const codeValue = String(byId('auth-signup-code')?.value || '').trim();
-
-        if (!signupVerificationCode) {
-            setSignupVerifyStatus('먼저 이메일 인증 버튼을 눌러 코드를 받으세요.', 'error');
-            return;
+    function onFindLoginId() {
+        let emailValue = normalizeEmail(byId('auth-login-id')?.value);
+        if (!isValidEmail(emailValue) && typeof global.prompt === 'function') {
+            emailValue = normalizeEmail(global.prompt('가입한 이메일을 입력하세요.') || '');
         }
 
         if (!isValidEmail(emailValue)) {
-            setSignupVerifyStatus('유효한 이메일을 입력하세요.', 'error');
+            setError('auth-login-error', '유효한 이메일을 입력해주세요.');
             return;
         }
 
-        if (!/^\d{6}$/.test(codeValue)) {
-            setSignupVerifyStatus('인증 코드는 6자리 숫자로 입력해주세요.', 'error');
+        const matches = findAccountIdsByEmail(emailValue);
+        if (matches.length > 0) {
+            setError('auth-login-error', '');
+            showToast(`이 기기 저장 아이디: ${matches.join(', ')}`);
             return;
         }
 
-        if (Date.now() > signupVerificationExpiresAt) {
-            setSignupVerifyStatus('인증 코드가 만료되었습니다. 다시 전송해주세요.', 'error');
-            return;
-        }
-
-        if (codeValue !== signupVerificationCode) {
-            setSignupVerifyStatus('인증 코드가 일치하지 않습니다.', 'error');
-            return;
-        }
-
-        signupEmailVerified = true;
-        signupVerifiedEmail = emailValue;
-        setSignupVerifyStatus('이메일 인증이 완료되었습니다.', 'success');
+        setError('auth-login-error', '이 기기에서는 해당 이메일의 아이디 기록을 찾지 못했습니다.');
     }
 
     async function onSignupSubmit(event) {
         event.preventDefault();
 
-        const idValue = normalizeId(byId('auth-signup-id')?.value);
-        const passwordValue = String(byId('auth-signup-password')?.value || '').trim();
-        const passwordConfirmValue = String(byId('auth-signup-password-confirm')?.value || '').trim();
-        const emailValue = normalizeEmail(byId('auth-signup-email')?.value);
-
-        if (!idValue || !passwordValue || !passwordConfirmValue || !emailValue) {
-            setError('auth-signup-error', '아이디/비밀번호/이메일을 모두 입력해주세요.');
+        const currentStep = getSignupStep();
+        if (currentStep === 1) {
+            setError('auth-signup-error', '');
+            setSignupStep(2);
+            return;
+        }
+        if (currentStep === 2) {
+            if (!validateSignupEmailStep()) return;
+            setSignupStep(3);
             return;
         }
 
-        if (passwordValue !== passwordConfirmValue) {
-            setError('auth-signup-error', '비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+        const nicknameValue = normalizeSignupNickname(byId('auth-signup-nickname')?.value);
+        const avatarParsed = parseSignupAvatarUrl(signupAvatarDataUrl);
+        const passwordValue = String(byId('auth-signup-password')?.value || '').trim();
+        const passwordConfirmValue = String(byId('auth-signup-password-confirm')?.value || '').trim();
+        const emailValue = normalizeEmail(byId('auth-signup-email')?.value);
+        const idValue = emailValue;
+
+        if (!emailValue || !passwordValue || !passwordConfirmValue) {
+            const msg = '이메일/비밀번호/비밀번호 확인을 모두 입력해주세요.';
+            setError('auth-signup-error', msg);
+            showToast(msg);
+            return;
+        }
+
+        if (!validateSignupPasswordStep()) {
             return;
         }
 
         if (!isValidEmail(emailValue)) {
-            setError('auth-signup-error', '유효한 이메일 형식으로 입력해주세요.');
+            const msg = '유효한 이메일 형식으로 입력해주세요.';
+            setError('auth-signup-error', msg);
+            showToast(msg);
             return;
         }
+        if (avatarParsed.invalid) {
+            const msg = '프로필 이미지 처리에 실패했습니다. 이미지를 다시 선택해주세요.';
+            setError('auth-signup-error', msg);
+            showToast(msg);
+            return;
+        }
+
+        const finalNickname = nicknameValue || makeDefaultCommanderName();
+        const finalAvatarUrl = String(avatarParsed.value || '');
 
         const fb = getFirebaseBridge();
         if (fb && typeof fb.emailSignUp === 'function') {
             try {
                 setError('auth-signup-error', '');
-                await fb.emailSignUp(emailValue, passwordValue, idValue || '');
-                if (idValue) {
-                    saveAccount(idValue, '', emailValue);
-                }
+                await fb.emailSignUp(emailValue, passwordValue, finalNickname, finalAvatarUrl);
+                saveAccount(idValue, '', emailValue, {
+                    displayName: finalNickname,
+                    photoURL: finalAvatarUrl
+                });
                 showToast('회원가입 완료. 인증 메일을 확인하고 로그인해주세요.');
                 openLoginModal(null, emailValue);
                 return;
@@ -1332,16 +1606,16 @@
         }
 
         if (findAccount(idValue)) {
-            setError('auth-signup-error', '이미 사용 중인 아이디입니다.');
+            const msg = '이미 사용 중인 이메일입니다.';
+            setError('auth-signup-error', msg);
+            showToast(msg);
             return;
         }
 
-        if (!signupEmailVerified || signupVerifiedEmail !== emailValue) {
-            setError('auth-signup-error', '이메일 인증을 완료해야 회원가입할 수 있습니다.');
-            return;
-        }
-
-        saveAccount(idValue, passwordValue, emailValue);
+        saveAccount(idValue, passwordValue, emailValue, {
+            displayName: finalNickname,
+            photoURL: finalAvatarUrl
+        });
         showToast('회원가입이 완료되었습니다. 로그인해주세요.');
         openLoginModal(null, idValue);
     }
@@ -1622,7 +1896,9 @@
         bindSubmit('auth-google-form', onGoogleSubmit);
         bindSubmit('auth-verify-form', onVerifySubmit);
 
-        bindClick('auth-login-cancel', cancelAuth);
+        bindClick('auth-login-signup', openSignupModal);
+        bindClick('auth-login-find-id', onFindLoginId);
+        bindClick('auth-login-find-password', onFindLoginPassword);
         bindClick('auth-login-close', cancelAuth);
         bindClick('auth-google-cancel', cancelAuth);
         bindClick('auth-google-close', cancelAuth);
@@ -1630,10 +1906,30 @@
         bindClick('auth-verify-close', cancelAuth);
         bindClick('auth-signup-close', cancelAuth);
 
-        bindClick('auth-open-signup', openSignupModal);
         bindClick('auth-signup-back', () => openLoginModal(null));
-        bindClick('auth-signup-send-code', onSignupSendCode);
-        bindClick('auth-signup-verify-code', onSignupVerifyCode);
+        bindClick('auth-signup-step1-next', () => {
+            setError('auth-signup-error', '');
+            setSignupStep(2);
+        });
+        bindClick('auth-signup-step2-prev', () => {
+            setError('auth-signup-error', '');
+            setSignupStep(1);
+        });
+        bindClick('auth-signup-step2-next', () => {
+            if (!validateSignupEmailStep()) return;
+            setSignupStep(3);
+        });
+        bindClick('auth-signup-step3-prev', () => {
+            setError('auth-signup-error', '');
+            setSignupStep(2);
+        });
+        bindClick('auth-signup-avatar-pick', () => {
+            const input = byId('auth-signup-avatar-file');
+            if (input) input.click();
+        });
+        bindClick('auth-signup-avatar-clear', () => {
+            clearSignupAvatarSelection();
+        });
 
         bindClick('auth-verify-resend', onResendCode);
         bindClick('auth-signout-btn', onSignOut);
@@ -1645,10 +1941,10 @@
             });
         }
 
-        const signupCodeInput = byId('auth-signup-code');
-        if (signupCodeInput) {
-            signupCodeInput.addEventListener('input', () => {
-                signupCodeInput.value = signupCodeInput.value.replace(/\D/g, '').slice(0, 6);
+        const signupAvatarInput = byId('auth-signup-avatar-file');
+        if (signupAvatarInput) {
+            signupAvatarInput.addEventListener('change', () => {
+                onSignupAvatarFileChange();
             });
         }
 
@@ -1662,11 +1958,13 @@
 
         const onViewportResize = () => {
             if (!isAnyModalOpen()) return;
-            fitOpenModalPanel();
+            scheduleAuthViewportSync();
         };
         global.addEventListener('resize', onViewportResize);
+        global.addEventListener('orientationchange', onViewportResize);
         if (global.visualViewport && typeof global.visualViewport.addEventListener === 'function') {
             global.visualViewport.addEventListener('resize', onViewportResize);
+            global.visualViewport.addEventListener('scroll', onViewportResize);
         }
 
         document.addEventListener('keydown', (event) => {

@@ -1132,10 +1132,72 @@ const ui = {
         avatarEl.innerText = fallbackText;
     },
 
-    async applyOptionProfileAvatarFile(file) {
+    _drawAvatarCrop(ctx, img, size, state) {
+        if (!ctx || !img) return;
+        const cropSize = Math.max(1, Math.floor(Number(size) || 1));
+        const iw = Math.max(1, img.naturalWidth || img.width || 1);
+        const ih = Math.max(1, img.naturalHeight || img.height || 1);
+        const zoom = Math.max(1, Math.min(3, Number(state && state.zoom) || 1));
+        const offsetXNorm = Math.max(-1, Math.min(1, Number(state && state.offsetX) || 0));
+        const offsetYNorm = Math.max(-1, Math.min(1, Number(state && state.offsetY) || 0));
+
+        const baseScale = Math.max(cropSize / iw, cropSize / ih);
+        const scale = baseScale * zoom;
+        const drawW = iw * scale;
+        const drawH = ih * scale;
+        const maxOffsetX = Math.max(0, (drawW - cropSize) * 0.5);
+        const maxOffsetY = Math.max(0, (drawH - cropSize) * 0.5);
+
+        const dx = ((cropSize - drawW) * 0.5) + (offsetXNorm * maxOffsetX);
+        const dy = ((cropSize - drawH) * 0.5) + (offsetYNorm * maxOffsetY);
+
+        ctx.clearRect(0, 0, cropSize, cropSize);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, cropSize, cropSize);
+        ctx.imageSmoothingEnabled = true;
+        if (typeof ctx.imageSmoothingQuality === 'string') ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, dx, dy, drawW, drawH);
+    },
+
+    _encodeAvatarCanvas(canvas, maxLen = 40000) {
+        if (!canvas || typeof canvas.toDataURL !== 'function') return '';
+
+        const tryEncode = (format, quality) => {
+            try {
+                if (typeof quality === 'number') return String(canvas.toDataURL(format, quality) || '');
+                return String(canvas.toDataURL(format) || '');
+            } catch (_) {
+                return '';
+            }
+        };
+
+        let encoded = tryEncode('image/jpeg', 0.88);
+        for (let q = 0.82; encoded && encoded.length > maxLen && q >= 0.36; q -= 0.08) {
+            encoded = tryEncode('image/jpeg', q);
+        }
+        if (encoded && encoded.length <= maxLen) return encoded;
+
+        encoded = tryEncode('image/webp', 0.82);
+        for (let q = 0.76; encoded && encoded.length > maxLen && q >= 0.30; q -= 0.08) {
+            encoded = tryEncode('image/webp', q);
+        }
+        if (encoded && encoded.length <= maxLen) return encoded;
+
+        encoded = tryEncode('image/png');
+        if (encoded && encoded.length <= maxLen) return encoded;
+        return '';
+    },
+
+    async openAvatarCropperFromFile(file, options = {}) {
         if (!file || !String(file.type || '').startsWith('image/')) {
             this.showToast('이미지 파일만 선택할 수 있습니다.');
-            return;
+            return '';
+        }
+
+        const maxFileBytes = 8 * 1024 * 1024;
+        if (Number(file.size || 0) > maxFileBytes) {
+            this.showToast('이미지 파일 용량이 너무 큽니다. (최대 8MB)');
+            return '';
         }
 
         const readAsDataUrl = (blob) => new Promise((resolve, reject) => {
@@ -1152,32 +1214,324 @@ const ui = {
             img.src = src;
         });
 
+        let image = null;
         try {
             const rawDataUrl = await readAsDataUrl(file);
-            const img = await loadImage(rawDataUrl);
-            const maxSide = 96;
-            const srcW = Math.max(1, img.naturalWidth || img.width || maxSide);
-            const srcH = Math.max(1, img.naturalHeight || img.height || maxSide);
-            const ratio = Math.min(1, maxSide / Math.max(srcW, srcH));
-            const targetW = Math.max(1, Math.round(srcW * ratio));
-            const targetH = Math.max(1, Math.round(srcH * ratio));
+            image = await loadImage(rawDataUrl);
+        } catch (_) {
+            this.showToast('이미지를 불러오지 못했습니다.');
+            return '';
+        }
 
-            const canvas = document.createElement('canvas');
-            canvas.width = targetW;
-            canvas.height = targetH;
-            const ctx = canvas.getContext('2d');
-            if (!ctx) throw new Error('avatar_canvas_context_missing');
+        const vv = global.visualViewport || null;
+        const viewportWidth = Math.max(0, Math.floor((vv && Number(vv.width)) || global.innerWidth || document.documentElement.clientWidth || 0));
+        const hasCoarsePointer = !!(global.matchMedia && typeof global.matchMedia === 'function' && global.matchMedia('(pointer: coarse)').matches);
+        const hasTouch = hasCoarsePointer || ('ontouchstart' in global);
+        const isMobileCropLayout = hasTouch && viewportWidth > 0 && viewportWidth <= 960;
 
-            ctx.drawImage(img, 0, 0, targetW, targetH);
+        const modal = document.createElement('div');
+        modal.style.position = 'fixed';
+        modal.style.inset = '0';
+        modal.style.zIndex = '400';
+        modal.style.display = 'flex';
+        modal.style.alignItems = isMobileCropLayout ? 'stretch' : 'center';
+        modal.style.justifyContent = isMobileCropLayout ? 'stretch' : 'center';
+        modal.style.background = 'rgba(2, 6, 23, 0.86)';
+        modal.style.backdropFilter = 'blur(4px)';
+        modal.style.padding = isMobileCropLayout ? '0' : '12px';
 
-            let quality = 0.84;
-            let encoded = canvas.toDataURL('image/jpeg', quality);
-            while (encoded.length > 28000 && quality > 0.5) {
-                quality -= 0.08;
-                encoded = canvas.toDataURL('image/jpeg', quality);
+        const panel = document.createElement('div');
+        panel.style.width = isMobileCropLayout ? '100vw' : 'min(94vw, 420px)';
+        panel.style.maxHeight = isMobileCropLayout ? '100dvh' : 'min(94dvh, 680px)';
+        panel.style.height = isMobileCropLayout ? '100dvh' : 'auto';
+        panel.style.overflow = isMobileCropLayout ? 'hidden' : 'auto';
+        panel.style.background = 'linear-gradient(180deg, #0b1223 0%, #111827 100%)';
+        panel.style.border = '1px solid rgba(100, 116, 139, 0.5)';
+        panel.style.borderRadius = isMobileCropLayout ? '0' : '12px';
+        panel.style.padding = isMobileCropLayout
+            ? 'calc(env(safe-area-inset-top, 0px) + 12px) 12px 8px'
+            : '12px';
+        panel.style.boxShadow = isMobileCropLayout ? 'none' : '0 24px 48px rgba(0, 0, 0, 0.5)';
+        panel.style.display = 'flex';
+        panel.style.flexDirection = 'column';
+        panel.style.gap = '0';
+
+        const title = document.createElement('h3');
+        title.textContent = String(options.title || '프로필 이미지 조정');
+        title.style.margin = '0 0 10px';
+        title.style.color = '#f8fafc';
+        title.style.fontSize = isMobileCropLayout ? '0.96rem' : '1rem';
+        title.style.fontWeight = '700';
+
+        const editorBody = document.createElement('div');
+        editorBody.style.display = 'flex';
+        editorBody.style.flexDirection = isMobileCropLayout ? 'row' : 'column';
+        editorBody.style.gap = '10px';
+        editorBody.style.flex = '1 1 auto';
+        editorBody.style.minHeight = '0';
+        editorBody.style.overflow = isMobileCropLayout ? 'hidden' : 'visible';
+
+        const previewPane = document.createElement('div');
+        previewPane.style.display = 'flex';
+        previewPane.style.flexDirection = 'column';
+        previewPane.style.alignItems = 'center';
+        previewPane.style.justifyContent = 'flex-start';
+        previewPane.style.flex = isMobileCropLayout ? '0 0 46%' : '1 1 auto';
+        previewPane.style.minWidth = '0';
+
+        const controlPane = document.createElement('div');
+        controlPane.style.display = 'flex';
+        controlPane.style.flexDirection = 'column';
+        controlPane.style.gap = '8px';
+        controlPane.style.flex = isMobileCropLayout ? '1 1 0' : '1 1 auto';
+        controlPane.style.minWidth = '0';
+        controlPane.style.overflowY = isMobileCropLayout ? 'auto' : 'visible';
+        controlPane.style.paddingRight = isMobileCropLayout ? '2px' : '0';
+
+        const previewWrap = document.createElement('div');
+        previewWrap.style.width = isMobileCropLayout ? '100%' : '100%';
+        previewWrap.style.display = 'flex';
+        previewWrap.style.justifyContent = 'center';
+        previewWrap.style.alignItems = 'flex-start';
+        previewWrap.style.marginBottom = '0';
+
+        const previewCanvas = document.createElement('canvas');
+        previewCanvas.width = 240;
+        previewCanvas.height = 240;
+        previewCanvas.style.width = isMobileCropLayout ? '100%' : 'min(76vw, 240px)';
+        previewCanvas.style.maxWidth = isMobileCropLayout ? '300px' : '240px';
+        previewCanvas.style.height = 'auto';
+        previewCanvas.style.borderRadius = '10px';
+        previewCanvas.style.border = '1px solid rgba(148, 163, 184, 0.45)';
+        previewCanvas.style.background = '#0f172a';
+        previewCanvas.style.touchAction = 'none';
+
+        const status = document.createElement('p');
+        status.style.margin = isMobileCropLayout ? '0' : '8px 0 0';
+        status.style.fontSize = isMobileCropLayout ? '0.72rem' : '0.76rem';
+        status.style.lineHeight = '1.35';
+        status.style.color = '#93c5fd';
+        status.textContent = '이동/확대해서 원하는 영역을 맞추세요.';
+
+        const controls = document.createElement('div');
+        controls.style.display = 'grid';
+        controls.style.gap = '8px';
+        controls.style.marginTop = isMobileCropLayout ? '0' : '10px';
+
+        const makeSliderRow = (labelText, min, max, value, step = '1') => {
+            const row = document.createElement('div');
+            row.style.display = 'grid';
+            row.style.gap = '4px';
+
+            const label = document.createElement('div');
+            label.style.display = 'flex';
+            label.style.justifyContent = 'space-between';
+            label.style.fontSize = '0.75rem';
+            label.style.color = '#cbd5e1';
+
+            const name = document.createElement('span');
+            name.textContent = labelText;
+            const valueEl = document.createElement('span');
+            valueEl.textContent = String(value);
+            label.appendChild(name);
+            label.appendChild(valueEl);
+
+            const input = document.createElement('input');
+            input.type = 'range';
+            input.min = String(min);
+            input.max = String(max);
+            input.step = String(step);
+            input.value = String(value);
+            input.style.width = '100%';
+
+            row.appendChild(label);
+            row.appendChild(input);
+            return { row, input, valueEl };
+        };
+
+        const zoomRow = makeSliderRow('확대', 100, 300, 100);
+        const xRow = makeSliderRow('좌우', -100, 100, 0);
+        const yRow = makeSliderRow('상하', -100, 100, 0);
+
+        const actions = document.createElement('div');
+        actions.style.display = isMobileCropLayout ? 'grid' : 'flex';
+        if (isMobileCropLayout) actions.style.gridTemplateColumns = '1fr 1fr';
+        actions.style.gap = '8px';
+        actions.style.justifyContent = isMobileCropLayout ? 'stretch' : 'flex-end';
+        actions.style.marginTop = '12px';
+        if (isMobileCropLayout) {
+            actions.style.position = 'sticky';
+            actions.style.bottom = '0';
+            actions.style.zIndex = '3';
+            actions.style.padding = '10px 0 calc(env(safe-area-inset-bottom, 0px) + 6px)';
+            actions.style.background = 'linear-gradient(180deg, rgba(11, 18, 35, 0) 0%, rgba(11, 18, 35, 0.95) 34%, rgba(11, 18, 35, 0.99) 100%)';
+            actions.style.borderTop = '1px solid rgba(51, 65, 85, 0.55)';
+        }
+
+        const cancelBtn = document.createElement('button');
+        cancelBtn.type = 'button';
+        cancelBtn.textContent = '취소';
+        cancelBtn.style.height = isMobileCropLayout ? '40px' : '36px';
+        cancelBtn.style.minHeight = isMobileCropLayout ? '40px' : '36px';
+        cancelBtn.style.padding = '0 12px';
+        cancelBtn.style.borderRadius = '8px';
+        cancelBtn.style.border = '1px solid rgba(100, 116, 139, 0.7)';
+        cancelBtn.style.background = 'rgba(15, 23, 42, 0.92)';
+        cancelBtn.style.color = '#cbd5e1';
+        cancelBtn.style.fontWeight = '700';
+        cancelBtn.style.fontSize = isMobileCropLayout ? '0.84rem' : '0.8rem';
+        cancelBtn.style.cursor = 'pointer';
+        if (isMobileCropLayout) cancelBtn.style.width = '100%';
+
+        const applyBtn = document.createElement('button');
+        applyBtn.type = 'button';
+        applyBtn.textContent = '적용';
+        applyBtn.style.height = isMobileCropLayout ? '40px' : '36px';
+        applyBtn.style.minHeight = isMobileCropLayout ? '40px' : '36px';
+        applyBtn.style.padding = '0 14px';
+        applyBtn.style.borderRadius = '8px';
+        applyBtn.style.border = '1px solid #3b82f6';
+        applyBtn.style.background = '#2563eb';
+        applyBtn.style.color = '#f8fafc';
+        applyBtn.style.fontWeight = '700';
+        applyBtn.style.fontSize = isMobileCropLayout ? '0.84rem' : '0.8rem';
+        applyBtn.style.cursor = 'pointer';
+        if (isMobileCropLayout) applyBtn.style.width = '100%';
+
+        previewWrap.appendChild(previewCanvas);
+        controls.appendChild(zoomRow.row);
+        controls.appendChild(xRow.row);
+        controls.appendChild(yRow.row);
+        actions.appendChild(cancelBtn);
+        actions.appendChild(applyBtn);
+        previewPane.appendChild(previewWrap);
+        controlPane.appendChild(status);
+        controlPane.appendChild(controls);
+        editorBody.appendChild(previewPane);
+        editorBody.appendChild(controlPane);
+        panel.appendChild(title);
+        panel.appendChild(editorBody);
+        panel.appendChild(actions);
+        modal.appendChild(panel);
+        document.body.appendChild(modal);
+
+        const previewCtx = previewCanvas.getContext('2d');
+        if (!previewCtx) {
+            modal.remove();
+            this.showToast('이미지 편집 도구를 열 수 없습니다.');
+            return '';
+        }
+
+        const state = { zoom: 1, offsetX: 0, offsetY: 0 };
+        const drawPreview = () => {
+            this._drawAvatarCrop(previewCtx, image, previewCanvas.width, state);
+        };
+        drawPreview();
+
+        let dragActive = false;
+        let lastX = 0;
+        let lastY = 0;
+        const updateByDrag = (clientX, clientY) => {
+            const dx = Number(clientX) - lastX;
+            const dy = Number(clientY) - lastY;
+            lastX = Number(clientX);
+            lastY = Number(clientY);
+            const factor = 0.006;
+            state.offsetX = Math.max(-1, Math.min(1, state.offsetX + (dx * factor)));
+            state.offsetY = Math.max(-1, Math.min(1, state.offsetY + (dy * factor)));
+            xRow.input.value = String(Math.round(state.offsetX * 100));
+            yRow.input.value = String(Math.round(state.offsetY * 100));
+            xRow.valueEl.textContent = xRow.input.value;
+            yRow.valueEl.textContent = yRow.input.value;
+            drawPreview();
+        };
+
+        previewCanvas.addEventListener('pointerdown', (event) => {
+            dragActive = true;
+            lastX = Number(event.clientX || 0);
+            lastY = Number(event.clientY || 0);
+            try { previewCanvas.setPointerCapture(event.pointerId); } catch (_) { }
+        });
+        previewCanvas.addEventListener('pointermove', (event) => {
+            if (!dragActive) return;
+            updateByDrag(event.clientX, event.clientY);
+        });
+        const endDrag = () => { dragActive = false; };
+        previewCanvas.addEventListener('pointerup', endDrag);
+        previewCanvas.addEventListener('pointercancel', endDrag);
+
+        const bindSlider = (entry, applyFn) => {
+            entry.input.addEventListener('input', () => {
+                entry.valueEl.textContent = entry.input.value;
+                applyFn(Number(entry.input.value || 0));
+                drawPreview();
+            });
+        };
+
+        bindSlider(zoomRow, (value) => {
+            state.zoom = Math.max(1, Math.min(3, value / 100));
+        });
+        bindSlider(xRow, (value) => {
+            state.offsetX = Math.max(-1, Math.min(1, value / 100));
+        });
+        bindSlider(yRow, (value) => {
+            state.offsetY = Math.max(-1, Math.min(1, value / 100));
+        });
+
+        const closeWith = (result) => {
+            try {
+                document.removeEventListener('keydown', onKeyDown, true);
+            } catch (_) { }
+            modal.remove();
+            resolver(result || '');
+        };
+
+        const onKeyDown = (event) => {
+            if (!event || event.key !== 'Escape') return;
+            event.preventDefault();
+            event.stopPropagation();
+            closeWith('');
+        };
+        document.addEventListener('keydown', onKeyDown, true);
+
+        const createCroppedAvatar = () => {
+            const out = document.createElement('canvas');
+            out.width = 128;
+            out.height = 128;
+            const outCtx = out.getContext('2d');
+            if (!outCtx) return '';
+            this._drawAvatarCrop(outCtx, image, out.width, state);
+            return this._encodeAvatarCanvas(out, 40000);
+        };
+
+        let resolver = () => { };
+        const done = new Promise((resolve) => {
+            resolver = resolve;
+        });
+
+        modal.addEventListener('pointerdown', (event) => {
+            if (event.target === modal) closeWith('');
+        });
+        cancelBtn.addEventListener('click', () => closeWith(''));
+        applyBtn.addEventListener('click', () => {
+            const encoded = createCroppedAvatar();
+            if (!encoded) {
+                status.textContent = '이미지 용량이 큽니다. 확대/이동을 조정해 주세요.';
+                status.style.color = '#fecaca';
+                return;
             }
+            closeWith(encoded);
+        });
 
-            const safeAvatar = this.sanitizeOptionProfileAvatarDataUrl(encoded);
+        return done;
+    },
+
+    async applyOptionProfileAvatarFile(file) {
+        try {
+            const cropped = await this.openAvatarCropperFromFile(file, { title: '프로필 사진 조정' });
+            if (!cropped) return;
+
+            const safeAvatar = this.sanitizeOptionProfileAvatarDataUrl(cropped);
             if (!safeAvatar) {
                 this.showToast('이미지를 처리할 수 없습니다. 다른 이미지를 선택해주세요.');
                 return;
