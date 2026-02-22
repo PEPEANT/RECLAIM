@@ -1495,13 +1495,21 @@ const ui = {
         document.addEventListener('keydown', onKeyDown, true);
 
         const createCroppedAvatar = () => {
-            const out = document.createElement('canvas');
-            out.width = 128;
-            out.height = 128;
-            const outCtx = out.getContext('2d');
-            if (!outCtx) return '';
-            this._drawAvatarCrop(outCtx, image, out.width, state);
-            return this._encodeAvatarCanvas(out, 40000);
+            // Some devices may ignore JPEG/WebP quality hints.
+            // Fallback through smaller output sizes to stay within storage cap.
+            const outputSizes = [128, 112, 96, 80, 64];
+            for (let i = 0; i < outputSizes.length; i += 1) {
+                const size = outputSizes[i];
+                const out = document.createElement('canvas');
+                out.width = size;
+                out.height = size;
+                const outCtx = out.getContext('2d');
+                if (!outCtx) continue;
+                this._drawAvatarCrop(outCtx, image, size, state);
+                const encoded = this._encodeAvatarCanvas(out, 40000);
+                if (encoded) return encoded;
+            }
+            return '';
         };
 
         let resolver = () => { };
