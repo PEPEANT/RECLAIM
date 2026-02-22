@@ -6,8 +6,11 @@
     const CITY_BGM_INTRO_FILE = 'bgm/ost/tunetank2.mp3';
     const CITY_BGM_LOOP_FILE = 'bgm/ost/tunetank.mp3';
     const CITY_BGM_INTRO_PLAYED_KEY = 'reclaim_city_bgm_intro_played_v1';
-    const CITY_EVENT_0216_OVERLAY_ID = 'city-event-0216-overlay';
-    const CITY_EVENT_0216_IMAGE = 'png/event/event_0216.png';
+    const CITY_EVENT_V62_ID = 'v62_update';
+    const CITY_EVENT_V62_OVERLAY_ID = 'city-event-v62-overlay';
+    const CITY_EVENT_V62_IMAGE = 'png/event/v6.2.png';
+    const CITY_EVENT_V62_IMAGE_FALLBACK = 'png/event/event_0216.png';
+    const CITY_EVENT_V62_NEVER_SHOW_KEY = `reclaim_city_event_never_show_${CITY_EVENT_V62_ID}_v1`;
 
     function clampNumber(value, min, max) {
         if (!Number.isFinite(value)) return min;
@@ -86,35 +89,52 @@
         }
     }
 
-    function setCityEvent0216Visible(overlay, visible) {
+    function isCityEventV62Disabled() {
+        try {
+            return String(localStorage.getItem(CITY_EVENT_V62_NEVER_SHOW_KEY) || '') === '1';
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function disableCityEventV62Forever() {
+        try {
+            localStorage.setItem(CITY_EVENT_V62_NEVER_SHOW_KEY, '1');
+        } catch (_) { }
+    }
+
+    function setCityEventV62Visible(overlay, visible) {
         if (!overlay) return;
         overlay.classList.toggle('hidden', visible !== true);
         overlay.style.display = (visible === true) ? 'flex' : 'none';
         overlay.setAttribute('aria-hidden', (visible === true) ? 'false' : 'true');
     }
 
-    function closeCityEvent0216Popup() {
-        const overlay = document.getElementById(CITY_EVENT_0216_OVERLAY_ID);
+    function closeCityEventV62Popup() {
+        const overlay = document.getElementById(CITY_EVENT_V62_OVERLAY_ID);
         if (!overlay) return;
-        setCityEvent0216Visible(overlay, false);
+        setCityEventV62Visible(overlay, false);
     }
 
-    function ensureCityEvent0216Popup() {
+    function ensureCityEventV62Popup() {
         const cityScreen = document.getElementById('city-screen');
         if (!cityScreen) return null;
 
-        const existing = document.getElementById(CITY_EVENT_0216_OVERLAY_ID);
+        const existing = document.getElementById(CITY_EVENT_V62_OVERLAY_ID);
         if (existing) return existing;
 
         const overlay = document.createElement('div');
-        overlay.id = CITY_EVENT_0216_OVERLAY_ID;
+        overlay.id = CITY_EVENT_V62_OVERLAY_ID;
         overlay.className = 'city-event-overlay hidden';
 
         const panel = document.createElement('div');
         panel.className = 'city-event-panel';
         panel.setAttribute('role', 'dialog');
         panel.setAttribute('aria-modal', 'true');
-        panel.setAttribute('aria-label', '이벤트 안내');
+        panel.setAttribute('aria-label', 'v6.2 업데이트 이벤트 안내');
+
+        const controls = document.createElement('div');
+        controls.className = 'city-event-controls';
 
         const closeBtn = document.createElement('button');
         closeBtn.type = 'button';
@@ -124,21 +144,36 @@
         closeBtn.addEventListener('click', (event) => {
             if (event && typeof event.preventDefault === 'function') event.preventDefault();
             if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
-            closeCityEvent0216Popup();
+            closeCityEventV62Popup();
+        });
+
+        const neverBtn = document.createElement('button');
+        neverBtn.type = 'button';
+        neverBtn.className = 'city-event-never-btn';
+        neverBtn.setAttribute('aria-label', '다시는 열지 않음');
+        neverBtn.textContent = '다신열지않음';
+        neverBtn.addEventListener('click', (event) => {
+            if (event && typeof event.preventDefault === 'function') event.preventDefault();
+            if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+            disableCityEventV62Forever();
+            closeCityEventV62Popup();
         });
 
         const img = document.createElement('img');
         img.className = 'city-event-image';
-        img.src = CITY_EVENT_0216_IMAGE;
-        img.alt = '설날 이벤트 광고';
+        img.src = CITY_EVENT_V62_IMAGE;
+        img.alt = 'v6.2 공식 업데이트 이벤트';
 
         const imageCandidates = [
-            CITY_EVENT_0216_IMAGE,
-            `./${CITY_EVENT_0216_IMAGE}`
+            CITY_EVENT_V62_IMAGE,
+            `./${CITY_EVENT_V62_IMAGE}`,
+            CITY_EVENT_V62_IMAGE_FALLBACK,
+            `./${CITY_EVENT_V62_IMAGE_FALLBACK}`
         ];
         try {
             const baseHref = new URL('.', window.location.href).href;
-            imageCandidates.push(new URL(CITY_EVENT_0216_IMAGE, baseHref).href);
+            imageCandidates.push(new URL(CITY_EVENT_V62_IMAGE, baseHref).href);
+            imageCandidates.push(new URL(CITY_EVENT_V62_IMAGE_FALLBACK, baseHref).href);
         } catch (_) { }
 
         img.dataset.cityEventCandidateIndex = '0';
@@ -149,24 +184,27 @@
             img.src = imageCandidates[idx];
         });
 
-        panel.appendChild(closeBtn);
+        controls.appendChild(closeBtn);
+        controls.appendChild(neverBtn);
+        panel.appendChild(controls);
         panel.appendChild(img);
         overlay.appendChild(panel);
 
         overlay.addEventListener('pointerdown', (event) => {
             if (event.target !== overlay) return;
-            closeCityEvent0216Popup();
+            closeCityEventV62Popup();
         });
 
         cityScreen.appendChild(overlay);
-        setCityEvent0216Visible(overlay, false);
+        setCityEventV62Visible(overlay, false);
         return overlay;
     }
 
-    function openCityEvent0216Popup(game) {
-        const overlay = ensureCityEvent0216Popup();
+    function openCityEventV62Popup(game) {
+        if (isCityEventV62Disabled()) return;
+        const overlay = ensureCityEventV62Popup();
         if (!overlay) return;
-        setCityEvent0216Visible(overlay, true);
+        setCityEventV62Visible(overlay, true);
     }
 
     function clampViewToVisibleBounds(game) {
@@ -733,11 +771,12 @@
         document.getElementById('campaign-screen')?.classList.add('hidden');
         document.getElementById('unitdex-screen')?.classList.add('hidden');
         document.getElementById('city-screen')?.classList.remove('hidden');
-        // [END] 설날 이벤트 팝업 종료 — 호출 제거
-        // openCityEvent0216Popup(game);
-        // if (typeof requestAnimationFrame === 'function') {
-        //     requestAnimationFrame(() => openCityEvent0216Popup(game));
-        // }
+        // v6.2 업데이트 이벤트 팝업
+        if (typeof requestAnimationFrame === 'function') {
+            requestAnimationFrame(() => openCityEventV62Popup(game));
+        } else {
+            openCityEventV62Popup(game);
+        }
 
         playCityBgm();
 
@@ -794,7 +833,7 @@
             game.cityActionConfirm();
         }
         CitySimState.setMissionOpen(game, false);
-        closeCityEvent0216Popup();
+        closeCityEventV62Popup();
         if (typeof CitySimTutorialIntro !== 'undefined'
             && CitySimTutorialIntro
             && typeof CitySimTutorialIntro.onLeave === 'function') {

@@ -48,20 +48,23 @@
     let _game = null;
     let _activeTab = 'supply';
     let _openingLocked = false;
+    const MISSILE_BLUEPRINT_ITEM_KEY = 'bp_missile';
+    const BOX_LEVEL2_RARE_GOLD_CHANCE = 0.05;
+    const BOX_LEVEL2_RARE_GOLD_AMOUNT = 10;
 
     const SHOP_TABS = [
         { id: 'supply', label: '보급상점' },
         { id: 'special', label: '교환소' }
     ];
 
-    // 보급형 상품은 연구소(1200)보다 낮은 가격대로 유지.
+    // 인플레이션 반영으로 보급/교환 가격을 상향 조정.
     const SHOP_ITEMS = {
         supply: [
             {
                 id: 'box_level1',
                 name: '일반 보급박스',
                 desc: '소총·방탄복·연막탄 등 D/C등급 장비 1종을 획득합니다.',
-                costMoney: 500,
+                costMoney: 700,
                 costGold: 0,
                 assetClosed: 'png/store/BOX_Level1.png',
                 assetOpen: 'png/store/BOX_Level1_open.png',
@@ -71,7 +74,7 @@
                 id: 'box_level2',
                 name: '특수 보급박스',
                 desc: '드론·의료키트·미사일설계도 등 C/A등급 장비 1종을 획득합니다.',
-                costMoney: 1000,
+                costMoney: 1350,
                 costGold: 0,
                 assetClosed: 'png/store/BOX_Level2.png',
                 assetOpen: 'png/store/BOX_Level2_open.png',
@@ -81,7 +84,7 @@
                 id: 'confidential_doc',
                 name: '1급 기밀문서',
                 desc: '무작위 후보 3종 중 원하는 장비 1개를 선택해 획득합니다.',
-                costMoney: 1000,
+                costMoney: 2200,
                 costGold: 0,
                 assetClosed: 'png/store/1confidential.png',
                 assetOpen: 'png/store/1confidential_open.png',
@@ -110,6 +113,56 @@
                 noOpenEffect: true,
                 assetClosed: 'png/gold.png',
                 assetOpen: 'png/gold.png'
+            },
+            {
+                id: 'exchange_gold_to_honor_medal',
+                name: '명예훈장 구매',
+                desc: '골드 5개로 명예훈장 1개를 구매합니다.',
+                costMoney: 0,
+                costGold: 5,
+                rewardType: 'exchange_gold_to_honor_medal',
+                noOpenEffect: true,
+                assetClosed: 'png/gold.png',
+                assetOpen: 'png/gold.png'
+            },
+            {
+                id: 'exchange_bp_to_tactical_missile',
+                name: '설계도 -> 전술미사일',
+                desc: '미사일 설계도 1개를 전술미사일 1기로 교환합니다.',
+                costMoney: 0,
+                costGold: 0,
+                costItemKey: MISSILE_BLUEPRINT_ITEM_KEY,
+                costItemCount: 1,
+                rewardType: 'exchange_bp_to_tactical_missile',
+                noOpenEffect: true,
+                assetClosed: 'png/item/item_8.png',
+                assetOpen: 'png/item/item_8.png'
+            },
+            {
+                id: 'exchange_bp_to_emp_missile',
+                name: '설계도 -> EMP미사일',
+                desc: '미사일 설계도 2개를 EMP미사일 1기로 교환합니다.',
+                costMoney: 0,
+                costGold: 0,
+                costItemKey: MISSILE_BLUEPRINT_ITEM_KEY,
+                costItemCount: 2,
+                rewardType: 'exchange_bp_to_emp_missile',
+                noOpenEffect: true,
+                assetClosed: 'png/item/item_8.png',
+                assetOpen: 'png/item/item_8.png'
+            },
+            {
+                id: 'exchange_bp_to_nuke_missile',
+                name: '설계도 -> 핵미사일',
+                desc: '미사일 설계도 4개를 핵미사일 1기로 교환합니다.',
+                costMoney: 0,
+                costGold: 0,
+                costItemKey: MISSILE_BLUEPRINT_ITEM_KEY,
+                costItemCount: 4,
+                rewardType: 'exchange_bp_to_nuke_missile',
+                noOpenEffect: true,
+                assetClosed: 'png/item/item_8.png',
+                assetOpen: 'png/item/item_8.png'
             }
         ]
     };
@@ -196,6 +249,61 @@
         });
     }
 
+    function _getItemDisplayName(itemKey) {
+        const key = String(itemKey || '').trim();
+        if (!key) return '아이템';
+        if (typeof CityItems !== 'undefined' && CityItems && CityItems.ITEM_DEFS && CityItems.ITEM_DEFS[key]?.name) {
+            return String(CityItems.ITEM_DEFS[key].name || '아이템');
+        }
+        if (key === MISSILE_BLUEPRINT_ITEM_KEY) return '미사일 설계도';
+        return key;
+    }
+
+    function _getOwnedItemCount(gameRef, itemKey) {
+        const targetGame = gameRef || _game;
+        const key = String(itemKey || '').trim();
+        if (!targetGame || !key) return 0;
+        if (typeof CityItems !== 'undefined' && CityItems && typeof CityItems.getItemCount === 'function') {
+            try {
+                return Math.max(0, Math.floor(Number(CityItems.getItemCount(targetGame, key)) || 0));
+            } catch (_) { }
+        }
+        if (typeof CitySimState === 'undefined' || !CitySimState || typeof CitySimState.ensure !== 'function') {
+            return 0;
+        }
+        const state = CitySimState.ensure(targetGame);
+        return Math.max(0, Math.floor(Number(state?.items?.[key]) || 0));
+    }
+
+    function _formatCostDisplay(cost, options) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        const specialTab = opts.specialTab === true;
+        const needMoney = Math.max(0, Math.floor(Number(cost?.costMoney) || 0));
+        const needGold = Math.max(0, Math.floor(Number(cost?.costGold) || 0));
+        const needItemCount = Math.max(0, Math.floor(Number(cost?.costItemCount) || 0));
+        const needItemKey = String(cost?.costItemKey || '').trim();
+        const parts = [];
+        if (needMoney > 0) {
+            parts.push(specialTab ? `머니 ${formatNumber(needMoney)}` : formatNumber(needMoney));
+        }
+        if (needGold > 0) {
+            parts.push(specialTab ? `골드 ${formatNumber(needGold)}` : `${formatNumber(needGold)}G`);
+        }
+        if (needItemCount > 0 && needItemKey) {
+            parts.push(`${_getItemDisplayName(needItemKey)} ${formatNumber(needItemCount)}개`);
+        }
+        if (parts.length <= 0) {
+            return { text: '무료', color: '#22d3ee' };
+        }
+
+        const hasOnlyItems = needItemCount > 0 && needMoney <= 0 && needGold <= 0;
+        const hasGold = needGold > 0;
+        return {
+            text: parts.join(' + '),
+            color: hasOnlyItems ? '#60a5fa' : (hasGold ? '#fcd34d' : '')
+        };
+    }
+
     function _renderCards() {
         const cardsEl = document.getElementById('city-shop-cards');
         if (!cardsEl) return;
@@ -235,23 +343,10 @@
             if (item.comingSoon) {
                 cost.textContent = '준비중';
                 cost.style.color = '#94a3b8';
-            } else if (Number(effectiveCost.costGold) > 0 && Number(effectiveCost.costMoney) > 0) {
-                cost.textContent = `${formatNumber(effectiveCost.costMoney)} + ${formatNumber(effectiveCost.costGold)}G`;
-                cost.style.color = '#fcd34d';
-            } else if (Number(effectiveCost.costGold) > 0) {
-                cost.textContent = _activeTab === 'special'
-                    ? `골드 ${formatNumber(effectiveCost.costGold)}`
-                    : `${formatNumber(effectiveCost.costGold)}G`;
-                cost.style.color = '#fcd34d';
             } else {
-                if (Number(effectiveCost.costMoney) <= 0) {
-                    cost.textContent = '무료';
-                    cost.style.color = '#22d3ee';
-                } else {
-                    cost.textContent = _activeTab === 'special'
-                        ? `머니 ${formatNumber(effectiveCost.costMoney)}`
-                        : formatNumber(effectiveCost.costMoney);
-                }
+                const costUi = _formatCostDisplay(effectiveCost, { specialTab: _activeTab === 'special' });
+                cost.textContent = costUi.text;
+                if (costUi.color) cost.style.color = costUi.color;
             }
 
             card.appendChild(artWrap);
@@ -266,7 +361,7 @@
         const hint = document.getElementById('city-shop-hint');
         if (!hint) return;
         if (_activeTab === 'special') {
-            hint.textContent = '골드와 머니를 교환할 수 있습니다.';
+            hint.textContent = '골드/머니 교환, 명예훈장 구매, 미사일 설계도 교환이 가능합니다.';
             return;
         }
         hint.textContent = '일반 보급박스 / 특수 보급박스 / 1급 기밀문서를 구매할 수 있습니다.';
@@ -350,6 +445,8 @@
 
     function _canAfford(item) {
         if (!_game) return false;
+        const eligible = _isPurchaseEligible(item, _game);
+        if (!eligible.ok) return false;
         const state = (typeof CitySimState !== 'undefined' && CitySimState && typeof CitySimState.ensure === 'function')
             ? CitySimState.ensure(_game)
             : {};
@@ -358,8 +455,14 @@
         const effectiveCost = _getEffectiveCost(item, _game);
         const needGold = Math.max(0, Math.floor(Number(effectiveCost.costGold) || 0));
         const needMoney = Math.max(0, Math.floor(Number(effectiveCost.costMoney) || 0));
+        const needItemCount = Math.max(0, Math.floor(Number(effectiveCost.costItemCount) || 0));
+        const needItemKey = String(effectiveCost.costItemKey || '').trim();
         if (needGold > gold) return false;
         if (needMoney > money) return false;
+        if (needItemCount > 0 && needItemKey) {
+            const ownedItemCount = _getOwnedItemCount(_game, needItemKey);
+            if (ownedItemCount < needItemCount) return false;
+        }
         return true;
     }
 
@@ -401,18 +504,34 @@
             raw = null;
         }
         if (!raw || typeof raw !== 'object') return null;
+
+        const fallbackItemKey = String(item?.costItemKey || '').trim();
+        const fallbackItemCount = Math.max(0, Math.floor(Number(item?.costItemCount) || 0));
+        const hasItemKeyOverride = Object.prototype.hasOwnProperty.call(raw, 'costItemKey');
+        const hasItemCountOverride = Object.prototype.hasOwnProperty.call(raw, 'costItemCount');
+        const nextItemKey = hasItemKeyOverride ? String(raw.costItemKey || '').trim() : fallbackItemKey;
+        const nextItemCount = hasItemCountOverride
+            ? Math.max(0, Math.floor(Number(raw.costItemCount) || 0))
+            : fallbackItemCount;
+
         return {
             costMoney: Math.max(0, Math.floor(Number(raw.costMoney) || 0)),
-            costGold: Math.max(0, Math.floor(Number(raw.costGold) || 0))
+            costGold: Math.max(0, Math.floor(Number(raw.costGold) || 0)),
+            costItemKey: nextItemCount > 0 ? nextItemKey : '',
+            costItemCount: nextItemCount > 0 && nextItemKey ? nextItemCount : 0
         };
     }
 
     function _getEffectiveCost(item, gameRef) {
         const override = _getTutorialShopCostOverride(item, gameRef);
         if (override) return override;
+        const costItemKey = String(item?.costItemKey || '').trim();
+        const costItemCount = Math.max(0, Math.floor(Number(item?.costItemCount) || 0));
         return {
             costMoney: Math.max(0, Math.floor(Number(item?.costMoney) || 0)),
-            costGold: Math.max(0, Math.floor(Number(item?.costGold) || 0))
+            costGold: Math.max(0, Math.floor(Number(item?.costGold) || 0)),
+            costItemKey: costItemCount > 0 ? costItemKey : '',
+            costItemCount: costItemCount > 0 && costItemKey ? costItemCount : 0
         };
     }
 
@@ -444,6 +563,13 @@
             if (needMoney > 0) {
                 draft.res.money = Math.max(0, (Number(draft.res.money) || 0) - needMoney);
             }
+            const needItemKey = String(effectiveCost.costItemKey || '').trim();
+            const needItemCount = Math.max(0, Math.floor(Number(effectiveCost.costItemCount) || 0));
+            if (needItemCount > 0 && needItemKey) {
+                if (!draft.items || typeof draft.items !== 'object') draft.items = {};
+                const current = Math.max(0, Math.floor(Number(draft.items[needItemKey]) || 0));
+                draft.items[needItemKey] = Math.max(0, current - needItemCount);
+            }
         });
     }
 
@@ -470,6 +596,36 @@
             return _getUnitOwnedCount(gameRef, key) < 2;
         }
         return true;
+    }
+
+    function _isPurchaseEligible(item, gameRef) {
+        const rewardType = String(item?.rewardType || '').trim();
+        if (rewardType === 'exchange_bp_to_nuke_missile' && _getUnitOwnedCount(gameRef, 'nuke') >= 2) {
+            return { ok: false, reason: '핵미사일은 최대 2기까지만 보유할 수 있습니다.' };
+        }
+        return { ok: true, reason: '' };
+    }
+
+    function _getInsufficientCostReason(item, gameRef) {
+        const targetGame = gameRef || _game;
+        if (!targetGame || typeof CitySimState === 'undefined' || !CitySimState || typeof CitySimState.ensure !== 'function') {
+            return '자원이 부족합니다.';
+        }
+        const state = CitySimState.ensure(targetGame);
+        const money = Math.max(0, Math.floor(Number(state.res?.money) || 0));
+        const gold = Math.max(0, Math.floor(Number(state.res?.gold) || 0));
+        const effectiveCost = _getEffectiveCost(item, targetGame);
+        const needMoney = Math.max(0, Math.floor(Number(effectiveCost.costMoney) || 0));
+        const needGold = Math.max(0, Math.floor(Number(effectiveCost.costGold) || 0));
+        const needItemCount = Math.max(0, Math.floor(Number(effectiveCost.costItemCount) || 0));
+        const needItemKey = String(effectiveCost.costItemKey || '').trim();
+        if (needItemCount > 0 && needItemKey) {
+            const ownedItemCount = _getOwnedItemCount(targetGame, needItemKey);
+            if (ownedItemCount < needItemCount) return `${_getItemDisplayName(needItemKey)}가 부족합니다.`;
+        }
+        if (needGold > gold) return '골드가 부족합니다.';
+        if (needMoney > money) return '자금이 부족합니다.';
+        return '자원이 부족합니다.';
     }
 
     function _rollRewards(item, gameRef) {
@@ -505,6 +661,29 @@
             return rewards;
         }
 
+        if (item.rewardType === 'exchange_gold_to_honor_medal') {
+            rewards.push({ type: 'honor', amount: 1 });
+            return rewards;
+        }
+
+        if (item.rewardType === 'exchange_bp_to_tactical_missile') {
+            rewards.push({ type: 'unit', unitKey: 'tactical_missile', unitName: '전술미사일', amount: 1 });
+            return rewards;
+        }
+
+        if (item.rewardType === 'exchange_bp_to_emp_missile') {
+            rewards.push({ type: 'unit', unitKey: 'emp', unitName: 'EMP미사일', amount: 1 });
+            return rewards;
+        }
+
+        if (item.rewardType === 'exchange_bp_to_nuke_missile') {
+            const reward = { type: 'unit', unitKey: 'nuke', unitName: '핵미사일', amount: 1 };
+            if (_isRewardEligible(reward, gameRef)) {
+                rewards.push(reward);
+            }
+            return rewards;
+        }
+
         return rewards;
     }
 
@@ -517,6 +696,7 @@
             if (!draft.res || typeof draft.res !== 'object') draft.res = {};
             if (!draft.units || typeof draft.units !== 'object') draft.units = {};
             if (!draft.veteranItems || typeof draft.veteranItems !== 'object') draft.veteranItems = {};
+            if (!draft.hud || typeof draft.hud !== 'object') draft.hud = {};
             const list = Array.isArray(rewards) ? rewards : [];
             for (let i = 0; i < list.length; i += 1) {
                 const reward = list[i];
@@ -527,6 +707,10 @@
                 }
                 if (reward.type === 'gold') {
                     draft.res.gold = Math.max(0, Number(draft.res.gold) || 0) + Math.max(0, Math.floor(Number(reward.amount) || 0));
+                    continue;
+                }
+                if (reward.type === 'honor') {
+                    draft.hud.honor = Math.max(0, Number(draft.hud.honor) || 0) + Math.max(0, Math.floor(Number(reward.amount) || 0));
                     continue;
                 }
                 if (reward.type === 'unit' && reward.unitKey) {
@@ -559,6 +743,7 @@
         if (!reward || !reward.type) return '';
         if (reward.type === 'money') return `머니 +${formatNumber(reward.amount)}`;
         if (reward.type === 'gold') return `골드 +${formatNumber(reward.amount)}`;
+        if (reward.type === 'honor') return `명예훈장 +${formatNumber(reward.amount)}`;
         if (reward.type === 'unit') return `${reward.unitName || reward.unitKey} +${formatNumber(reward.amount)}`;
         if (reward.type === 'veteran_item') return `${reward.itemName || reward.itemKey} +${formatNumber(reward.amount)}`;
         if (reward.type === 'item') return `[${reward.grade || '?'}] ${reward.itemName || reward.itemKey}`;
@@ -584,6 +769,7 @@
                 if (reward.type === 'unit') cls = 'unit';
                 else if (reward.type === 'veteran_item') cls = 'item';
                 else if (reward.type === 'gold') cls = 'gold';
+                else if (reward.type === 'honor') cls = 'gold';
                 else if (reward.type === 'item') {
                     cls = 'item';
                     // 등급 색상 적용
@@ -733,6 +919,17 @@
             }
         }
 
+        // 특수 보급상자 희귀 보너스: 낮은 확률로 골드 10개 추가 지급
+        if (boxId === 'box_level2' && Math.random() < BOX_LEVEL2_RARE_GOLD_CHANCE) {
+            if (typeof CitySimState !== 'undefined' && CitySimState && typeof CitySimState.mutate === 'function') {
+                CitySimState.mutate(targetGame, (draft) => {
+                    if (!draft.res || typeof draft.res !== 'object') draft.res = {};
+                    draft.res.gold = Math.max(0, Number(draft.res.gold) || 0) + BOX_LEVEL2_RARE_GOLD_AMOUNT;
+                });
+            }
+            itemRewards.push({ type: 'gold', amount: BOX_LEVEL2_RARE_GOLD_AMOUNT });
+        }
+
         if (typeof targetGame.saveCitySimState === 'function') targetGame.saveCitySimState();
         if (typeof CitySimEconomy !== 'undefined' && CitySimEconomy && typeof CitySimEconomy.renderResources === 'function') {
             CitySimEconomy.renderResources(targetGame);
@@ -756,8 +953,13 @@
             showToast('교환소는 준비중입니다.');
             return;
         }
+        const eligible = _isPurchaseEligible(item, _game);
+        if (!eligible.ok) {
+            showToast(eligible.reason || '교환 조건을 만족하지 않습니다.');
+            return;
+        }
         if (!_canAfford(item)) {
-            showToast('자금이 부족합니다.');
+            showToast(_getInsufficientCostReason(item, _game));
             return;
         }
 

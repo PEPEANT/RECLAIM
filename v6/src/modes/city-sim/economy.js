@@ -67,9 +67,9 @@
         });
     }
 
-    const TAX_INCOME_INTERVAL_MS = 280_000;
+    const TAX_INCOME_INTERVAL_MS = 150_000;
     const INCOME_CONFIG = {
-        // 가격순 수익 차등: 집(300) < 가게(400) < 아파트(500) < 회사(800)
+        // 가격순 수익 차등: 집(420) < 가게(560) < 아파트(700) < 회사(1100)
         // 체감이 겹치지 않게 5단위 기준 구간을 분리했다.
         decor: { intervalMs: TAX_INCOME_INTERVAL_MS, min: 5, max: 10, cap: 100 },
         shop_store: { intervalMs: TAX_INCOME_INTERVAL_MS, min: 15, max: 20, cap: 160 },

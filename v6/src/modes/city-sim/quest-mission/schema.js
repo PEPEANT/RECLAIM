@@ -28,6 +28,9 @@
         LOGIN_SUPPLY_BOX: 'login_supply_box',
         SKIRMISH_FIRST_WIN_SUPPLY_BOX: 'skirmish_first_win_supply_box',
         LUNAR_NEW_YEAR_GIFT: 'lunar_new_year_gift',
+        EVENT_V62_SUPPLY_GIFT: 'event_v62_supply_gift',
+        EVENT_VETERAN_UPDATE_GIFT: 'event_veteran_update_gift',
+        EVENT_VISIT_UPDATE_GIFT: 'event_visit_update_gift',
         KILL_CONTRACT: 'kill_contract',
         VICTORY_CONTRACT: 'victory_contract',
         LEVEL_BONUS_PRIVATE: 'level_bonus_private',
@@ -50,6 +53,9 @@
         LOGIN_SUPPLY_BOX: String(RAW_QUEST_IDS.LOGIN_SUPPLY_BOX || DEFAULT_QUEST_IDS.LOGIN_SUPPLY_BOX),
         SKIRMISH_FIRST_WIN_SUPPLY_BOX: String(RAW_QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX || DEFAULT_QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX),
         LUNAR_NEW_YEAR_GIFT: String(RAW_QUEST_IDS.LUNAR_NEW_YEAR_GIFT || DEFAULT_QUEST_IDS.LUNAR_NEW_YEAR_GIFT),
+        EVENT_V62_SUPPLY_GIFT: String(RAW_QUEST_IDS.EVENT_V62_SUPPLY_GIFT || DEFAULT_QUEST_IDS.EVENT_V62_SUPPLY_GIFT),
+        EVENT_VETERAN_UPDATE_GIFT: String(RAW_QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT || DEFAULT_QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT),
+        EVENT_VISIT_UPDATE_GIFT: String(RAW_QUEST_IDS.EVENT_VISIT_UPDATE_GIFT || DEFAULT_QUEST_IDS.EVENT_VISIT_UPDATE_GIFT),
         KILL_CONTRACT: String(RAW_QUEST_IDS.KILL_CONTRACT || DEFAULT_QUEST_IDS.KILL_CONTRACT),
         VICTORY_CONTRACT: String(RAW_QUEST_IDS.VICTORY_CONTRACT || DEFAULT_QUEST_IDS.VICTORY_CONTRACT),
         LEVEL_BONUS_PRIVATE: String(RAW_QUEST_IDS.LEVEL_BONUS_PRIVATE || DEFAULT_QUEST_IDS.LEVEL_BONUS_PRIVATE),
@@ -83,6 +89,9 @@
         QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
         QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
+        QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
+        QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT,
+        QUEST_IDS.EVENT_VISIT_UPDATE_GIFT,
         QUEST_IDS.KILL_CONTRACT,
         QUEST_IDS.VICTORY_CONTRACT,
         ...LEVEL_BONUS_IDS
@@ -108,6 +117,9 @@
         QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
         QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
+        QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
+        QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT,
+        QUEST_IDS.EVENT_VISIT_UPDATE_GIFT,
         QUEST_IDS.KILL_CONTRACT,
         QUEST_IDS.VICTORY_CONTRACT,
         ...LEVEL_BONUS_IDS
@@ -434,6 +446,30 @@
             { box: '특수 보급박스 x1', boxType: 'box_level2' }
         );
 
+        quests[QUEST_IDS.EVENT_V62_SUPPLY_GIFT] = createLegacyQuest(
+            QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
+            QUEST_TYPES.LEGACY_EVENT,
+            'v6.2 공식 업데이트 기념',
+            '이벤트 보상 수령',
+            { box: '특수 보급박스 x1', boxType: 'box_level2' }
+        );
+
+        quests[QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT] = createLegacyQuest(
+            QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT,
+            QUEST_TYPES.LEGACY_EVENT,
+            '베테랑 유닛 대규모 업데이트 기념',
+            '이벤트 보상 수령',
+            { honor: 1 }
+        );
+
+        quests[QUEST_IDS.EVENT_VISIT_UPDATE_GIFT] = createLegacyQuest(
+            QUEST_IDS.EVENT_VISIT_UPDATE_GIFT,
+            QUEST_TYPES.LEGACY_EVENT,
+            '방문수령 업데이트 기념',
+            '이벤트 보상 수령',
+            { gold: 5 }
+        );
+
         quests[QUEST_IDS.KILL_CONTRACT] = {
             id: QUEST_IDS.KILL_CONTRACT,
             type: QUEST_TYPES.KILL,
@@ -670,7 +706,10 @@
         const legacyIds = [
             QUEST_IDS.LOGIN_SUPPLY_BOX,
             QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
-            QUEST_IDS.LUNAR_NEW_YEAR_GIFT
+            QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
+            QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
+            QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT,
+            QUEST_IDS.EVENT_VISIT_UPDATE_GIFT
         ];
         const hasLoggedInUid = !!getLoggedInUid();
 
@@ -700,6 +739,30 @@
                 quest.missionName = '첫 로그인 지급';
                 quest.actionName = '로그인 완료';
             }
+            if (id === QUEST_IDS.EVENT_V62_SUPPLY_GIFT) {
+                quest.reward = normalizeReward(
+                    { box: '특수 보급박스 x1', boxType: 'box_level2' },
+                    defaultQuests[id] && defaultQuests[id].reward
+                );
+                quest.missionName = 'v6.2 공식 업데이트 기념';
+                quest.actionName = '이벤트 보상 수령';
+            }
+            if (id === QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT) {
+                quest.reward = normalizeReward(
+                    { honor: 1 },
+                    defaultQuests[id] && defaultQuests[id].reward
+                );
+                quest.missionName = '베테랑 유닛 대규모 업데이트 기념';
+                quest.actionName = '이벤트 보상 수령';
+            }
+            if (id === QUEST_IDS.EVENT_VISIT_UPDATE_GIFT) {
+                quest.reward = normalizeReward(
+                    { gold: 5 },
+                    defaultQuests[id] && defaultQuests[id].reward
+                );
+                quest.missionName = '방문수령 업데이트 기념';
+                quest.actionName = '이벤트 보상 수령';
+            }
 
             const permanentlyClaimed = permanentClaimedSet.has(id);
             if (permanentlyClaimed
@@ -716,6 +779,13 @@
                 quest.status = hasLoggedInUid
                     ? QUEST_STATUS.CLAIMABLE
                     : QUEST_STATUS.IN_PROGRESS;
+            } else if (
+                id === QUEST_IDS.EVENT_V62_SUPPLY_GIFT
+                || id === QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT
+                || id === QUEST_IDS.EVENT_VISIT_UPDATE_GIFT
+            ) {
+                quest.progress = 1;
+                quest.status = QUEST_STATUS.CLAIMABLE;
             } else if (quest.progress >= 1) {
                 quest.status = QUEST_STATUS.CLAIMABLE;
             } else {

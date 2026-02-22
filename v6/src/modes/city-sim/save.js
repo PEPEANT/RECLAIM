@@ -206,6 +206,32 @@
                 return;
             }
 
+            const recurring = isRecurringQuestId(id);
+            const srcTier = Math.max(1, Math.floor(Number(src.tier) || 1));
+            const dstTier = Math.max(1, Math.floor(Number(dst.tier) || 1));
+            if (recurring && srcTier !== dstTier) {
+                if (srcTier > dstTier) {
+                    dst.tier = srcTier;
+                    const srcTarget = Math.max(0, Math.floor(Number(src.target) || 0));
+                    const srcProgress = Math.max(0, Math.floor(Number(src.progress) || 0));
+                    if (srcTarget > 0) dst.target = srcTarget;
+                    dst.progress = srcProgress;
+                    if (src.reward && typeof src.reward === 'object') {
+                        dst.reward = cloneJson(src.reward) || src.reward;
+                    }
+                    if (typeof src.missionName === 'string' && src.missionName.trim()) {
+                        dst.missionName = src.missionName;
+                    }
+                    if (typeof src.actionName === 'string' && src.actionName.trim()) {
+                        dst.actionName = src.actionName;
+                    }
+                    if (typeof src.status === 'string' && src.status.trim()) {
+                        dst.status = src.status;
+                    }
+                }
+                return;
+            }
+
             const srcRank = statusRank(src.status);
             const dstRank = statusRank(dst.status);
             if (srcRank > dstRank) {
@@ -225,6 +251,19 @@
                 dst.progress = Math.max(dst.progress, dstTarget, srcTarget);
             }
         });
+
+        const baseTiers = (base.tiers && typeof base.tiers === 'object') ? base.tiers : {};
+        const otherTiers = (other.tiers && typeof other.tiers === 'object') ? other.tiers : {};
+        base.tiers = baseTiers;
+        ['kill', 'win', 'level'].forEach((key) => {
+            const aValue = Math.max(1, Math.floor(Number(baseTiers[key]) || 1));
+            const bValue = Math.max(1, Math.floor(Number(otherTiers[key]) || 1));
+            baseTiers[key] = Math.max(aValue, bValue);
+        });
+        const mergedKillTier = Math.max(1, Math.floor(Number(baseQuests.kill_contract?.tier) || baseTiers.kill || 1));
+        const mergedWinTier = Math.max(1, Math.floor(Number(baseQuests.victory_contract?.tier) || baseTiers.win || 1));
+        baseTiers.kill = Math.max(baseTiers.kill, mergedKillTier);
+        baseTiers.win = Math.max(baseTiers.win, mergedWinTier);
 
         const baseCounters = (base.counters && typeof base.counters === 'object') ? base.counters : {};
         const otherCounters = (other.counters && typeof other.counters === 'object') ? other.counters : {};

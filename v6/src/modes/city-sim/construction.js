@@ -10,7 +10,7 @@
             icon: '흙',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 17
+            costMoney: 24
         },
         ground_grass: {
             id: 'ground_grass',
@@ -18,7 +18,7 @@
             icon: '잔디',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 17
+            costMoney: 24
         },
         ground_concrete: {
             id: 'ground_concrete',
@@ -26,7 +26,7 @@
             icon: '회색',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 67
+            costMoney: 95
         },
         ground_asphalt: {
             id: 'ground_asphalt',
@@ -34,7 +34,7 @@
             icon: '아스팔트',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 50
+            costMoney: 70
         },
         road: {
             id: 'road',
@@ -42,7 +42,7 @@
             icon: '도로',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 84
+            costMoney: 120
         },
         tree: {
             id: 'tree',
@@ -50,7 +50,7 @@
             icon: '나무',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 84
+            costMoney: 120
         },
         barracks: {
             id: 'barracks',
@@ -58,7 +58,7 @@
             icon: '병영',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 500
+            costMoney: 700
         },
         airport: {
             id: 'airport',
@@ -66,7 +66,7 @@
             icon: '공항',
             category: 'build',
             maxOwned: 2,
-            costMoney: 2500
+            costMoney: 3400
         },
         airport_tr: {
             id: 'airport_tr',
@@ -101,7 +101,7 @@
             icon: '전차',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 1167
+            costMoney: 1600
         },
         powerplant: {
             id: 'powerplant',
@@ -109,7 +109,7 @@
             icon: '연구',
             category: 'build',
             maxOwned: 2,
-            costMoney: 1667
+            costMoney: 2300
         },
         oilrig: {
             id: 'oilrig',
@@ -117,7 +117,7 @@
             icon: '보급',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 834
+            costMoney: 1150
         },
         drillground: {
             id: 'drillground',
@@ -125,7 +125,7 @@
             icon: '연병',
             category: 'build',
             maxOwned: 50,
-            costMoney: 84
+            costMoney: 120
         },
         drillground_gray: {
             id: 'drillground_gray',
@@ -133,7 +133,7 @@
             icon: '회연',
             category: 'build',
             maxOwned: 50,
-            costMoney: 84
+            costMoney: 120
         },
         hq: {
             id: 'hq',
@@ -141,7 +141,7 @@
             icon: '본부',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 2500
+            costMoney: 3600
         },
         house: {
             id: 'house',
@@ -149,7 +149,7 @@
             icon: '회사',
             category: 'build',
             maxOwned: 6,
-            costMoney: 800
+            costMoney: 1100
         },
         apartment_large: {
             id: 'apartment_large',
@@ -157,7 +157,7 @@
             icon: '아파트',
             category: 'build',
             maxOwned: 4,
-            costMoney: 500
+            costMoney: 700
         },
         shop_store: {
             id: 'shop_store',
@@ -165,7 +165,7 @@
             icon: '가게',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 400
+            costMoney: 560
         },
         tax_office: {
             id: 'tax_office',
@@ -173,7 +173,7 @@
             icon: '세무',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 900
+            costMoney: 1300
         },
         park_plaza: {
             id: 'park_plaza',
@@ -181,7 +181,7 @@
             icon: '공원',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 250
+            costMoney: 350
         },
         park_plaza_tr: {
             id: 'park_plaza_tr',
@@ -216,7 +216,7 @@
             icon: '공원',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 167
+            costMoney: 230
         },
         monument: {
             id: 'monument',
@@ -224,7 +224,7 @@
             icon: '기념',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 334
+            costMoney: 470
         },
         decor: {
             id: 'decor',
@@ -233,7 +233,7 @@
             icon: '집',
             category: 'build',
             maxOwned: Number.POSITIVE_INFINITY,
-            costMoney: 300
+            costMoney: 420
         },
         eraser: {
             id: 'eraser',
@@ -400,26 +400,26 @@
     };
 
     const CITY_UNIT_COST_OVERRIDES = {
-        infantry: 200,
-        engineer: 350,
-        special_ops: 417,
-        sniper: 667,
-        drone_operator: 500,
-        humvee: 400,
-        apc: 700,
-        mbt: 1100,
-        aa_tank: 980,
-        spg: 1550,
-        icbm: 1200,
-        recon: 834,
-        apache: 1334,
-        fighter: 1667,
-        blackhawk: 1667,
-        chinook: 2500,
-        bomber: 3334,
-        tactical_missile: 1800,
-        emp: 1500,
-        supply_box: 300
+        infantry: 280,
+        engineer: 480,
+        special_ops: 580,
+        sniper: 920,
+        drone_operator: 700,
+        humvee: 700,
+        apc: 1300,
+        mbt: 2100,
+        aa_tank: 1850,
+        spg: 2900,
+        icbm: 2300,
+        recon: 1150,
+        apache: 1800,
+        fighter: 2300,
+        blackhawk: 2300,
+        chinook: 3400,
+        bomber: 4700,
+        tactical_missile: 2600,
+        emp: 2400,
+        supply_box: 420
     };
 
     function getUnitGlobalCostMultiplier() {
