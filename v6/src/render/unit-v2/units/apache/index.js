@@ -13,7 +13,7 @@
 
     // 기체 크기 배율 (1.4 × APACHE_SCALE = 최종 렌더 크기)
     // 원형 좌표계가 넓기 때문에 축소 필요
-    var APACHE_SCALE = 0.62;
+    var APACHE_SCALE = 0.60;
 
     var PALETTE_PLAYER = {
         body:     '#2c2f33',

@@ -2,7 +2,7 @@
 (function attachUnitRenderV2_blackhawk(globalScope) {
     'use strict';
 
-    var BATTLE_MODEL_SCALE = 2.12;
+    var BATTLE_MODEL_SCALE = 2.44;
     var ICON_MODEL_SCALE = 1.40;
     var BATTLE_BASE_DRAW_SCALE = 1.4;
     var BATTLE_WORLD_SCALE = BATTLE_BASE_DRAW_SCALE * BATTLE_MODEL_SCALE;

@@ -329,10 +329,34 @@
 
                     // [NEW] PC ???關履숂뭐?? ????ｋ??????ル뒇嶺??????(???뚯????RTS ?熬곣뫖?삥납??
                     if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
+                        const directControlUnit = (typeof this.getDirectControlUnit === 'function')
+                            ? this.getDirectControlUnit()
+                            : null;
+                        const directId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
+                        // Direct-control drone operator: right click enemy to lockdown first.
+                        if (directId === 'drone_operator' && !e.shiftKey) {
+                            if (this.tryDroneLockdown && this.tryDroneLockdown(worldX, worldY)) {
+                                return;
+                            }
+                        }
                         return;
                     }
 
                     if (this.selectedUnits && this.selectedUnits.size > 0 && !this.buildMode.active && !this.targetingType) {
+                        // Drone operator UX: in manual drone mode, right-click enemy should assign lockdown
+                        // before falling back to normal move command.
+                        let hasOperatorSelected = false;
+                        this.selectedUnits.forEach((u) => {
+                            if (hasOperatorSelected) return;
+                            if (!u || u.dead || !u.stats) return;
+                            if (u.stats.operator === true || String(u.stats.id || '') === 'drone_operator') {
+                                hasOperatorSelected = true;
+                            }
+                        });
+                        if (hasOperatorSelected && this.tryDroneLockdown && this.tryDroneLockdown(worldX, worldY)) {
+                            return;
+                        }
+
                         clearManualTankMgHold();
 
                         this.selectedUnits.forEach(u => {
@@ -387,6 +411,17 @@
                             updateManualTankAim(directControlUnit, worldX, worldY);
                             if (typeof directControlUnit.tryManualSpgMainFire === 'function') {
                                 directControlUnit.tryManualSpgMainFire(worldX, worldY);
+                            }
+                            return;
+                        }
+                        if (directId === 'drone_operator' && !e.shiftKey) {
+                            // Direct-control drone operator: left click prioritizes lockdown assignment.
+                            updateManualTankAim(directControlUnit, worldX, worldY);
+                            if (this.tryDroneLockdown && this.tryDroneLockdown(worldX, worldY)) {
+                                return;
+                            }
+                            if (typeof this.directControlFireCurrentWeapon === 'function') {
+                                this.directControlFireCurrentWeapon();
                             }
                             return;
                         }
@@ -561,7 +596,14 @@
                         return;
                     }
 
-                    if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
+                    const directControlUnit = (typeof this.getDirectControlUnit === 'function')
+                        ? this.getDirectControlUnit()
+                        : null;
+                    const directControlId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
+                    if (directControlUnit && directControlId === 'drone_operator') {
+                        // Keep touch tap path alive so lockdown assignment can trigger on touchend.
+                        updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
+                    } else if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
                         updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
                         isMobileSelecting = false;
                         this.selectDragActive = false;
@@ -655,6 +697,27 @@
                     const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
                     const endClientX = ct ? ct.clientX : tapLastClientX;
                     const endClientY = ct ? ct.clientY : tapLastClientY;
+                    const directControlUnit = (typeof this.getDirectControlUnit === 'function')
+                        ? this.getDirectControlUnit()
+                        : null;
+                    const directControlId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
+                    const isDirectControlOperator = !!(
+                        directControlUnit
+                        && directControlId === 'drone_operator'
+                        && typeof this.isDirectControlActive === 'function'
+                        && this.isDirectControlActive()
+                    );
+                    if (isDirectControlOperator) {
+                        const pTap = getScaledPos(endClientX, endClientY);
+                        const clickX = pTap.x + this.cameraX;
+                        const clickY = pTap.y;
+                        if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
+                        if (typeof this.directControlFireCurrentWeapon === 'function') {
+                            this.directControlFireCurrentWeapon();
+                            return;
+                        }
+                    }
+
                     const movedPx = Math.hypot(endClientX - tapStartClientX, endClientY - tapStartClientY);
 
                     if (movedPx < TAP_THRESHOLD_PX) {

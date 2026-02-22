@@ -1,4 +1,90 @@
-﻿class Projectile {
+﻿class EmpShockwaveFX {
+    constructor(gameRef, x, y) {
+        this.game = gameRef || null;
+        this.x = Number(x) || 0;
+        this.y = Number(y) || 0;
+        this.age = 0;
+        this.maxAge = 58;
+        this.life = 1;
+        this.ringR = 18;
+        this.outerR = 42;
+
+        if (this.game) {
+            if (typeof this.game.addFlash === 'function') this.game.addFlash(0.42);
+            else this.game.flash = Math.max(Number(this.game.flash) || 0, 0.42);
+            if (typeof this.game.addShake === 'function') this.game.addShake(8);
+            else this.game.shake = Math.max(Number(this.game.shake) || 0, 8);
+        }
+    }
+
+    update() {
+        this.age += 1;
+        const t = this.age / Math.max(1, this.maxAge);
+        this.life = Math.max(0, 1 - t);
+        this.ringR += 22;
+        this.outerR += 26;
+        if (this.life <= 0.01) this.life = 0;
+    }
+
+    draw(ctx) {
+        if (!ctx || this.life <= 0) return;
+        const alpha = Math.max(0, Math.min(1, this.life));
+        const TAU = Math.PI * 2;
+
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+
+        // Cyan EMP pulse ring.
+        const grad = ctx.createRadialGradient(
+            this.x,
+            this.y,
+            Math.max(0, this.outerR * 0.72),
+            this.x,
+            this.y,
+            this.outerR
+        );
+        grad.addColorStop(0.0, 'rgba(0,0,0,0)');
+        grad.addColorStop(0.45, `rgba(0,255,255,${0.12 * alpha})`);
+        grad.addColorStop(0.85, `rgba(0,255,255,${0.78 * alpha})`);
+        grad.addColorStop(1.0, `rgba(0,255,255,${0.40 * alpha})`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.outerR, 0, TAU);
+        ctx.fill();
+
+        // Secondary ring stroke.
+        ctx.strokeStyle = `rgba(140,255,255,${0.86 * alpha})`;
+        ctx.lineWidth = Math.max(1.5, 12 * alpha);
+        ctx.beginPath();
+        ctx.arc(this.x, this.y, this.ringR, 0, TAU);
+        ctx.stroke();
+
+        // Electric arcs.
+        const arcCount = 10;
+        ctx.strokeStyle = `rgba(0,255,255,${0.64 * alpha})`;
+        ctx.lineWidth = Math.max(1, 2.2 * alpha);
+        ctx.shadowBlur = 11 * alpha;
+        ctx.shadowColor = '#00ffff';
+        for (let i = 0; i < arcCount; i++) {
+            const angle = (i / arcCount) * TAU + (this.age * 0.19) + (Math.random() * 0.55);
+            const len = this.ringR * (0.78 + Math.random() * 0.36);
+            const segments = 5;
+            let px = this.x;
+            let py = this.y;
+            ctx.beginPath();
+            ctx.moveTo(px, py);
+            for (let j = 0; j < segments; j++) {
+                px += (Math.cos(angle) * len / segments) + (Math.random() * 18 - 9);
+                py += (Math.sin(angle) * len / segments) + (Math.random() * 18 - 9);
+                ctx.lineTo(px, py);
+            }
+            ctx.stroke();
+        }
+
+        ctx.restore();
+    }
+}
+class Projectile {
     constructor(x, y, target, damage, team, type, opts) {
         this.x = x; this.y = y; this.target = target;
         this.damage = damage; this.team = team; this.type = type; this.dead = false;
@@ -424,15 +510,71 @@
         }
 
         if (this.type === 'icbm_emp_missile') {
+            const impactY = (game && Number.isFinite(game.groundY)) ? game.groundY : this.y;
+
             if (typeof VFX !== 'undefined' && VFX.PRESETS && VFX.PRESETS.emp) {
-                VFX.spawn(game, 'emp', this.x, game.groundY, { anchorGround: true });
+                VFX.spawn(game, 'emp', this.x, impactY, { anchorGround: true });
             } else if (game.createParticles) {
                 game.createParticles(this.x, this.y, 48, '#60a5fa');
             }
-            if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('emp', this.x);
+            if (game && Array.isArray(game.particles)) {
+                game.particles.push(new EmpShockwaveFX(game, this.x, impactY));
+            }
+            if (typeof AudioSystem !== 'undefined') {
+                if (typeof AudioSystem.playBoom === 'function') AudioSystem.playBoom('emp', this.x);
+                else if (typeof AudioSystem.playSFX === 'function') AudioSystem.playSFX('emp', this.x);
+            }
+            if (game) {
+                game.empTimer = Math.max(Number(game.empTimer) || 0, 110);
+            }
 
-            const r = 320;
-            const r2 = r * r;
+            const viewW = (typeof Camera !== 'undefined' && Camera && typeof Camera.viewW === 'function')
+                ? Math.max(1, Number(Camera.viewW(game)) || Number(game.width) || 1)
+                : Math.max(1, Number(game.width) || 1);
+            const viewH = Math.max(1, Number(game.height) || Number(game.groundY) || 720);
+            const camX = Number(game.cameraX) || 0;
+            const viewLeft = camX - 24;
+            const viewRight = camX + viewW + 24;
+            const viewTop = Math.min(-80, (Number(game.groundY) || viewH) - viewH - 120);
+            const viewBottom = Math.max((Number(game.groundY) || viewH) + 140, viewH + 140);
+            const isInViewport = (x, y) => (
+                Number.isFinite(x)
+                && Number.isFinite(y)
+                && x >= viewLeft
+                && x <= viewRight
+                && y >= viewTop
+                && y <= viewBottom
+            );
+
+            const ARMOR_ID_SET = new Set(['mbt', 'apc', 'aa_tank', 'humvee', 'spg', 'tank', 'ifv', 'sam', 'mlrs', 'icbm', 'icbm_enemy']);
+            const getEmpDamage = (u) => {
+                const st = u && u.stats ? u.stats : {};
+                const maxHp = Math.max(1, Number(u && u.maxHp) || Number(st.hp) || 1);
+                const unitType = String(st.type || u.type || '').toLowerCase();
+                const unitCategory = String(st.category || '').toLowerCase();
+                const unitId = String(st.id || '').toLowerCase();
+                const isAir = unitType === 'air';
+                const isArmored = unitCategory === 'armored' || unitType === 'mech' || unitType === 'vehicle' || ARMOR_ID_SET.has(unitId);
+                const isInfantry = unitCategory === 'infantry' || unitType === 'bio' || unitType === 'infantry';
+
+                if (isAir) return Math.round(Math.max(180, Math.min(900, maxHp * 0.55)));
+                if (isArmored) return Math.round(Math.max(30, Math.min(180, maxHp * 0.14)));
+                if (isInfantry) return Math.round(Math.max(18, Math.min(80, maxHp * 0.22)));
+                return Math.round(Math.max(20, Math.min(120, maxHp * 0.16)));
+            };
+
+            const getEmpStunFrames = (u) => {
+                const st = u && u.stats ? u.stats : {};
+                const unitType = String(st.type || u.type || '').toLowerCase();
+                const unitCategory = String(st.category || '').toLowerCase();
+                const unitId = String(st.id || '').toLowerCase();
+                const isAir = unitType === 'air';
+                const isArmored = unitCategory === 'armored' || unitType === 'mech' || unitType === 'vehicle' || ARMOR_ID_SET.has(unitId);
+                if (isAir) return 480;
+                if (isArmored) return 600;
+                return 180;
+            };
+
             const unitList = (this.team === 'player') ? game.enemies : game.players;
             const bldgList = (this.team === 'player') ? game.enemyBuildings : game.playerBuildings;
 
@@ -440,11 +582,18 @@
                 const u = unitList[i];
                 if (!u || u.dead || !u.stats) continue;
                 if (u.stats.invulnerable) continue;
-                if (u.stats.type === 'bio' || u.stats.type === 'civilian') continue;
-                const dx = u.x - this.x;
-                const dy = (u.y || game.groundY) - game.groundY;
-                if (dx * dx + dy * dy > r2) continue;
-                u.stunTimer = Math.max(u.stunTimer || 0, 360);
+                const uy = Number(u.y) - (Number(u.height || u.stats.height || 20) * 0.5);
+                if (!isInViewport(Number(u.x), uy)) continue;
+
+                const empDamage = getEmpDamage(u);
+                if (empDamage > 0 && typeof u.takeDamage === 'function') {
+                    u.takeDamage(empDamage, 'emp', this.x, this.y, this.vx, this.vy, this.source);
+                }
+
+                const stunFrames = getEmpStunFrames(u);
+                if (stunFrames > 0) {
+                    u.stunTimer = Math.max(Number(u.stunTimer) || 0, stunFrames);
+                }
                 u.attackTarget = null;
                 if (typeof u.lastAttack === 'number') u.lastAttack = (game.frame || 0) + 120;
             }
@@ -452,10 +601,10 @@
             for (let i = 0; i < bldgList.length; i++) {
                 const b = bldgList[i];
                 if (!b || b.dead) continue;
-                const dx = b.x - this.x;
-                const dy = (b.y || game.groundY) - game.groundY;
-                if (dx * dx + dy * dy > r2) continue;
-                b.stunTimer = Math.max(b.stunTimer || 0, 420);
+                const bx = Number(b.x);
+                const by = Number(b.y) - (Number(b.height || 60) * 0.5);
+                if (!isInViewport(bx, by)) continue;
+                b.stunTimer = Math.max(Number(b.stunTimer) || 0, 420);
             }
             return;
         }

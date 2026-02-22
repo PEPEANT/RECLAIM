@@ -3,6 +3,18 @@
 
     const RUNTIME_KEY = '__cityDrillgroundBubbleRuntime';
     const DRILLGROUND_TILE_SET = new Set(['drillground', 'drillground_gray']);
+    const VETERAN_INFANTRY_DIALOGUES = [
+        '말보다 행동이다.',
+        '전장은 서두르는 자를 먹는다.',
+        '승리는 준비의 다른 이름.',
+        '운은 준비된 쪽에 선다.',
+        '엄폐는 두 번째 피부다.',
+        '필요할 때만 쏜다.',
+        '고통은 정보다.',
+        '후퇴는 패배가 아니다.',
+        '승리는 소리 없이 쌓인다.',
+        '남은 자가 이어가라…'
+    ];
 
     function nowMs() {
         return Date.now();
@@ -152,6 +164,10 @@
         return pickRandomLine(getDialogueLines('normal', opposite), lastLine, recentSet);
     }
 
+    function pickVeteranInfantryDialogue(lastLine, recentSet) {
+        return pickRandomLine(VETERAN_INFANTRY_DIALOGUES, lastLine, recentSet);
+    }
+
     function ensureRuntime(game) {
         if (!game || typeof game !== 'object') return null;
         if (!game[RUNTIME_KEY] || typeof game[RUNTIME_KEY] !== 'object') {
@@ -239,6 +255,17 @@
         const counts = (state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object')
             ? state.drillgroundInfantryCounts
             : null;
+        const veteranSlots = (state.drillgroundVeteranSlots && typeof state.drillgroundVeteranSlots === 'object')
+            ? state.drillgroundVeteranSlots
+            : null;
+        const veteranUnitById = new Map();
+        const veterans = Array.isArray(state.veterans) ? state.veterans : [];
+        veterans.forEach((entry) => {
+            const id = String(entry?.id || '').trim();
+            const unitKey = normalizeUnitKey(entry?.unitKey);
+            if (!id || !unitKey) return;
+            veteranUnitById.set(id, unitKey);
+        });
 
         const entries = [];
         for (const key of Object.keys(slots)) {
@@ -248,12 +275,17 @@
 
             const unitKey = normalizeUnitKey(slots[key]);
             if (!unitKey || !isInfantryUnit(unitKey)) continue;
+            const veteranId = String(veteranSlots?.[key] || '').trim();
+            const veteranUnitKey = normalizeUnitKey(veteranUnitById.get(veteranId) || '');
+            const isVeteranInfantry = !!(veteranId && veteranUnitKey === unitKey);
 
             const infantryCount = clampInt(counts?.[key], 1, 1, 4);
             entries.push({
                 anchorIndex: index,
                 unitKey,
-                infantryCount
+                infantryCount,
+                veteranId: isVeteranInfantry ? veteranId : '',
+                isVeteranInfantry
             });
         }
 
@@ -294,7 +326,9 @@
             ? ((Math.random() < groupChance) ? 'group' : 'personal')
             : 'personal';
         const recentSet = new Set(Array.isArray(runtime.recentLines) ? runtime.recentLines : []);
-        const text = pickDialogue(eventType, mode, runtime.lastLine, recentSet);
+        const text = entry.isVeteranInfantry
+            ? (pickVeteranInfantryDialogue(runtime.lastLine, recentSet) || pickDialogue(eventType, mode, runtime.lastLine, recentSet))
+            : pickDialogue(eventType, mode, runtime.lastLine, recentSet);
         if (!text) return false;
         const speakerIndex = (mode === 'personal')
             ? randomInt(0, Math.max(0, infantryCount - 1))

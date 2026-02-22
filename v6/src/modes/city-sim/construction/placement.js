@@ -535,6 +535,18 @@
         const sourceDrillgroundUnit = (isDrillgroundTile(sourceTile, deps) && typeof deps.getDrillgroundUnitAt === 'function')
             ? deps.getDrillgroundUnitAt(state, sourceIndex)
             : null;
+        const sourceDrillgroundAnchorIndex = (isDrillgroundTile(sourceTile, deps)
+            && typeof deps.getDrillgroundPlacementAnchorIndex === 'function')
+            ? deps.getDrillgroundPlacementAnchorIndex(state, sourceIndex)
+            : sourceIndex;
+        const sourceDrillgroundVeteranId = (
+            Number.isInteger(sourceDrillgroundAnchorIndex)
+            && state.drillgroundVeteranSlots
+            && typeof state.drillgroundVeteranSlots === 'object'
+        )
+            ? String(state.drillgroundVeteranSlots[sourceDrillgroundAnchorIndex] || '').trim()
+            : '';
+        const sourceDrillgroundSourceMode = sourceDrillgroundVeteranId ? 'veteran' : 'normal';
 
         if (
             isDrillgroundTile(sourceTile, deps)
@@ -551,11 +563,27 @@
                     simulatedSlots[rawIndex] = state.drillgroundSlots[rawIndex];
                 });
             }
-            delete simulatedSlots[sourceIndex];
+            if (Number.isInteger(sourceDrillgroundAnchorIndex)) {
+                delete simulatedSlots[sourceDrillgroundAnchorIndex];
+            } else {
+                delete simulatedSlots[sourceIndex];
+            }
+            const simulatedVeteranSlots = {};
+            if (state.drillgroundVeteranSlots && typeof state.drillgroundVeteranSlots === 'object') {
+                Object.keys(state.drillgroundVeteranSlots).forEach((rawIndex) => {
+                    simulatedVeteranSlots[rawIndex] = state.drillgroundVeteranSlots[rawIndex];
+                });
+            }
+            if (Number.isInteger(sourceDrillgroundAnchorIndex)) {
+                delete simulatedVeteranSlots[sourceDrillgroundAnchorIndex];
+            } else {
+                delete simulatedVeteranSlots[sourceIndex];
+            }
 
             const simulatedState = Object.assign({}, state, {
                 grid: simulatedGrid,
-                drillgroundSlots: simulatedSlots
+                drillgroundSlots: simulatedSlots,
+                drillgroundVeteranSlots: simulatedVeteranSlots
             });
             const drillgroundMoveCheck = deps.canPlaceDrillgroundUnitAtAnchor(
                 simulatedState,
@@ -608,14 +636,36 @@
             CitySimState.setGridTile(game, targetIndex, sourceTile);
             if (isDrillgroundTile(sourceTile, deps) && sourceDrillgroundUnit) {
                 if (typeof deps.setDrillgroundUnitAtAnchor === 'function') {
-                    const applied = deps.setDrillgroundUnitAtAnchor(game, targetIndex, sourceDrillgroundUnit);
+                    const applied = deps.setDrillgroundUnitAtAnchor(
+                        game,
+                        targetIndex,
+                        sourceDrillgroundUnit,
+                        null,
+                        {
+                            sourceMode: sourceDrillgroundSourceMode,
+                            veteranId: sourceDrillgroundVeteranId
+                        }
+                    );
                     if (!applied) {
                         CitySimState.setGridTile(game, targetIndex, null);
                         CitySimState.setGridTile(game, sourceIndex, sourceTile);
                         if (typeof deps.setDrillgroundUnitAtAnchor === 'function') {
-                            deps.setDrillgroundUnitAtAnchor(game, sourceIndex, sourceDrillgroundUnit);
+                            deps.setDrillgroundUnitAtAnchor(
+                                game,
+                                Number.isInteger(sourceDrillgroundAnchorIndex) ? sourceDrillgroundAnchorIndex : sourceIndex,
+                                sourceDrillgroundUnit,
+                                null,
+                                {
+                                    sourceMode: sourceDrillgroundSourceMode,
+                                    veteranId: sourceDrillgroundVeteranId
+                                }
+                            );
                         } else {
-                            CitySimState.setDrillgroundUnit(game, sourceIndex, sourceDrillgroundUnit);
+                            CitySimState.setDrillgroundUnit(
+                                game,
+                                Number.isInteger(sourceDrillgroundAnchorIndex) ? sourceDrillgroundAnchorIndex : sourceIndex,
+                                sourceDrillgroundUnit
+                            );
                         }
                         const message = '연병장 유닛 이동에 실패했습니다. 위치를 다시 확인하세요.';
                         setBuildHint(message);

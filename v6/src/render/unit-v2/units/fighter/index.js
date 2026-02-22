@@ -29,7 +29,7 @@
     }
 
     // 기체 크기 배율 (1.4 × FIGHTER_SCALE = 최종 렌더 크기)
-    var FIGHTER_SCALE = 1.35;
+    var FIGHTER_SCALE = 1.58;
 
     function draw(unit, ctx, env) {
         if (!unit || !ctx) return false;

@@ -86,9 +86,16 @@
             if (aliveOwned > 0) return null;
             if (op.opState === 'laptop') return null;
 
-            const forwardOffset = 24;
+            const opStats = op.stats || {};
+            const frontSpawnOffsetRaw = Number((op.team === 'player') ? opStats.frontSpawnOffset : opStats.aiFrontSpawnOffset);
+            const frontSpawnOffset = Number.isFinite(frontSpawnOffsetRaw)
+                ? Math.max(20, Math.floor(frontSpawnOffsetRaw))
+                : ((op.team === 'player') ? 80 : 100);
             const facing = (op.facing != null) ? op.facing : ((op.team === 'player') ? 1 : -1);
-            const spawnX = op.x + facing * forwardOffset;
+            const mapWidth = (typeof CONFIG !== 'undefined' && CONFIG && Number.isFinite(Number(CONFIG.mapWidth)))
+                ? Number(CONFIG.mapWidth)
+                : 6000;
+            const spawnX = Math.max(16, Math.min(mapWidth - 16, op.x + facing * frontSpawnOffset));
             const spawnY = this.groundY;
 
             const drone = this.spawnUnitDirect(droneKey, spawnX, spawnY, op.team || 'player', true);
@@ -104,12 +111,59 @@
                 : (this.droneControlMode === 'manual' ? 'manual' : 'auto');
 
             // Launch state follows global drone control mode.
-            drone.holdFrames = 0;
+            const launchPrepFramesRaw = Number(opStats.launchPrepFrames);
+            const launchPrepFrames = Number.isFinite(launchPrepFramesRaw)
+                ? Math.max(1, Math.floor(launchPrepFramesRaw))
+                : 90;
+            const launchGroundHoldRaw = Number(opStats.launchGroundHoldFrames);
+            const launchRiseRaw = Number(opStats.launchRiseFrames);
+            const launchHoverRaw = Number(opStats.launchHoverFrames);
+            const launchMaxRiseRaw = Number((op.team === 'player') ? opStats.launchMaxRisePerFrame : opStats.aiLaunchMaxRisePerFrame);
+            const launchCruiseHeightRaw = Number(opStats.launchCruiseHeight);
+            const attackCruiseHeightRaw = Number(opStats.attackCruiseHeight);
+            const attackDiveTriggerRangeRaw = Number(opStats.attackDiveTriggerRange);
+            const dynamicRetargetEnabled = opStats.dynamicRetargetEnabled !== false;
+            const dynamicRetargetMarginRaw = Number(opStats.dynamicRetargetMargin);
+
+            const launchGroundHoldFrames = Number.isFinite(launchGroundHoldRaw)
+                ? Math.max(0, Math.floor(launchGroundHoldRaw))
+                : Math.max(0, Math.floor(launchPrepFrames * 0.6));
+            const launchRiseFrames = Number.isFinite(launchRiseRaw)
+                ? Math.max(1, Math.floor(launchRiseRaw))
+                : Math.max(1, launchPrepFrames - launchGroundHoldFrames);
+            const launchHoverFrames = Number.isFinite(launchHoverRaw)
+                ? Math.max(0, Math.floor(launchHoverRaw))
+                : 25;
+            const launchMaxRisePerFrame = Number.isFinite(launchMaxRiseRaw)
+                ? Math.max(0.35, launchMaxRiseRaw)
+                : ((op.team === 'player') ? 0.78 : 0.68);
+            const launchCruiseHeight = Number.isFinite(launchCruiseHeightRaw)
+                ? Math.max(110, launchCruiseHeightRaw)
+                : 220;
+            const attackCruiseHeight = Number.isFinite(attackCruiseHeightRaw)
+                ? Math.max(260, attackCruiseHeightRaw)
+                : Math.max(430, launchCruiseHeight + 180);
+            const attackDiveTriggerRange = Number.isFinite(attackDiveTriggerRangeRaw)
+                ? Math.max(140, Math.floor(attackDiveTriggerRangeRaw))
+                : 260;
+            const dynamicRetargetMargin = Number.isFinite(dynamicRetargetMarginRaw)
+                ? Math.max(0, Math.floor(dynamicRetargetMarginRaw))
+                : 60;
+
+            drone.launchGroundHoldFrames = launchGroundHoldFrames;
+            drone.launchRiseFrames = launchRiseFrames;
+            drone.holdFrames = launchGroundHoldFrames + launchRiseFrames;
+            drone.postLaunchHoverFrames = launchHoverFrames;
+            drone.launchMaxRisePerFrame = launchMaxRisePerFrame;
             drone.launchInit = false;
+            drone.launchTargetY = this.groundY - launchCruiseHeight;
+            drone.attackCruiseY = this.groundY - attackCruiseHeight;
+            drone.attackDiveTriggerRange = attackDiveTriggerRange;
+            drone.dynamicRetargetEnabled = dynamicRetargetEnabled;
+            drone.dynamicRetargetMargin = dynamicRetargetMargin;
             drone.autoSeekTarget = mode !== 'manual';
             drone.commandState = (mode === 'manual') ? 'standby' : 'attack';
             drone.y = this.groundY;
-            drone.attackCruiseY = this.groundY - 150;
             drone.attackPhase = null;
 
             if (typeof this.addOperatorDrone === 'function') {

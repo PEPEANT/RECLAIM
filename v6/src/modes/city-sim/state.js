@@ -16,8 +16,19 @@
     const VETERAN_FIXED_SKILL_SLOT_INDEX = 0;
     const VETERAN_DRONE_ITEM_TO_COMMAND = {
         drone_suicide_item: 'drone_suicide',
-        drone_at_item: 'drone_at'
+        drone_at_item: 'drone_at',
+        body_armor_d: '',
+        scope_d: '',
+        medkit_c: 'medkit'
     };
+    // 보병 카테고리 전용 스킬 슬롯 아이템 → 커맨드 매핑 (construction.js와 동기화 유지)
+    const VETERAN_INFANTRY_ITEM_TO_COMMAND = {
+        smoke_grenade: 'smoke',
+        medkit_c: 'medkit',
+        body_armor_d: '',
+        scope_d: ''
+    };
+    const VETERAN_INFANTRY_UNIT_KEY_SET = new Set(['infantry', 'engineer', 'sniper', 'special_ops', 'worker']);
 
     function clampLevel(value) {
         return Math.max(MIN_CITY_LEVEL, Math.min(MAX_CITY_LEVEL, Math.floor(Number(value) || MIN_CITY_LEVEL)));
@@ -210,6 +221,40 @@
         return next;
     }
 
+    function normalizeDrillgroundVeteranSlots(rawSlots, total, grid, drillgroundSlots, veterans) {
+        const next = {};
+        if (!rawSlots || typeof rawSlots !== 'object' || Array.isArray(rawSlots)) return next;
+
+        const safeTotal = Math.max(0, Math.floor(Number(total) || 0));
+        const hasGrid = Array.isArray(grid) && grid.length === safeTotal;
+        const slots = (drillgroundSlots && typeof drillgroundSlots === 'object' && !Array.isArray(drillgroundSlots))
+            ? drillgroundSlots
+            : {};
+        const veteranList = Array.isArray(veterans) ? veterans : [];
+        const veteranUnitById = new Map();
+        veteranList.forEach((entry) => {
+            const id = String(entry?.id || '').trim();
+            const unitKey = String(entry?.unitKey || '').trim();
+            if (!id || !unitKey) return;
+            veteranUnitById.set(id, unitKey);
+        });
+
+        Object.keys(rawSlots).forEach((rawIndex) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= safeTotal) return;
+            if (hasGrid && !isDrillgroundTile(grid[index])) return;
+            const slotUnitKey = String(slots[index] || '').trim();
+            if (!slotUnitKey) return;
+            const veteranId = String(rawSlots[rawIndex] || '').trim();
+            if (!veteranId) return;
+            const veteranUnitKey = String(veteranUnitById.get(veteranId) || '').trim();
+            if (!veteranUnitKey || veteranUnitKey !== slotUnitKey) return;
+            next[index] = veteranId;
+        });
+
+        return next;
+    }
+
     function normalizeProductionQueueEntry(rawEntry) {
         if (!rawEntry || typeof rawEntry !== 'object' || Array.isArray(rawEntry)) return null;
         const unitKey = String(rawEntry.unitKey || rawEntry.key || '').trim();
@@ -314,9 +359,16 @@
         const unit = String(unitKey || '').trim();
         const key = normalizeVeteranItemKey(value, unit);
         if (!key) return '';
-        if (unit !== 'drone_operator') return '';
-        if (!Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)) return '';
-        return key;
+        // drone_operator 전용 스킬 슬롯 아이템
+        if (unit === 'drone_operator') {
+            if (Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)) return key;
+            return '';
+        }
+        // 보병 카테고리 전용 스킬 슬롯 아이템 (smoke_grenade, medkit_c)
+        if (VETERAN_INFANTRY_UNIT_KEY_SET.has(unit)) {
+            if (Object.prototype.hasOwnProperty.call(VETERAN_INFANTRY_ITEM_TO_COMMAND, key)) return key;
+        }
+        return '';
     }
 
     function getDefaultVeteranSkillItemKeys() {
@@ -448,12 +500,20 @@
         }
         applyPerimeterGround(ground, cols, rows, 'grass', 1);
         const baseGrid = Array.isArray(options.grid) ? options.grid.slice() : [];
+        const veterans = normalizeVeterans(options.veterans);
         const drillgroundSlots = normalizeDrillgroundSlots(options.drillgroundSlots, total, baseGrid);
         const drillgroundInfantryCounts = normalizeDrillgroundInfantryCounts(
             options.drillgroundInfantryCounts,
             total,
             baseGrid,
             drillgroundSlots
+        );
+        const drillgroundVeteranSlots = normalizeDrillgroundVeteranSlots(
+            options.drillgroundVeteranSlots,
+            total,
+            baseGrid,
+            drillgroundSlots,
+            veterans
         );
         const productionCooldowns = normalizeProductionCooldowns(options.productionCooldowns, total, baseGrid);
         const incomeSlots = normalizeIncomeSlots(options.incomeSlots, total, baseGrid);
@@ -463,7 +523,6 @@
         const rawExp = Math.max(0, Math.floor(toNumber(options?.hud?.exp, 0)));
         const exp = Math.max(0, Math.min(expMax, Math.round((Math.min(rawExp, rawExpMax) / rawExpMax) * expMax)));
         const honor = Math.max(0, Math.floor(toNumber(options?.hud?.honor, 0)));
-        const veterans = normalizeVeterans(options.veterans);
         const veteranItems = normalizeVeteranItems(options.veteranItems);
         const researchUnlocks = normalizeResearchUnlocks(options.researchUnlocks);
         const tutorial = normalizeTutorialState(
@@ -500,6 +559,7 @@
             ground,
             drillgroundSlots,
             drillgroundInfantryCounts,
+            drillgroundVeteranSlots,
             productionCooldowns,
             incomeSlots,
             taxAuto: normalizeTaxAuto(options.taxAuto),
@@ -665,6 +725,13 @@
         game.citySim.veterans = normalizeVeterans(game.citySim.veterans);
         game.citySim.veteranItems = normalizeVeteranItems(game.citySim.veteranItems);
         game.citySim.researchUnlocks = normalizeResearchUnlocks(game.citySim.researchUnlocks);
+        game.citySim.drillgroundVeteranSlots = normalizeDrillgroundVeteranSlots(
+            game.citySim.drillgroundVeteranSlots,
+            total,
+            game.citySim.grid,
+            game.citySim.drillgroundSlots,
+            game.citySim.veterans
+        );
 
         game.citySim.hud.level = clampLevel(game.citySim.hud.level);
         const targetExpMax = getExpRequiredForLevel(game.citySim.hud.level);
@@ -754,6 +821,9 @@
             if (!isDrillgroundTile(tile) && state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object') {
                 delete state.drillgroundInfantryCounts[index];
             }
+            if (!isDrillgroundTile(tile) && state.drillgroundVeteranSlots && typeof state.drillgroundVeteranSlots === 'object') {
+                delete state.drillgroundVeteranSlots[index];
+            }
             if (prev !== tile && state.productionCooldowns && typeof state.productionCooldowns === 'object') {
                 delete state.productionCooldowns[index];
             }
@@ -782,9 +852,15 @@
                 if (state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object') {
                     delete state.drillgroundInfantryCounts[index];
                 }
+                if (state.drillgroundVeteranSlots && typeof state.drillgroundVeteranSlots === 'object') {
+                    delete state.drillgroundVeteranSlots[index];
+                }
                 return;
             }
             state.drillgroundSlots[index] = nextKey;
+            if (state.drillgroundVeteranSlots && typeof state.drillgroundVeteranSlots === 'object') {
+                delete state.drillgroundVeteranSlots[index];
+            }
         });
     }
 
@@ -795,6 +871,9 @@
             delete state.drillgroundSlots[index];
             if (state.drillgroundInfantryCounts && typeof state.drillgroundInfantryCounts === 'object') {
                 delete state.drillgroundInfantryCounts[index];
+            }
+            if (state.drillgroundVeteranSlots && typeof state.drillgroundVeteranSlots === 'object') {
+                delete state.drillgroundVeteranSlots[index];
             }
         });
     }

@@ -552,14 +552,20 @@ class Unit extends Entity {
             }
 
             // [P1] 유닛 종류별 사망 VFX
-            if (typeof VFX !== 'undefined') {
-                const id = this.stats?.id || '';
-                const cat = this.stats?.category || '';
-                const type = this.stats?.type || '';
+            const deathUnitId = String(this.stats?.id || '').trim().toLowerCase();
+            const deathCategory = String(this.stats?.category || '').trim().toLowerCase();
+            const deathType = String(this.stats?.type || '').trim().toLowerCase();
+            const isDroneDeath = deathUnitId.includes('drone');
+            const isArmoredDeath = (
+                deathCategory === 'armored'
+                || ['mbt', 'apc', 'aa_tank', 'humvee', 'spg', 'tank', 'ifv', 'sam', 'mlrs'].includes(deathUnitId)
+            );
+            const isAirDeath = (deathType === 'air' && !isDroneDeath);
 
-                // 기갑 유닛 (탱크, APC, 험비 등) - 잔해(시체) 생성
-                if (cat === 'armored') {
-                    // 폭발 VFX 대신 잔해 스폰
+            if (typeof VFX !== 'undefined') {
+                // 험비/기갑: 사망 시 지상 폭발 + 잔해
+                if (isArmoredDeath) {
+                    VFX.spawn(game, 'vehicle', this.x, this.y, { anchorGround: true });
                     if (typeof game !== 'undefined' && Array.isArray(game.wreckages)) {
                         game.wreckages.push(new Wreckage(
                             this.stats.id,
@@ -569,25 +575,24 @@ class Unit extends Entity {
                             this.team
                         ));
                     }
-                    // 연기만 약간 생성
                     if (typeof game !== 'undefined' && game.createParticles) {
                         game.createParticles(this.x, this.y - 10, 8, '#333');
                     }
                 }
-                // 항공기 (전투기, 폭격기, 아파치) - 공중 폭발
-                else if (type === 'air' && ['fighter', 'apache', 'bomber'].includes(id)) {
-                    VFX.spawn(game, 'aircraft', this.x, this.y, { anchorGround: false });
-                }
-                // 수송헬기 (블랙호크, 치누크) - 큰 공중 폭발
-                else if (['blackhawk', 'chinook'].includes(id)) {
+                // 항공기: 사망 시 공중 폭발
+                else if (isAirDeath) {
                     VFX.spawn(game, 'aircraft', this.x, this.y, { anchorGround: false });
                 }
             }
 
             if (typeof AudioSystem !== 'undefined' && !this.skipDeathSound) {
-                const airDeathIds = ['fighter', 'apache', 'blackhawk', 'uh60', 'chinook', 'bomber'];
-                if (airDeathIds.includes(this.stats.id)) {
+                if (isAirDeath) {
                     AudioSystem.playBoom('death_exp', this.x);
+                } else if (isArmoredDeath) {
+                    const armoredDeathSfx = (deathUnitId === 'humvee' || deathUnitId === 'apc')
+                        ? 'death_exp2'
+                        : 'death_exp3';
+                    AudioSystem.playBoom(armoredDeathSfx, this.x);
                 }
             }
             this.skipDeathSound = false;
@@ -1050,7 +1055,8 @@ class Unit extends Entity {
             return;
         }
 
-        if (this.stats.type === 'air') {
+        const isDroneUnit = (this.stats.category === 'drone' || (this.stats.id && this.stats.id.includes('drone'))) && !this.stats.operator;
+        if (this.stats.type === 'air' && !isDroneUnit) {
             this.rotorAngle += 0.8;
             const groundRefY = (typeof game !== 'undefined' && Number.isFinite(game.groundY)) ? game.groundY : null;
             if (Number.isFinite(groundRefY) && !this.dropState) {
@@ -1107,7 +1113,6 @@ class Unit extends Entity {
         }
 
         // [?섏젙] ?뚮젅??濡쒖쭅 (?쒕줎??硫덉텛吏 ?딄퀬 吏?섍?寃???
-        const isDroneUnit = (this.stats.category === 'drone' || (this.stats.id && this.stats.id.includes('drone'))) && !this.stats.operator;
         if (this.stats.type === 'air' && !isDroneUnit && this.stats.id !== 'tactical_drone' && !this.flareUsed) {
             const flareRange = 150;
             const candidates = (this.team === 'player') ? game.enemies : game.players;
@@ -1709,7 +1714,19 @@ class Unit extends Entity {
         const stats = this.stats;
         const isPlayer = this.team === 'player';
         const moveDir = isPlayer ? 1 : -1;
-        if (isPlayer && this.autoDeploy) this.autoDeploy = false;
+        let droneControlMode = 'auto';
+        if (typeof game !== 'undefined' && game) {
+            if (typeof game.getDroneControlMode === 'function') {
+                droneControlMode = game.getDroneControlMode();
+            } else if (game.droneControlMode === 'manual') {
+                droneControlMode = 'manual';
+            }
+        }
+        if (isPlayer) {
+            // Player operators follow global drone mode:
+            // auto = detect/launch automatically, manual = lockdown-only operation.
+            this.autoDeploy = (droneControlMode !== 'manual');
+        }
 
         // === RIFLE: 소총 모드 (기본 상태) - 전진/사격 + 발진 트리거 ===
         if (this.opState === 'rifle') {
@@ -1729,40 +1746,71 @@ class Unit extends Entity {
                 }
                 // 자동 발진
                 else if (this.autoDeploy) {
-                    const detectRange = stats.detectRange || 600;  // [CHANGE] 사거리 증가 (400 → 600)
-                    let nearestTarget = null;
-                    let nearestDist = detectRange + 1;
-                    let targetIsBuilding = false;
+                    const baseDetectRangeRaw = Number(stats.detectRange);
+                    const baseDetectRange = Number.isFinite(baseDetectRangeRaw) ? baseDetectRangeRaw : 1100;
+                    const aiDetectRangeRaw = Number(stats.aiDetectRange);
+                    const aiDetectRange = Number.isFinite(aiDetectRangeRaw) ? aiDetectRangeRaw : 1900;
+                    // Auto-deploy should start early even for allied/player-side operators.
+                    const detectRange = Math.max(baseDetectRange, aiDetectRange);
+                    const isArmoredCandidate = (target, asBuilding = false) => {
+                        if (!target) return false;
+                        if (asBuilding) return true;
+                        const tStats = target.stats || {};
+                        const tId = String(tStats.id || '').toLowerCase();
+                        const tCategory = String(tStats.category || '').toLowerCase();
+                        const tType = String(tStats.type || target.type || '').toLowerCase();
+                        if (target.armored === true) return true;
+                        if (tCategory === 'armored') return true;
+                        if (tType === 'mech' || tType === 'vehicle' || tType === 'tank') return true;
+                        if (['mbt', 'apc', 'aa_tank', 'humvee', 'spg', 'tank', 'ifv', 'sam', 'mlrs'].includes(tId)) return true;
+                        if (Number(target.maxHp) >= 220) return true;
+                        if (Number(target.width) >= 48) return true;
+                        return false;
+                    };
 
-                    // [NEW] 적 유닛 검색
+                    let armoredTarget = null;
+                    let armoredDist = detectRange + 1;
+                    let infantryTarget = null;
+                    let infantryDist = detectRange + 1;
+
+                    // 1순위: 기갑/중장비(공중 제외), 2순위: 보병
                     for (const e of enemies) {
                         if (!e || e.dead) continue;
+                        if (e.team === this.team || e.team === 'neutral') continue;
+                        if (e.stats && (e.stats.stealth || e.stats.invulnerable)) continue;
+                        if (e.stats && e.stats.type === 'air') continue;
                         const d = Math.abs(e.x - this.x);
-                        if (d < nearestDist) { nearestDist = d; nearestTarget = e; targetIsBuilding = false; }
+                        if (d > detectRange) continue;
+                        if (isArmoredCandidate(e, false)) {
+                            if (d < armoredDist) {
+                                armoredDist = d;
+                                armoredTarget = e;
+                            }
+                        } else if (d < infantryDist) {
+                            infantryDist = d;
+                            infantryTarget = e;
+                        }
                     }
 
-                    // [NEW] 적 건물도 검색 (유닛보다 가까운 건물이 있으면 타겟으로)
                     if (buildings && buildings.length) {
                         for (const b of buildings) {
                             if (!b || b.dead) continue;
                             if (b.team === this.team || b.team === 'neutral') continue;
                             const d = Math.abs(b.x - this.x);
-                            if (d < nearestDist) { nearestDist = d; nearestTarget = b; targetIsBuilding = true; }
+                            if (d > detectRange) continue;
+                            if (d < armoredDist) {
+                                armoredDist = d;
+                                armoredTarget = b;
+                            }
                         }
                     }
 
+                    const nearestTarget = armoredTarget || infantryTarget;
+                    const nearestDist = armoredTarget ? armoredDist : infantryDist;
                     if (nearestTarget && nearestDist <= detectRange) {
                         shouldDeploy = true;
                         autoLockTarget = nearestTarget;
-                        // 타겟 타입에 따라 드론 종류 자동 선택
-                        const target = nearestTarget;
-                        // [NEW] 건물은 항상 AT 드론으로 공격
-                        const isArmored = targetIsBuilding ||
-                            target.armored === true ||
-                            ['tank', 'vehicle', 'mech'].includes(target.type) ||
-                            ['mbt', 'apc', 'aa_tank', 'humvee', 'spg'].includes(target.stats?.id) ||
-                            target.width > 50;
-                        deployType = isArmored ? 'drone_at' : 'drone_suicide';
+                        deployType = armoredTarget ? 'drone_at' : 'drone_suicide';
                     }
                 }
             }
@@ -1771,17 +1819,72 @@ class Unit extends Entity {
             if (shouldDeploy && deployType) {
                 let spawned = false;
 
-                // [R 4.2 FIX v4] 드론 생성 위치: 드론병 바로 아래 (발밑)
-                const droneX = this.x;  // 드론병 바로 아래
+                const frontSpawnOffsetRaw = Number(isPlayer ? stats.frontSpawnOffset : stats.aiFrontSpawnOffset);
+                const frontSpawnOffset = Number.isFinite(frontSpawnOffsetRaw)
+                    ? Math.max(20, Math.floor(frontSpawnOffsetRaw))
+                    : (isPlayer ? 80 : 100);
+                const mapWidth = (typeof CONFIG !== 'undefined' && CONFIG && Number.isFinite(Number(CONFIG.mapWidth)))
+                    ? Number(CONFIG.mapWidth)
+                    : 6000;
+                // Launch forward so operators can initiate drone runs earlier than rifle engagement range.
+                const droneX = Math.max(16, Math.min(mapWidth - 16, this.x + moveDir * frontSpawnOffset));
                 const droneY = game.groundY;  // 지면 레벨
 
                 // 드론 스폰 (bypassBlock=true로 스폰 가드 우회)
                 if (game && game.spawnUnitDirect) {
                     const drone = game.spawnUnitDirect(deployType, droneX, droneY, this.team, true);
                     if (drone) {
+                        const launchPrepFramesRaw = Number(stats.launchPrepFrames);
+                        const launchPrepFrames = Number.isFinite(launchPrepFramesRaw)
+                            ? Math.max(1, Math.floor(launchPrepFramesRaw))
+                            : 90;
+                        const launchGroundHoldRaw = Number(isPlayer ? stats.launchGroundHoldFrames : stats.aiLaunchGroundHoldFrames);
+                        const launchRiseRaw = Number(isPlayer ? stats.launchRiseFrames : stats.aiLaunchRiseFrames);
+                        const launchHoverRaw = Number(isPlayer ? stats.launchHoverFrames : stats.aiLaunchHoverFrames);
+                        const launchMaxRiseRaw = Number(isPlayer ? stats.launchMaxRisePerFrame : stats.aiLaunchMaxRisePerFrame);
+                        const launchCruiseHeightRaw = Number(stats.launchCruiseHeight);
+                        const attackCruiseHeightRaw = Number(stats.attackCruiseHeight);
+                        const attackDiveTriggerRangeRaw = Number(stats.attackDiveTriggerRange);
+                        const dynamicRetargetEnabled = stats.dynamicRetargetEnabled !== false;
+                        const dynamicRetargetMarginRaw = Number(stats.dynamicRetargetMargin);
+
+                        const launchGroundHoldFrames = Number.isFinite(launchGroundHoldRaw)
+                            ? Math.max(0, Math.floor(launchGroundHoldRaw))
+                            : Math.max(0, Math.floor(launchPrepFrames * 0.6));
+                        const launchRiseFrames = Number.isFinite(launchRiseRaw)
+                            ? Math.max(1, Math.floor(launchRiseRaw))
+                            : Math.max(1, launchPrepFrames - launchGroundHoldFrames);
+                        const launchHoverFrames = Number.isFinite(launchHoverRaw)
+                            ? Math.max(0, Math.floor(launchHoverRaw))
+                            : (isPlayer ? 25 : 35);
+                        const launchMaxRisePerFrame = Number.isFinite(launchMaxRiseRaw)
+                            ? Math.max(0.35, launchMaxRiseRaw)
+                            : (isPlayer ? 0.78 : 0.68);
+                        const launchCruiseHeight = Number.isFinite(launchCruiseHeightRaw)
+                            ? Math.max(110, launchCruiseHeightRaw)
+                            : 220;
+                        const attackCruiseHeight = Number.isFinite(attackCruiseHeightRaw)
+                            ? Math.max(260, attackCruiseHeightRaw)
+                            : Math.max(430, launchCruiseHeight + 180);
+                        const attackDiveTriggerRange = Number.isFinite(attackDiveTriggerRangeRaw)
+                            ? Math.max(140, Math.floor(attackDiveTriggerRangeRaw))
+                            : 260;
+                        const dynamicRetargetMargin = Number.isFinite(dynamicRetargetMarginRaw)
+                            ? Math.max(0, Math.floor(dynamicRetargetMarginRaw))
+                            : 60;
+
                         drone.ownerRef = this;  // Owner 링크
-                        drone.holdFrames = 0;
+                        drone.launchGroundHoldFrames = launchGroundHoldFrames;
+                        drone.launchRiseFrames = launchRiseFrames;
+                        drone.holdFrames = launchGroundHoldFrames + launchRiseFrames;
+                        drone.postLaunchHoverFrames = launchHoverFrames;
+                        drone.launchMaxRisePerFrame = launchMaxRisePerFrame;
                         drone.launchInit = false;
+                        drone.launchTargetY = game.groundY - launchCruiseHeight;
+                        drone.attackCruiseY = game.groundY - attackCruiseHeight;
+                        drone.attackDiveTriggerRange = attackDiveTriggerRange;
+                        drone.dynamicRetargetEnabled = dynamicRetargetEnabled;
+                        drone.dynamicRetargetMargin = dynamicRetargetMargin;
                         drone.y = game.groundY;
                         drone.commandState = 'attack';
                         if (autoLockTarget && !autoLockTarget.dead) {
@@ -2850,9 +2953,35 @@ class Unit extends Entity {
                 const desiredStance = String(stateStore.desiredStance || '');
                 const stationaryFrames = Number(stateStore.stationaryFrames) || 0;
                 const pronePrepHoldFrames = 48; // 0.8s at 60fps.
-                if (stance === 'crouching' && desiredStance === 'prone' && stationaryFrames < pronePrepHoldFrames) {
+                const targetDist = Math.abs(targetX - this.x);
+                const stanceHoldRange = Math.max(36, (Number(effectiveRange) || 0) + 50);
+                const shouldHoldByStance = (
+                    (stance === 'crouching' || stance === 'prone')
+                    && targetDist <= stanceHoldRange
+                    && this.commandMode !== 'move'
+                    && this.commandMode !== 'retreat'
+                    && !this.returnToBase
+                );
+                if (shouldHoldByStance) {
+                    if (this._infantryStanceHoldTarget !== target || !Number.isFinite(Number(this._infantryStanceHoldX))) {
+                        this._infantryStanceHoldTarget = target;
+                        this._infantryStanceHoldX = this.x;
+                    }
+                    this.x = Number(this._infantryStanceHoldX);
                     return;
                 }
+                if (stance === 'crouching' && desiredStance === 'prone' && stationaryFrames < pronePrepHoldFrames) {
+                    if (!Number.isFinite(Number(this._infantryStanceHoldX))) {
+                        this._infantryStanceHoldX = this.x;
+                    }
+                    this._infantryStanceHoldTarget = target;
+                    this.x = Number(this._infantryStanceHoldX);
+                    return;
+                }
+            }
+            if (this._infantryStanceHoldTarget === target || Number.isFinite(Number(this._infantryStanceHoldX))) {
+                this._infantryStanceHoldTarget = null;
+                this._infantryStanceHoldX = null;
             }
         }
 
@@ -4852,7 +4981,7 @@ class Unit extends Entity {
             const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
             // 스케일 다운
             ctx.save();
-            const baseScale = 0.52;
+            const baseScale = 0.48;
             const facing = (this.facing != null) ? this.facing : 1;
             const sx = (facing < 0 ? -1 : 1) * baseScale;
             ctx.scale(sx, baseScale);

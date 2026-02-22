@@ -483,30 +483,15 @@ const ui = {
             ? game.getVeteranSpawnEntries()
             : [];
         const veteranCountsByUnit = {};
-        const veteranHasItemByUnit = {};
+        const veteranItemCountByUnit = {};
         if (Array.isArray(veteranEntries)) {
             veteranEntries.forEach((entry) => {
                 const unitKey = String(entry?.unitKey || '').trim();
                 if (!unitKey) return;
                 veteranCountsByUnit[unitKey] = Math.max(0, Math.floor(Number(veteranCountsByUnit[unitKey]) || 0)) + 1;
-            });
-        }
-        // 아이템 장착 여부 체크: playerVeteransById에서 loadout 직접 확인
-        const _vetById = (typeof game !== 'undefined' && game && typeof game.playerVeteransById === 'object')
-            ? game.playerVeteransById
-            : null;
-        if (_vetById) {
-            Object.values(_vetById).forEach((vet) => {
-                const unitKey = String(vet?.unitKey || '').trim();
-                if (!unitKey) return;
-                const loadout = vet?.loadout;
-                if (!loadout || typeof loadout !== 'object') return;
-                const hasPassive = !!String(loadout.itemKey || '').trim();
-                const hasSkill = Array.isArray(loadout.skillItemKeys)
-                    && loadout.skillItemKeys.some((k) => !!String(k || '').trim());
-                if (hasPassive || hasSkill) {
-                    veteranHasItemByUnit[unitKey] = true;
-                }
+                const itemCount = Math.max(0, Math.floor(Number(entry?.itemCount) || 0));
+                const currentItemCount = Math.max(0, Math.floor(Number(veteranItemCountByUnit[unitKey]) || 0));
+                veteranItemCountByUnit[unitKey] = currentItemCount + itemCount;
             });
         }
 
@@ -545,8 +530,8 @@ const ui = {
             const veteranCount = Math.max(0, Math.floor(Number(veteranCountsByUnit[key]) || 0));
             if (cache.veteranBadge) {
                 if (!u.isSkill && u.droneLaunchOnly !== true && veteranCount > 0) {
-                    const hasItem = !!veteranHasItemByUnit[key];
-                    const badgeText = hasItem ? '1+' : `V${veteranCount}`;
+                    const itemCount = Math.max(0, Math.floor(Number(veteranItemCountByUnit[key]) || 0));
+                    const badgeText = `+${itemCount}`;
                     if (this.lastValues[key].veteranCount !== veteranCount || cache.veteranBadge.innerText !== badgeText) {
                         cache.veteranBadge.innerText = badgeText;
                     }
@@ -666,7 +651,7 @@ const ui = {
                 unitKey: String(entry.unitKey || ''),
                 category,
                 name: String(entry.displayName || unit?.name || entry.unitKey || ''),
-                level: Math.max(2, Math.floor(Number(entry.level) || 2)),
+                itemCount: Math.max(0, Math.floor(Number(entry.itemCount) || 0)),
                 stock,
                 enabled
             };
@@ -733,7 +718,7 @@ const ui = {
         const veteranMode = options && options.veteranMode === true;
         const category = String(options?.category || '').trim().toLowerCase();
         const signature = `${veteranMode ? 'veteran-mode' : 'legacy'}|${category || 'all'}|${safeRows.map((row) => (
-            `${row.id}|${row.unitKey}|${row.name}|${row.level}|${row.stock}|${row.enabled ? 1 : 0}`
+            `${row.id}|${row.unitKey}|${row.name}|${row.itemCount}|${row.stock}|${row.enabled ? 1 : 0}`
         )).join('||') || 'empty'}`;
         if (signature === this._veteranTabSignature) return;
         this._veteranTabSignature = signature;
@@ -761,7 +746,7 @@ const ui = {
             btn.className = 'veteran-tab-unit-btn';
             if (!row.enabled) btn.classList.add('disabled');
             btn.disabled = !row.enabled;
-            btn.title = `${row.name} (LV${row.level})`;
+            btn.title = `${row.name}`;
 
             const iconCanvas = this._createVeteranTabIconCanvas(row.unitKey);
             btn.appendChild(iconCanvas);
@@ -771,12 +756,19 @@ const ui = {
             nameSpan.textContent = row.name;
             btn.appendChild(nameSpan);
 
+            if (row.itemCount > 0) {
+                const itemBadge = document.createElement('span');
+                itemBadge.className = 'veteran-tab-item-badge';
+                itemBadge.textContent = `+${row.itemCount}`;
+                btn.appendChild(itemBadge);
+            }
+
             const footerRow = document.createElement('div');
             footerRow.className = 'veteran-tab-unit-footer';
 
             const lvSpan = document.createElement('span');
             lvSpan.className = 'veteran-tab-unit-lv';
-            lvSpan.textContent = `LV${row.level}`;
+            lvSpan.textContent = row.itemCount > 0 ? `+${row.itemCount}` : '';
             footerRow.appendChild(lvSpan);
 
             const stockSpan = document.createElement('span');

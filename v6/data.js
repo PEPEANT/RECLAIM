@@ -222,10 +222,25 @@
             operator: true,
             droneCharges: 1,
             droneRecallRefunds: 1,
-            detectRange: 650,        // [FIX v3] 더 멀리서 판단
+            detectRange: 1100,       // 자동 발진 시작 거리(아군 드론병 포함)
+            aiDetectRange: 1900,     // AI는 더 먼 거리에서 선발진
             coverOffset: 70,         // [FIX v3] 건물 뒤 자리 넉넉히
-            frontSpawnOffset: 140,   // [FIX v3] 스폰 위치 더 앞으로
-            launchPrepFrames: 90     // [FIX v3] 앉기+상승 포함
+            frontSpawnOffset: 80,    // 전방 발진 위치(플레이어) - 드론병 바로 앞
+            aiFrontSpawnOffset: 100, // 전방 발진 위치(AI) - 너무 멀지 않게 조정
+            launchPrepFrames: 90,    // [LEGACY] 기본 발진 프렙 총합(하위호환)
+            launchGroundHoldFrames: 140,   // 지상 대기(약 2.3초)
+            launchRiseFrames: 200,         // 상승(소폭 빠르게 조정)
+            launchHoverFrames: 30,         // 상공 호버(짧게 유지 후 공격)
+            aiLaunchGroundHoldFrames: 150, // AI는 더 길게 지상 대기
+            aiLaunchRiseFrames: 230,       // AI 상승 속도 소폭 상향
+            aiLaunchHoverFrames: 40,       // AI도 짧게 체공 후 공격
+            launchMaxRisePerFrame: 0.78,   // 프레임당 최대 상승(px) - 소폭 상향
+            aiLaunchMaxRisePerFrame: 0.68, // AI 프레임당 최대 상승(px) - 소폭 상향
+            launchCruiseHeight: 220,       // 이륙 직후 순항 고도(px)
+            attackCruiseHeight: 430,       // 공격 접근 순항 고도(px, 최소 헬기급)
+            attackDiveTriggerRange: 260,   // 이 거리부터 즉시 대각선 강하 돌입
+            dynamicRetargetEnabled: true,  // 순항/상승 중 더 좋은 표적이 보이면 재지정
+            dynamicRetargetMargin: 60      // 같은 우선순위일 때 최소 거리 이득(px)
         },
         drone_suicide: {
             id: 'drone_suicide', name: '자폭드론', cost: 35, cooldown: 60, maxCount: 20,
@@ -239,7 +254,7 @@
         drone_at: {
             id: 'drone_at', name: 'AT드론', cost: 55, cooldown: 100, maxCount: 12,
             hp: 40, damage: 700, range: 10, speed: 3.6, mobility: 10,
-            width: 24, height: 12, color: '#facc15', type: 'air', splash: true, lockOn: true, category: 'infantry',
+            width: 22, height: 11, color: '#facc15', type: 'air', splash: true, lockOn: true, category: 'infantry',
             splashRadius: 260,  // [FIX] 전술급 폭발
             role: '대전차', description: '장갑/건물을 우선 타격한다. 전술급 폭발로 광역 피해를 준다.',
             droneLaunchOnly: true,

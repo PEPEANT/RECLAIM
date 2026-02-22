@@ -398,6 +398,7 @@
         else if (type === 'death_exp2') file = 'bgm/boom/death-exp2.mp3';
         else if (type === 'death_exp3') file = 'bgm/boom/death-exp3.mp3';
         else if (type === 'nuke') file = 'bgm/boom/nuclear explosion .mp3';
+        else if (type === 'emp') file = 'bgm/boom/emp.mp3';
         else if (type === 'tactical_drone' || type === 'other') file = 'bgm/boom/boom-2.mp3';
         else if (type === 'artillery' || type === 'bomb' || type === 'stealth' || type === 'tactical' || type === 'spg' || type === 'bomber') file = 'bgm/boom/boom-3.mp3';
 

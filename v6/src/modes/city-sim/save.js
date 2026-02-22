@@ -15,8 +15,19 @@
     const VETERAN_FIXED_SKILL_SLOT_INDEX = 0;
     const VETERAN_DRONE_ITEM_TO_COMMAND = {
         drone_suicide_item: 'drone_suicide',
-        drone_at_item: 'drone_at'
+        drone_at_item: 'drone_at',
+        body_armor_d: '',
+        scope_d: '',
+        medkit_c: 'medkit'
     };
+    // 보병 카테고리 전용 스킬 슬롯 아이템 (construction.js / state.js와 동기화 유지)
+    const VETERAN_INFANTRY_ITEM_TO_COMMAND = {
+        smoke_grenade: 'smoke',
+        medkit_c: 'medkit',
+        body_armor_d: '',
+        scope_d: ''
+    };
+    const VETERAN_INFANTRY_UNIT_KEY_SET = new Set(['infantry', 'engineer', 'sniper', 'special_ops', 'worker']);
     const LOGIN_DEBUG_KEY = 'reclaim_login_debug';
     let pendingCityCloudSave = null;
     let pendingCityCloudUid = '';
@@ -318,9 +329,14 @@
         const unit = String(unitKey || '').trim();
         const key = sanitizeVeteranItemKey(value, unit);
         if (!key) return '';
-        if (unit !== 'drone_operator') return '';
-        if (!Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)) return '';
-        return key;
+        if (unit === 'drone_operator') {
+            if (Object.prototype.hasOwnProperty.call(VETERAN_DRONE_ITEM_TO_COMMAND, key)) return key;
+            return '';
+        }
+        if (VETERAN_INFANTRY_UNIT_KEY_SET.has(unit)) {
+            if (Object.prototype.hasOwnProperty.call(VETERAN_INFANTRY_ITEM_TO_COMMAND, key)) return key;
+        }
+        return '';
     }
 
     function getDefaultVeteranSkillItemKeys() {
@@ -535,6 +551,55 @@
         return next;
     }
 
+    function sanitizeDrillgroundVeteranSlots(rawSlots, expectedSize, grid, drillgroundSlots, veterans, allowedUnitKeys) {
+        const next = {};
+        if (!rawSlots || typeof rawSlots !== 'object' || Array.isArray(rawSlots)) return next;
+        if (!Array.isArray(grid)) return next;
+
+        const size = Math.max(0, Math.floor(Number(expectedSize) || 0));
+        if (grid.length !== size) return next;
+        const slots = (drillgroundSlots && typeof drillgroundSlots === 'object' && !Array.isArray(drillgroundSlots))
+            ? drillgroundSlots
+            : {};
+        const veteranList = Array.isArray(veterans) ? veterans : [];
+        const veteranUnitById = new Map();
+        veteranList.forEach((entry) => {
+            const id = String(entry?.id || '').trim();
+            const unitKey = String(entry?.unitKey || '').trim();
+            if (!id || !unitKey) return;
+            veteranUnitById.set(id, unitKey);
+        });
+
+        Object.keys(rawSlots).forEach((rawIndex) => {
+            const index = Number(rawIndex);
+            if (!Number.isInteger(index) || index < 0 || index >= size) return;
+            if (!isDrillgroundTile(grid[index])) return;
+            const slotUnitKey = String(slots[index] || '').trim();
+            if (!slotUnitKey) return;
+            if (allowedUnitKeys && !allowedUnitKeys.has(slotUnitKey)) return;
+            const veteranId = String(rawSlots[rawIndex] || '').trim();
+            if (!veteranId) return;
+            const veteranUnitKey = String(veteranUnitById.get(veteranId) || '').trim();
+            if (!veteranUnitKey || veteranUnitKey !== slotUnitKey) return;
+            if (allowedUnitKeys && !allowedUnitKeys.has(veteranUnitKey)) return;
+            next[index] = veteranId;
+        });
+
+        return next;
+    }
+
+    function serializeDrillgroundVeteranSlots(rawSlots, grid, drillgroundSlots, veterans, allowedUnitKeys) {
+        if (!Array.isArray(grid)) return {};
+        return sanitizeDrillgroundVeteranSlots(
+            rawSlots,
+            grid.length,
+            grid,
+            drillgroundSlots,
+            veterans,
+            allowedUnitKeys
+        );
+    }
+
     function serializeDrillgroundInfantryCounts(rawCounts, grid, drillgroundSlots, allowedUnitKeys) {
         const next = {};
         if (!rawCounts || typeof rawCounts !== 'object' || Array.isArray(rawCounts)) return next;
@@ -734,6 +799,7 @@
             ground: Array.isArray(defaultState.ground) ? defaultState.ground.slice() : [],
             drillgroundSlots: {},
             drillgroundInfantryCounts: {},
+            drillgroundVeteranSlots: {},
             productionCooldowns: {},
             incomeSlots: {},
             taxAuto: sanitizeTaxAuto(defaultState.taxAuto),
@@ -906,6 +972,7 @@
                 : new Array(Math.max(1, defaults.cols * defaults.rows)).fill('grass'),
             drillgroundSlots: {},
             drillgroundInfantryCounts: {},
+            drillgroundVeteranSlots: {},
             productionCooldowns: {},
             incomeSlots: {},
             taxAuto: isCompatible
@@ -951,6 +1018,14 @@
                 expectedSize,
                 next.grid,
                 next.drillgroundSlots,
+                allowedUnitKeys
+            );
+            next.drillgroundVeteranSlots = sanitizeDrillgroundVeteranSlots(
+                loaded?.drillgroundVeteranSlots,
+                expectedSize,
+                next.grid,
+                next.drillgroundSlots,
+                next.veterans,
                 allowedUnitKeys
             );
             next.productionCooldowns = sanitizeProductionCooldowns(
@@ -1060,6 +1135,13 @@
                 state.drillgroundInfantryCounts,
                 state.grid,
                 state.drillgroundSlots,
+                allowedUnitKeys
+            ),
+            drillgroundVeteranSlots: serializeDrillgroundVeteranSlots(
+                state.drillgroundVeteranSlots,
+                state.grid,
+                state.drillgroundSlots,
+                state.veterans,
                 allowedUnitKeys
             ),
             productionCooldowns: serializeProductionCooldowns(state.productionCooldowns, state.grid),

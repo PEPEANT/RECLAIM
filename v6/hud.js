@@ -807,8 +807,10 @@ const HUD = {
             }
             return null;
         };
+        const directControlUnitId = String((ctx.directControlUnit && ctx.directControlUnit.stats && ctx.directControlUnit.stats.id) || '').trim();
+        const isDirectControlOperator = ctx.directControlActive && directControlUnitId === 'drone_operator';
         let directControlInteract = null;
-        if (ctx.directControlActive) {
+        if (ctx.directControlActive && !isDirectControlOperator) {
             directControlInteract = 'direct_fire';
         } else if (ctx.canDirectControlStart) {
             directControlInteract = 'control_start';
@@ -839,7 +841,9 @@ const HUD = {
             const mode = (typeof game.getDroneControlMode === 'function')
                 ? game.getDroneControlMode()
                 : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
-            map.interact = directControlInteract || ((mode === 'manual') ? 'drone_auto' : 'drone_manual');
+            // For drone operators, interact slot stays dedicated to drone mode toggle
+            // so lockdown/manual flow remains usable even during direct control.
+            map.interact = (mode === 'manual') ? 'drone_auto' : 'drone_manual';
             return map;
         }
 
@@ -1524,21 +1528,13 @@ const HUD = {
             game.selectedBuilding.team === 'player'
         );
 
-        // Keep veteran/special tab behavior unchanged
+        // Special tab is removed from combat UI.
         const tabSpecial = document.getElementById('tab-special');
-        const hasAnySelection = (game.selectedUnits && game.selectedUnits.size > 0) || game.selectedBuilding || this.checkWorkerSelected();
-
         if (tabSpecial) {
-            if (isHQSelected) {
-                tabSpecial.style.display = 'none';
-                if (game.currentCategory === 'special') {
-                    game.setCategory('infantry');
-                }
-            } else if (!hasAnySelection) {
-                tabSpecial.style.display = '';
-                game.setCategory('special');
-            } else {
-                tabSpecial.style.display = '';
+            tabSpecial.style.display = 'none';
+            tabSpecial.classList.add('hidden');
+            if (game.currentCategory === 'special') {
+                game.setCategory('infantry');
             }
         }
 

@@ -608,6 +608,18 @@
             smoke: { spd: 2.1, liftMin: 1.0, liftMax: 3.2, lifeMin: 55, lifeMax: 120, rMin: 12, rMax: 36 },
             dust: { spd: 15, lifeMin: 26, lifeMax: 72, rMin: 4, rMax: 10 }
         },
+        emp: {
+            life: 1.35,
+            decay: 0.026,
+            shake: 9,
+            flash: 0.42,
+            wave: { maxR: 760, speed: 40, width: 20, color: 'rgba(90,245,255,0.88)', life: 1.0 },
+            count: { fire: 12, dust: 0, smoke: 28, spark: 68 },
+            fire: { spdMin: 0.6, spdMax: 4.2, spread: 0.9, liftMin: 2, liftMax: 6, lifeMin: 16, lifeMax: 42, rMin: 3, rMax: 8 },
+            spark: { spdMin: 10, spdMax: 28, lifeMin: 12, lifeMax: 30, rMin: 1.0, rMax: 2.6 },
+            smoke: { spd: 1.2, liftMin: 0.6, liftMax: 1.8, lifeMin: 40, lifeMax: 100, rMin: 8, rMax: 24 },
+            dust: { spd: 0, lifeMin: 0, lifeMax: 0, rMin: 0, rMax: 0 }
+        },
 
         // [ADD] 비행 트레일용 (전술미사일 비행)
         trail: {
@@ -729,13 +741,13 @@
     // Public API
     // ==========================
     const VFX = {
-        // kind: 'nuke' | 'bomb' | 'artillery' | 'drone' | 'stealth' | 'at'
+        // kind: 'nuke' | 'tactical' | 'emp' | 'bomb' | 'artillery' | 'drone' | 'stealth' | 'at'
         spawnExplosion(game, kind, x, y, opts) {
             if (!game || !game.particles) return;
 
             const presetBase = PRESETS[kind] || PRESETS.drone;
             // Keep flash/wave only for nuke and tactical kinds.
-            const keepFlashWave = (kind === 'nuke' || kind === 'tactical');
+            const keepFlashWave = (kind === 'nuke' || kind === 'tactical' || kind === 'emp');
             let preset = keepFlashWave
                 ? presetBase
                 : Object.assign({}, presetBase, { flash: 0, wave: null });
@@ -746,17 +758,18 @@
             const groundY = (opts && opts.groundY != null) ? opts.groundY : (game.groundY != null ? game.groundY : y);
 
             // y 고정 규칙:
-            // - nuke/bomb/artillery/stealth/vehicle: 지면 고정
+            // - nuke/emp/bomb/artillery/stealth/vehicle: 지면 고정
             // - drone/at/airburst/aircraft: 월드 좌표 사용(공중/지상 모두 가능)
             const anchorGround = (opts && typeof opts.anchorGround === 'boolean')
                 ? opts.anchorGround
-                : (kind === 'nuke' || kind === 'bomb' || kind === 'artillery' || kind === 'stealth' || kind === 'vehicle' || kind === 'tactical' || kind === 'tank_shell');
+                : (kind === 'nuke' || kind === 'emp' || kind === 'bomb' || kind === 'artillery' || kind === 'stealth' || kind === 'vehicle' || kind === 'tactical' || kind === 'tank_shell');
 
             const gy = anchorGround ? groundY : y;
 
             // scale: 화면/줌 기준 자동 조절
             let base =
                 (kind === 'nuke') ? 1.25 :
+                    (kind === 'emp') ? 1.06 :
                     (kind === 'tactical') ? 0.98 :
                         (kind === 'vehicle') ? 0.90 :
                             (kind === 'tank_shell') ? 1.08 :

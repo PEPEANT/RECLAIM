@@ -132,6 +132,19 @@
         return 0;
     }
 
+    function formatChatDateTime(value) {
+        const ms = Math.max(0, Math.floor(toNumber(value, 0)));
+        if (ms <= 0) return '';
+        const date = new Date(ms);
+        if (!Number.isFinite(date.getTime())) return '';
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, '0');
+        const d = String(date.getDate()).padStart(2, '0');
+        const hh = String(date.getHours()).padStart(2, '0');
+        const mm = String(date.getMinutes()).padStart(2, '0');
+        return `${y}-${m}-${d} ${hh}:${mm}`;
+    }
+
     function initials(name) {
         const s = String(name || '').trim();
         if (!s) return '?';
@@ -1104,14 +1117,16 @@
             for (let i = 0; i < _chatMessages.length; i += 1) {
                 const msg = _chatMessages[i];
                 const mine = !!(myUid && msg.uid === myUid);
+                const timeText = formatChatDateTime(msg.createdAtMs);
+                const timeHtml = timeText ? `<span class="chat-msg-time">${escapeHtml(timeText)}</span>` : '';
                 if (msg.uid === 'system') {
-                    msgsHtml += `<div class="chat-msg system">${escapeHtml(msg.text)}</div>`;
+                    msgsHtml += `<div class="chat-msg system">${timeHtml}<div class="chat-msg-text">${escapeHtml(msg.text)}</div></div>`;
                 } else if (mine) {
                     const avatarHtml = renderAvatarHtml('chat-avatar', msg.avatarUrl, msg.sender, `${msg.sender} avatar`);
-                    msgsHtml += `<div class="chat-msg mine"><div class="chat-msg-head mine">${avatarHtml}</div><div class="chat-msg-text">${escapeHtml(msg.text)}</div></div>`;
+                    msgsHtml += `<div class="chat-msg mine"><div class="chat-msg-head mine">${timeHtml}${avatarHtml}</div><div class="chat-msg-text">${escapeHtml(msg.text)}</div></div>`;
                 } else {
                     const avatarHtml = renderAvatarHtml('chat-avatar', msg.avatarUrl, msg.sender, `${msg.sender} avatar`);
-                    msgsHtml += `<div class="chat-msg other"><div class="chat-msg-head">${avatarHtml}<div class="chat-msg-sender">${escapeHtml(msg.sender)}</div></div><div class="chat-msg-text">${escapeHtml(msg.text)}</div></div>`;
+                    msgsHtml += `<div class="chat-msg other"><div class="chat-msg-head">${avatarHtml}<div class="chat-msg-sender">${escapeHtml(msg.sender)}</div>${timeHtml}</div><div class="chat-msg-text">${escapeHtml(msg.text)}</div></div>`;
                 }
             }
         }

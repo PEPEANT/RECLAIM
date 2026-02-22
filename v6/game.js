@@ -1410,10 +1410,22 @@ const game = {
         if (!cityState.drillgroundInfantryCounts || typeof cityState.drillgroundInfantryCounts !== 'object') {
             cityState.drillgroundInfantryCounts = {};
         }
+        if (!cityState.drillgroundVeteranSlots || typeof cityState.drillgroundVeteranSlots !== 'object') {
+            cityState.drillgroundVeteranSlots = {};
+        }
 
         const cityUnits = cityState.units;
         const drillgroundSlots = cityState.drillgroundSlots;
         const drillgroundInfantryCounts = cityState.drillgroundInfantryCounts;
+        const drillgroundVeteranSlots = cityState.drillgroundVeteranSlots;
+        const allVeteransForDrillground = Array.isArray(cityState.veterans) ? cityState.veterans : [];
+        const veteranUnitById = new Map();
+        allVeteransForDrillground.forEach((entry) => {
+            const id = String(entry?.id || '').trim();
+            const unitKey = String(entry?.unitKey || '').trim();
+            if (!id || !unitKey) return;
+            veteranUnitById.set(id, unitKey);
+        });
         const drillgroundUnitCounts = {};
         let recoveredDrillgroundSlots = false;
 
@@ -1424,6 +1436,7 @@ const game = {
             if (!unitKey) {
                 delete drillgroundSlots[rawIndex];
                 delete drillgroundInfantryCounts[rawIndex];
+                delete drillgroundVeteranSlots[rawIndex];
                 recoveredDrillgroundSlots = true;
                 return;
             }
@@ -1432,8 +1445,16 @@ const game = {
             if (!unit) {
                 delete drillgroundSlots[rawIndex];
                 delete drillgroundInfantryCounts[rawIndex];
+                delete drillgroundVeteranSlots[rawIndex];
                 recoveredDrillgroundSlots = true;
                 return;
+            }
+            const veteranId = String(drillgroundVeteranSlots[rawIndex] || '').trim();
+            const veteranUnitKey = String(veteranUnitById.get(veteranId) || '').trim();
+            const isVeteranSlot = !!(veteranId && veteranUnitKey === unitKey);
+            if (veteranId && !isVeteranSlot) {
+                delete drillgroundVeteranSlots[rawIndex];
+                recoveredDrillgroundSlots = true;
             }
 
             const unitType = String(unit.type || '').trim().toLowerCase();
@@ -1452,6 +1473,7 @@ const game = {
                 cityUnits[unitKey] = current + 1;
                 delete drillgroundSlots[rawIndex];
                 delete drillgroundInfantryCounts[rawIndex];
+                delete drillgroundVeteranSlots[rawIndex];
                 recoveredDrillgroundSlots = true;
                 return;
             }
@@ -1459,11 +1481,20 @@ const game = {
             if (blockedForDrillground) {
                 delete drillgroundSlots[rawIndex];
                 delete drillgroundInfantryCounts[rawIndex];
+                delete drillgroundVeteranSlots[rawIndex];
                 recoveredDrillgroundSlots = true;
                 return;
             }
 
             const isInfantry = unitCategory === 'infantry';
+            if (isVeteranSlot) {
+                if (Object.prototype.hasOwnProperty.call(drillgroundInfantryCounts, rawIndex)) {
+                    delete drillgroundInfantryCounts[rawIndex];
+                    recoveredDrillgroundSlots = true;
+                }
+                return;
+            }
+
             const slotCount = isInfantry
                 ? Math.max(1, Math.min(4, Math.floor(Number(drillgroundInfantryCounts?.[rawIndex]) || 1)))
                 : 1;
@@ -1572,6 +1603,17 @@ const game = {
             const unit = CONFIG.units[veteran.unitKey];
             if (!unit || unit.disabled === true || unit.isSkill === true) return;
             const stock = Math.max(0, Math.floor(Number(this.playerVeteranStock?.[veteranId]) || 0));
+            const skillKeys = Array.isArray(veteran?.loadout?.skillItemKeys)
+                ? veteran.loadout.skillItemKeys
+                : [];
+            let itemCount = 0;
+            for (let i = 0; i < skillKeys.length; i++) {
+                if (String(skillKeys[i] || '').trim()) itemCount += 1;
+            }
+            const passiveItemKey = String(veteran?.loadout?.itemKey || '').trim();
+            if (passiveItemKey && !skillKeys.some((key) => String(key || '').trim() === passiveItemKey)) {
+                itemCount += 1;
+            }
             list.push({
                 id: veteran.id,
                 unitKey: veteran.unitKey,
@@ -1579,7 +1621,8 @@ const game = {
                 level: veteran.level,
                 name: String(veteran.name || '').trim(),
                 displayName: String(veteran.name || '').trim() || String(unit.name || veteran.unitKey),
-                stock
+                stock,
+                itemCount: Math.max(0, Math.floor(Number(itemCount) || 0))
             });
         });
         return list;
