@@ -13,6 +13,7 @@
     let initialized = false;
     let lastSyncedUid = '';
     let lastLoginQuestGrantUid = '';
+    let lastGuestQuestLedgerResetUid = '';
     let guestSessionActive = false;
     let authBusy = false;
     let syncInFlight = null;
@@ -915,6 +916,7 @@
         }
 
         guestSessionActive = false;
+        lastGuestQuestLedgerResetUid = '';
         cancelAuth();
         await syncCloudState(uid, targetGame, forceSync, reason, flowToken);
 
@@ -1023,6 +1025,7 @@
         if (guestUid) {
             removeGuestRankingEntry(guestUid);
         }
+        clearGuestQuestClaimLedger(guestUid);
 
         const keys = new Set();
         keys.add('CT_STATE_V1');
@@ -1047,11 +1050,37 @@
         });
 
         guestSessionActive = false;
+        lastGuestQuestLedgerResetUid = '';
         lastSyncedUid = '';
         syncTicket += 1;
         syncInFlight = null;
         syncInFlightUid = '';
+        // Remove-memory state must also be reloaded from cleared storage.
+        // Otherwise autosave can immediately rewrite stale quest/progress back.
+        reloadSessionState(activeGame || global.game || null);
         updateSessionUi(getCurrentUser());
+    }
+
+    function clearGuestQuestClaimLedger(guestUid) {
+        const ledgerKey = 'reclaim_city_quest_claim_ledger_v1';
+        const uid = String(guestUid || '').trim();
+        try {
+            const raw = localStorage.getItem(ledgerKey);
+            if (!raw) return;
+            const parsed = JSON.parse(raw);
+            if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
+            let changed = false;
+            const targets = new Set(['__guest__']);
+            if (uid) targets.add(uid);
+            targets.forEach((key) => {
+                if (!Object.prototype.hasOwnProperty.call(parsed, key)) return;
+                delete parsed[key];
+                changed = true;
+            });
+            if (changed) {
+                localStorage.setItem(ledgerKey, JSON.stringify(parsed));
+            }
+        } catch (_) { }
     }
 
     function setError(errorId, message) {
@@ -1279,6 +1308,7 @@
         try {
         activeGame = game || null;
         guestSessionActive = false;
+        lastGuestQuestLedgerResetUid = '';
         clearAllErrors();
         closeAllModals();
         clearGoogleVerifyState();
@@ -1341,6 +1371,12 @@
         authBusy = true;
         try {
             activeGame = game || null;
+            lastGuestQuestLedgerResetUid = '';
+            const existingUser = getCurrentUser();
+            const existingGuestUid = (existingUser && existingUser.uid && isAnonymousUser(existingUser))
+                ? String(existingUser.uid)
+                : '';
+            clearGuestQuestClaimLedger(existingGuestUid);
 
             guestSessionActive = true;
             lastSyncedUid = '';
@@ -1470,6 +1506,7 @@
 
         const gameRef = activeGame;
         guestSessionActive = false;
+        lastGuestQuestLedgerResetUid = '';
         cancelAuth();
 
         if (enterCity(gameRef)) {
@@ -1757,6 +1794,7 @@
                 clearForceSignOutArm();
                 guestSessionActive = false;
                 lastSyncedUid = '';
+                lastGuestQuestLedgerResetUid = '';
                 lastLoginQuestGrantUid = '';
                 syncTicket += 1;
                 syncInFlight = null;
@@ -1826,6 +1864,7 @@
             await fb.signOut();
             clearForceSignOutArm();
             lastSyncedUid = '';
+            lastGuestQuestLedgerResetUid = '';
             lastLoginQuestGrantUid = '';
             guestSessionActive = false;
             syncTicket += 1;
@@ -2026,6 +2065,11 @@
                     const flowToken = Math.max(0, Math.floor(Number(authFlowToken) || 0));
 
                     if (isGuestAuthUser) {
+                        if (lastGuestQuestLedgerResetUid !== authUid) {
+                            clearGuestQuestClaimLedger(authUid);
+                            lastGuestQuestLedgerResetUid = authUid;
+                            reloadSessionState(gameRef);
+                        }
                         lastSyncedUid = '';
                         lastLoginQuestGrantUid = '';
                         if (typeof CitySimChat !== 'undefined' && CitySimChat && typeof CitySimChat.syncMyProfile === 'function') {
@@ -2082,6 +2126,7 @@
                     }
                 } else {
                     lastSyncedUid = '';
+                    lastGuestQuestLedgerResetUid = '';
                     lastLoginQuestGrantUid = '';
                     syncTicket += 1;
                     syncInFlight = null;

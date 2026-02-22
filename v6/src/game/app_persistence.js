@@ -856,7 +856,35 @@
         const mainQuestMission = (st.progress?.cityQuestMission && typeof st.progress.cityQuestMission === 'object')
             ? st.progress.cityQuestMission
             : null;
-        const existingQuestMission = (game.cityQuestMission && typeof game.cityQuestMission === 'object')
+        const fb = (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB) ? RECLAIM_FB : null;
+        const saveBridge = (typeof RECLAIM_SAVE !== 'undefined' && RECLAIM_SAVE) ? RECLAIM_SAVE : null;
+        const authApi = (typeof CitySimAuth !== 'undefined' && CitySimAuth) ? CitySimAuth : null;
+        const user = (fb && typeof fb.getUser === 'function') ? fb.getUser() : null;
+        const isAnonAuthUser = !!(user && user.uid && user.isAnonymous === true);
+        const rawGuestSession = !!(authApi && typeof authApi.isGuestSession === 'function' && authApi.isGuestSession());
+        const guestSession = isAnonAuthUser || (rawGuestSession && !user);
+        const uid = user && user.uid ? String(user.uid) : '';
+        const hasUid = uid.length > 0;
+        const authTransitioning = !!(authApi && typeof authApi.isAuthTransitioning === 'function' && authApi.isAuthTransitioning());
+        const firebaseReady = !!(fb && typeof fb.isReady === 'function' && fb.isReady());
+        const localOwnerUid = readLocalOwnerUidForDebug(this.STORAGE_KEY);
+        const unresolvedUidBootFallbackAllowed = (!hasUid
+            && !guestSession
+            && !authTransitioning
+            && (!firebaseReady || !localOwnerUid));
+        const localOwnedByUid = guestSession
+            ? false
+            : ((!saveBridge || typeof saveBridge.isLocalOwnedBy !== 'function')
+                ? true
+                : (!hasUid ? unresolvedUidBootFallbackAllowed : !!saveBridge.isLocalOwnedBy('main', uid)));
+        const allowRuntimeQuestFallback = (
+            !guestSession
+            && localOwnedByUid
+            && !!mainQuestMission
+        );
+        const existingQuestMission = (allowRuntimeQuestFallback
+            && game.cityQuestMission
+            && typeof game.cityQuestMission === 'object')
             ? game.cityQuestMission
             : null;
         const questMissionPayload = pickQuestState(mainQuestMission, existingQuestMission);

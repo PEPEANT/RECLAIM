@@ -167,7 +167,16 @@
         if (!a && b) return cloneJson(b) || b;
 
         const recurringIds = new Set(['kill_contract', 'victory_contract']);
+        const permanentOneTimeIds = new Set([
+            'login_supply_box',
+            'skirmish_first_win_supply_box',
+            'lunar_new_year_gift',
+            'event_v62_supply_gift',
+            'event_veteran_update_gift',
+            'event_visit_update_gift'
+        ]);
         const isRecurringQuestId = (id) => recurringIds.has(String(id || '').trim());
+        const isPermanentOneTimeQuestId = (id) => permanentOneTimeIds.has(String(id || '').trim());
         const statusRank = (status) => {
             const key = String(status || '').trim();
             if (key === 'claimed') return 2;
@@ -180,6 +189,7 @@
             const quests = (state.quests && typeof state.quests === 'object') ? state.quests : {};
             let claimed = 0;
             Object.keys(quests).forEach((id) => {
+                if (!isPermanentOneTimeQuestId(id)) return;
                 if (String(quests[id]?.status || '') === 'claimed') claimed += 1;
             });
             const kill = Math.max(0, Math.floor(Number(counters.kill) || 0));
@@ -246,7 +256,7 @@
             const srcTarget = Math.max(0, Math.floor(Number(src.target) || 0));
             if (srcTarget > 0 && dstTarget <= 0) dst.target = srcTarget;
 
-            if (!isRecurringQuestId(id) && (statusRank(dst.status) >= 2 || srcRank >= 2)) {
+            if (isPermanentOneTimeQuestId(id) && (statusRank(dst.status) >= 2 || srcRank >= 2)) {
                 dst.status = 'claimed';
                 dst.progress = Math.max(dst.progress, dstTarget, srcTarget);
             }
@@ -289,14 +299,14 @@
         const permanentB = Array.isArray(otherMeta.permanentClaimed) ? otherMeta.permanentClaimed : [];
         permanentA.concat(permanentB).forEach((id) => {
             const key = String(id || '').trim();
-            if (!key || isRecurringQuestId(key)) return;
+            if (!key || !isPermanentOneTimeQuestId(key)) return;
             permanentSet.add(key);
         });
 
         Object.keys(baseQuests).forEach((id) => {
             const quest = baseQuests[id];
             if (!quest || typeof quest !== 'object') return;
-            if (isRecurringQuestId(id)) return;
+            if (!isPermanentOneTimeQuestId(id)) return;
             if (String(quest.status || '') !== 'claimed') return;
             permanentSet.add(String(id || '').trim());
         });
@@ -304,7 +314,7 @@
         if (baseMeta.skirmishFirstWinClaimed === true) permanentSet.add('skirmish_first_win_supply_box');
 
         permanentSet.forEach((id) => {
-            if (!id || isRecurringQuestId(id)) return;
+            if (!id || !isPermanentOneTimeQuestId(id)) return;
             const quest = baseQuests[id];
             if (!quest || typeof quest !== 'object') return;
             const target = Math.max(1, Math.floor(Number(quest.target) || 1));
@@ -1089,18 +1099,26 @@
         const loadedQuestMission = (loaded && loaded.questMission && typeof loaded.questMission === 'object')
             ? loaded.questMission
             : null;
-        const currentQuestMission = (game && game.cityQuestMission && typeof game.cityQuestMission === 'object')
+        const allowRuntimeQuestFallback = (
+            !guestSession
+            && localOwnedByUid
+            && !!loadedQuestMission
+        );
+        const currentQuestMission = (allowRuntimeQuestFallback
+            && game
+            && game.cityQuestMission
+            && typeof game.cityQuestMission === 'object')
             ? game.cityQuestMission
             : null;
         const mergedQuestMission = mergeQuestMissionState(loadedQuestMission, currentQuestMission);
-        if (mergedQuestMission) {
-            if (typeof CityQuestMission !== 'undefined'
-                && CityQuestMission
-                && typeof CityQuestMission.hydrate === 'function') {
-                CityQuestMission.hydrate(game, mergedQuestMission);
-            } else {
-                game.cityQuestMission = mergedQuestMission;
-            }
+        if (typeof CityQuestMission !== 'undefined'
+            && CityQuestMission
+            && typeof CityQuestMission.hydrate === 'function') {
+            CityQuestMission.hydrate(game, mergedQuestMission);
+        } else if (game && typeof game === 'object') {
+            game.cityQuestMission = (mergedQuestMission && typeof mergedQuestMission === 'object')
+                ? mergedQuestMission
+                : {};
         }
         const finalLoadedSource = loadedSource === 'none' ? 'default' : loadedSource;
         const uidUnresolvedLocalFallback = (!hasUid && finalLoadedSource === 'local');

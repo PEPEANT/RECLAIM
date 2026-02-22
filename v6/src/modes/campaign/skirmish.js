@@ -486,6 +486,38 @@
             return true;
         },
 
+        _scanCityInfrastructure(cityState) {
+            const grid = Array.isArray(cityState?.grid) ? cityState.grid : [];
+            let hasFactory = false;
+            let hasAirport = false;
+            for (let i = 0; i < grid.length; i += 1) {
+                const tile = String(grid[i] || '').trim().toLowerCase();
+                if (!tile) continue;
+                if (tile === 'factory') hasFactory = true;
+                if (tile === 'airport' || tile.startsWith('airport_')) hasAirport = true;
+                if (hasFactory && hasAirport) break;
+            }
+            return { hasFactory, hasAirport };
+        },
+
+        _isFactoryRestrictedStorageUnit(unitId, unitDef) {
+            if (!unitDef || unitDef.isSkill === true) return false;
+            const key = String(unitId || '').trim().toLowerCase();
+            if (key === 'humvee' || key === 'apc' || key === 'mbt' || key === 'aa_tank' || key === 'spg') return true;
+            const category = String(unitDef.category || '').trim().toLowerCase();
+            const type = String(unitDef.type || '').trim().toLowerCase();
+            return category === 'armored' || type === 'mech';
+        },
+
+        _isAirportRestrictedStorageUnit(unitId, unitDef) {
+            if (!unitDef || unitDef.isSkill === true) return false;
+            const key = String(unitId || '').trim().toLowerCase();
+            if (key === 'fighter' || key === 'apache' || key === 'blackhawk' || key === 'chinook' || key === 'bomber') return true;
+            const category = String(unitDef.category || '').trim().toLowerCase();
+            const type = String(unitDef.type || '').trim().toLowerCase();
+            return category === 'air' || type === 'air';
+        },
+
         _collectStorageUnitCounts(game) {
             const out = {};
             if (!game || !game.citySim || typeof game.citySim !== 'object') return out;
@@ -495,11 +527,18 @@
                 ? CitySimState.ensure(game)
                 : game.citySim;
             if (!cityState || typeof cityState !== 'object') return out;
+            const infra = this._scanCityInfrastructure(cityState);
 
             const addCount = (unitId, amount) => {
                 const key = String(unitId || '').trim();
                 if (!key) return;
                 if (!this._isStorageEligibleUnit(key)) return;
+                const unitDef = (typeof CONFIG !== 'undefined' && CONFIG && CONFIG.units)
+                    ? CONFIG.units[key]
+                    : null;
+                if (!unitDef) return;
+                if (!infra.hasFactory && this._isFactoryRestrictedStorageUnit(key, unitDef)) return;
+                if (!infra.hasAirport && this._isAirportRestrictedStorageUnit(key, unitDef)) return;
                 const qty = Math.max(0, Math.floor(Number(amount) || 0));
                 if (qty <= 0) return;
                 out[key] = Math.max(0, Math.floor(Number(out[key]) || 0)) + qty;
@@ -1477,6 +1516,11 @@
 
             if (this._stockBackup && this._game) {
                 this._game.playerStock = { ...this._stockBackup };
+                if (typeof BattleEconomy !== 'undefined'
+                    && BattleEconomy
+                    && typeof BattleEconomy.syncCityToStock === 'function') {
+                    BattleEconomy.syncCityToStock(this._game);
+                }
                 if (typeof app !== 'undefined') {
                     app.markUiDirty();
                 }

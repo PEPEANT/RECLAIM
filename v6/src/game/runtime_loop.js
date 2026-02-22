@@ -60,10 +60,16 @@
             }
         }
 
-        if (game.supply < CONFIG.maxSupply) game.supply += CONFIG.supplyRate;
-        const enemySupplyRate = Number(game.enemySupplyRate);
-        const enemyRate = Number.isFinite(enemySupplyRate) ? Math.max(0, enemySupplyRate) : CONFIG.supplyRate;
-        if (game.enemySupply < CONFIG.maxSupply) game.enemySupply += enemyRate;
+        if (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.regenerate === 'function') {
+            BattleEconomy.regenerate(game);
+        } else {
+            if (game.supply < CONFIG.maxSupply) game.supply += CONFIG.supplyRate;
+            const enemySupplyRate = Number(game.enemySupplyRate);
+            const enemyRate = Number.isFinite(enemySupplyRate) ? Math.max(0, enemySupplyRate) : CONFIG.supplyRate;
+            if (game.enemySupply < CONFIG.maxSupply) game.enemySupply += enemyRate;
+        }
 
         game.processQueue();
 

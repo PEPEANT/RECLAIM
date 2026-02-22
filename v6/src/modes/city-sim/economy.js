@@ -52,18 +52,223 @@
         return LEVEL_BADGE_BY_LEVEL[safeLevel] || LEVEL_BADGE_BY_LEVEL[MIN_CITY_LEVEL];
     }
 
-    function canPayCost(game, cost) {
+    function clampAmount(value) {
+        return Math.max(0, Math.floor(Number(value) || 0));
+    }
+
+    function addToCountMap(out, key, value) {
+        const k = String(key || '').trim();
+        const amount = clampAmount(value);
+        if (!k || amount <= 0) return;
+        out[k] = clampAmount(out[k]) + amount;
+    }
+
+    function normalizeCountMap(rawMap) {
+        const src = (rawMap && typeof rawMap === 'object' && !Array.isArray(rawMap)) ? rawMap : {};
+        const out = {};
+        Object.keys(src).forEach((key) => {
+            addToCountMap(out, key, src[key]);
+        });
+        return out;
+    }
+
+    function normalizeChargePayload(cost) {
+        const src = (cost && typeof cost === 'object') ? cost : {};
+        const itemCosts = normalizeCountMap(src.items);
+        const costItemKey = String(src.costItemKey || '').trim();
+        const costItemCount = clampAmount(src.costItemCount);
+        if (costItemKey && costItemCount > 0) {
+            addToCountMap(itemCosts, costItemKey, costItemCount);
+        }
+        return {
+            money: clampAmount(src.costMoney ?? src.money),
+            gold: clampAmount(src.costGold ?? src.gold),
+            honor: clampAmount(src.costHonor ?? src.honor),
+            items: itemCosts
+        };
+    }
+
+    function normalizeGrantPayload(reward) {
+        const src = (reward && typeof reward === 'object') ? reward : {};
+        const units = normalizeCountMap(src.units);
+        const veteranItems = normalizeCountMap(src.veteranItems);
+        const items = normalizeCountMap(src.items);
+
+        const unitKey = String(src.unitKey || '').trim();
+        const unitAmount = clampAmount(src.unitAmount ?? src.amount);
+        if (unitKey && unitAmount > 0) addToCountMap(units, unitKey, unitAmount);
+
+        const veteranItemKey = String(src.veteranItemKey || '').trim();
+        const veteranItemAmount = clampAmount(src.veteranItemAmount ?? src.veteranItemCount);
+        if (veteranItemKey && veteranItemAmount > 0) {
+            addToCountMap(veteranItems, veteranItemKey, veteranItemAmount);
+        }
+
+        const itemKey = String(src.itemKey || '').trim();
+        const itemAmount = clampAmount(src.itemAmount ?? src.itemCount);
+        if (itemKey && itemAmount > 0) addToCountMap(items, itemKey, itemAmount);
+
+        return {
+            money: clampAmount(src.money),
+            gold: clampAmount(src.gold),
+            honor: clampAmount(src.honor),
+            units,
+            veteranItems,
+            items
+        };
+    }
+
+    function canCharge(game, cost) {
+        if (!game || typeof CitySimState === 'undefined' || !CitySimState || typeof CitySimState.ensure !== 'function') {
+            return false;
+        }
+        const need = normalizeChargePayload(cost);
         const state = CitySimState.ensure(game);
-        const money = Number(state.res?.money) || 0;
-        const need = Number(cost?.costMoney) || 0;
-        return money >= need;
+        const money = clampAmount(state?.res?.money);
+        const gold = clampAmount(state?.res?.gold);
+        const honor = clampAmount(state?.hud?.honor);
+        if (money < need.money) return false;
+        if (gold < need.gold) return false;
+        if (honor < need.honor) return false;
+        const ownedItems = (state?.items && typeof state.items === 'object') ? state.items : {};
+        const itemKeys = Object.keys(need.items);
+        for (let i = 0; i < itemKeys.length; i += 1) {
+            const key = itemKeys[i];
+            if (clampAmount(ownedItems[key]) < need.items[key]) return false;
+        }
+        return true;
+    }
+
+    function charge(game, cost, options) {
+        if (!canCharge(game, cost)) return false;
+        const need = normalizeChargePayload(cost);
+        const opts = (options && typeof options === 'object') ? options : {};
+        CitySimState.mutate(game, (draft) => {
+            if (!draft.res || typeof draft.res !== 'object') draft.res = {};
+            if (!draft.hud || typeof draft.hud !== 'object') draft.hud = {};
+            if (!draft.items || typeof draft.items !== 'object') draft.items = {};
+
+            if (need.money > 0) {
+                draft.res.money = Math.max(0, clampAmount(draft.res.money) - need.money);
+            }
+            if (need.gold > 0) {
+                draft.res.gold = Math.max(0, clampAmount(draft.res.gold) - need.gold);
+            }
+            if (need.honor > 0) {
+                draft.hud.honor = Math.max(0, clampAmount(draft.hud.honor) - need.honor);
+            }
+
+            Object.keys(need.items).forEach((key) => {
+                const required = need.items[key];
+                if (required <= 0) return;
+                const current = clampAmount(draft.items[key]);
+                draft.items[key] = Math.max(0, current - required);
+            });
+        });
+
+        if (opts.render === true && typeof game.renderCityResources === 'function') game.renderCityResources();
+        if (opts.save === true && typeof game.saveCitySimState === 'function') game.saveCitySimState();
+        return true;
+    }
+
+    function grant(game, reward, options) {
+        if (!game || typeof CitySimState === 'undefined' || !CitySimState || typeof CitySimState.mutate !== 'function') {
+            return {
+                money: 0,
+                gold: 0,
+                honor: 0,
+                units: {},
+                veteranItems: {},
+                items: {},
+                changed: false
+            };
+        }
+
+        const gain = normalizeGrantPayload(reward);
+        const opts = (options && typeof options === 'object') ? options : {};
+        const report = {
+            money: 0,
+            gold: 0,
+            honor: 0,
+            units: {},
+            veteranItems: {},
+            items: {},
+            changed: false
+        };
+
+        CitySimState.mutate(game, (draft) => {
+            if (!draft.res || typeof draft.res !== 'object') draft.res = {};
+            if (!draft.hud || typeof draft.hud !== 'object') draft.hud = {};
+            if (!draft.units || typeof draft.units !== 'object') draft.units = {};
+            if (!draft.veteranItems || typeof draft.veteranItems !== 'object') draft.veteranItems = {};
+            if (!draft.items || typeof draft.items !== 'object') draft.items = {};
+
+            if (gain.money > 0) {
+                draft.res.money = clampAmount(draft.res.money) + gain.money;
+                report.money = gain.money;
+                report.changed = true;
+            }
+            if (gain.gold > 0) {
+                draft.res.gold = clampAmount(draft.res.gold) + gain.gold;
+                report.gold = gain.gold;
+                report.changed = true;
+            }
+            if (gain.honor > 0) {
+                draft.hud.honor = clampAmount(draft.hud.honor) + gain.honor;
+                report.honor = gain.honor;
+                report.changed = true;
+            }
+
+            Object.keys(gain.units).forEach((key) => {
+                const amount = gain.units[key];
+                if (amount <= 0) return;
+                const current = clampAmount(draft.units[key]);
+                let applied = amount;
+                if (key === 'nuke' || key === 'icbm') {
+                    applied = Math.max(0, Math.min(amount, 2 - current));
+                }
+                if (applied <= 0) return;
+                draft.units[key] = current + applied;
+                report.units[key] = applied;
+                report.changed = true;
+            });
+
+            Object.keys(gain.veteranItems).forEach((key) => {
+                const amount = gain.veteranItems[key];
+                if (amount <= 0) return;
+                const current = clampAmount(draft.veteranItems[key]);
+                draft.veteranItems[key] = current + amount;
+                report.veteranItems[key] = amount;
+                report.changed = true;
+            });
+
+            Object.keys(gain.items).forEach((key) => {
+                const amount = gain.items[key];
+                if (amount <= 0) return;
+                const current = clampAmount(draft.items[key]);
+                draft.items[key] = current + amount;
+                report.items[key] = amount;
+                report.changed = true;
+            });
+        });
+
+        if (opts.render === true && typeof game.renderCityResources === 'function') game.renderCityResources();
+        if (opts.save === true && typeof game.saveCitySimState === 'function') game.saveCitySimState();
+        return report;
+    }
+
+    function canPayCost(game, cost) {
+        return canCharge(game, {
+            costMoney: Number(cost?.costMoney) || 0
+        });
     }
 
     function payCost(game, cost) {
-        const spend = Number(cost?.costMoney) || 0;
-        CitySimState.mutate(game, (state) => {
-            if (!state.res || typeof state.res !== 'object') state.res = {};
-            state.res.money = Math.max(0, (Number(state.res.money) || 0) - spend);
+        return charge(game, {
+            costMoney: Number(cost?.costMoney) || 0
+        }, {
+            render: false,
+            save: false
         });
     }
 
@@ -977,6 +1182,9 @@
     global.CitySimEconomy = {
         canPayCost,
         payCost,
+        canCharge,
+        charge,
+        grant,
         tickIncome,
         getAutoTaxStatus,
         getIncomeStatus,

@@ -550,8 +550,9 @@
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = 192;
-        canvas.height = 128;
+        const isIcbm = key === 'icbm';
+        canvas.width = isIcbm ? 224 : 192;
+        canvas.height = isIcbm ? 144 : 128;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
             drillgroundUnitIconCache.set(key, null);
@@ -667,13 +668,13 @@
                     ? 4
                     : ((unitCategory === 'armored' || unitType === 'mech') ? 18 : 20)
             ),
-            padding: (key === 'icbm') ? 1 : 2,
+            padding: (key === 'icbm') ? 3 : 2,
             verticalBias,
             trimBottomSoftLine: false,
             allowUpscale: (unitCategory === 'armored' || unitType === 'mech'),
             maxUpscale: (
                 key === 'icbm'
-                    ? 1.24
+                    ? 1.2
                     : ((key === 'mbt' || key === 'spg') ? 1.16 : 1.1)
             )
         });

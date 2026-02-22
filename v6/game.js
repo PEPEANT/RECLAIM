@@ -1400,7 +1400,17 @@ const game = {
             && typeof CitySimState.ensure === 'function')
             ? CitySimState.ensure(this)
             : this.citySim;
-        if (!cityState || typeof cityState !== 'object') return;
+        if (!cityState || typeof cityState !== 'object') {
+            // [BUG FIX] 게스트/도시 없는 경우: initGameObjects()가 설정한 maxCount 그대로
+            // 남아서 기갑·항공 유닛이 무료 사용되던 버그 수정.
+            // grid가 없으면 factory·airport 모두 없다고 판단 → 해당 재고 0으로 강제.
+            if (typeof BattleEconomy !== 'undefined'
+                && BattleEconomy
+                && typeof BattleEconomy.syncCityToStock === 'function') {
+                BattleEconomy.syncCityToStock(this);
+            }
+            return;
+        }
         if (!cityState.units || typeof cityState.units !== 'object') {
             cityState.units = {};
         }
@@ -1419,6 +1429,13 @@ const game = {
         const drillgroundInfantryCounts = cityState.drillgroundInfantryCounts;
         const drillgroundVeteranSlots = cityState.drillgroundVeteranSlots;
         const allVeteransForDrillground = Array.isArray(cityState.veterans) ? cityState.veterans : [];
+        const allowDrillgroundVeteranPlacement = (
+            typeof CitySimConstruction !== 'undefined'
+            && CitySimConstruction
+            && typeof CitySimConstruction.isDrillgroundVeteranPlacementEnabled === 'function'
+        )
+            ? CitySimConstruction.isDrillgroundVeteranPlacementEnabled() === true
+            : false;
         const veteranUnitById = new Map();
         allVeteransForDrillground.forEach((entry) => {
             const id = String(entry?.id || '').trim();
@@ -1450,6 +1467,13 @@ const game = {
                 return;
             }
             const veteranId = String(drillgroundVeteranSlots[rawIndex] || '').trim();
+            if (!allowDrillgroundVeteranPlacement && veteranId) {
+                delete drillgroundSlots[rawIndex];
+                delete drillgroundInfantryCounts[rawIndex];
+                delete drillgroundVeteranSlots[rawIndex];
+                recoveredDrillgroundSlots = true;
+                return;
+            }
             const veteranUnitKey = String(veteranUnitById.get(veteranId) || '').trim();
             const isVeteranSlot = !!(veteranId && veteranUnitKey === unitKey);
             if (veteranId && !isVeteranSlot) {
@@ -1488,6 +1512,13 @@ const game = {
 
             const isInfantry = unitCategory === 'infantry';
             if (isVeteranSlot) {
+                if (!allowDrillgroundVeteranPlacement) {
+                    delete drillgroundSlots[rawIndex];
+                    delete drillgroundInfantryCounts[rawIndex];
+                    delete drillgroundVeteranSlots[rawIndex];
+                    recoveredDrillgroundSlots = true;
+                    return;
+                }
                 if (Object.prototype.hasOwnProperty.call(drillgroundInfantryCounts, rawIndex)) {
                     delete drillgroundInfantryCounts[rawIndex];
                     recoveredDrillgroundSlots = true;
@@ -1589,6 +1620,12 @@ const game = {
             if (av._order !== bv._order) return av._order - bv._order;
             return av.id.localeCompare(bv.id);
         });
+
+        if (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.syncCityToStock === 'function') {
+            BattleEconomy.syncCityToStock(this);
+        }
     },
 
     getVeteranSpawnEntries() {
@@ -1596,6 +1633,16 @@ const game = {
         if (!Array.isArray(this.playerVeteranOrder) || this.playerVeteranOrder.length <= 0) return [];
         if (typeof CONFIG === 'undefined' || !CONFIG || !CONFIG.units) return [];
 
+        const supportedLoadoutItemKeys = new Set([
+            'rifle_d',
+            'body_armor_d',
+            'scope_d',
+            'smoke_grenade',
+            'medkit_c',
+            'drone_suicide_item',
+            'drone_at_item',
+            'bp_missile'
+        ]);
         const list = [];
         this.playerVeteranOrder.forEach((veteranId) => {
             const veteran = this.playerVeteransById[veteranId];
@@ -1603,15 +1650,57 @@ const game = {
             const unit = CONFIG.units[veteran.unitKey];
             if (!unit || unit.disabled === true || unit.isSkill === true) return;
             const stock = Math.max(0, Math.floor(Number(this.playerVeteranStock?.[veteranId]) || 0));
+
+            const unitCategory = String(unit?.category || '').trim().toLowerCase();
+            const isOperator = String(veteran?.unitKey || '').trim() === 'drone_operator' || unit?.operator === true;
+            const isInfantryCategory = unitCategory === 'infantry';
             const skillKeys = Array.isArray(veteran?.loadout?.skillItemKeys)
                 ? veteran.loadout.skillItemKeys
                 : [];
             let itemCount = 0;
-            for (let i = 0; i < skillKeys.length; i++) {
-                if (String(skillKeys[i] || '').trim()) itemCount += 1;
+            const countedSkillKeys = [];
+            if (isOperator) {
+                for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
+                    const key = String(skillKeys[slotIndex] || '').trim();
+                    if (key === 'drone_suicide_item' || key === 'drone_at_item') {
+                        itemCount += 1;
+                        countedSkillKeys.push(key);
+                    }
+                }
+            } else if (isInfantryCategory) {
+                for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
+                    const key = String(skillKeys[slotIndex] || '').trim();
+                    if (key === 'smoke_grenade' || key === 'medkit_c') {
+                        itemCount += 1;
+                        countedSkillKeys.push(key);
+                    }
+                }
             }
+
             const passiveItemKey = String(veteran?.loadout?.itemKey || '').trim();
-            if (passiveItemKey && !skillKeys.some((key) => String(key || '').trim() === passiveItemKey)) {
+            // 레거시 저장 데이터: 스킬 아이템이 itemKey에만 저장된 경우를 1회 보정 카운트.
+            if (itemCount <= 0) {
+                if (isOperator && (passiveItemKey === 'drone_suicide_item' || passiveItemKey === 'drone_at_item')) {
+                    itemCount += 1;
+                    countedSkillKeys.push(passiveItemKey);
+                } else if (isInfantryCategory && (passiveItemKey === 'smoke_grenade' || passiveItemKey === 'medkit_c')) {
+                    itemCount += 1;
+                    countedSkillKeys.push(passiveItemKey);
+                }
+            }
+
+            // +N은 플레이어가 지급한 아이템만 집계한다.
+            // 고정 스킬(예: 보병 rifle_d)과 스킬 슬롯 중복 아이템은 제외.
+            const passiveSupported = supportedLoadoutItemKeys.has(passiveItemKey);
+            const passiveDuplicatedInSkillSlots = countedSkillKeys.some((key) => key === passiveItemKey);
+            const passiveIsSkillItemForUnit = (isOperator && (passiveItemKey === 'drone_suicide_item' || passiveItemKey === 'drone_at_item'))
+                || (isInfantryCategory && (passiveItemKey === 'smoke_grenade' || passiveItemKey === 'medkit_c'));
+            const passiveIsFixedSkill = isInfantryCategory && passiveItemKey === 'rifle_d';
+            if (passiveItemKey
+                && passiveSupported
+                && !passiveDuplicatedInSkillSlots
+                && !passiveIsSkillItemForUnit
+                && !passiveIsFixedSkill) {
                 itemCount += 1;
             }
             list.push({
@@ -1840,14 +1929,24 @@ const game = {
         }
 
         const cost = Math.max(0, Number(unit.cost) || 0);
-        if (this.supply < cost) {
+        const canSpendSupply = (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.canSpendSupply === 'function')
+            ? BattleEconomy.canSpendSupply(this, cost)
+            : this.supply >= cost;
+        if (!canSpendSupply) {
             if (typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
                 ui.showToast('자원이 부족합니다.');
             }
             return false;
         }
 
-        this.supply -= cost;
+        const spent = (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.spendSupply === 'function')
+            ? BattleEconomy.spendSupply(this, cost)
+            : ((this.supply -= cost), true);
+        if (!spent) return false;
         this.playerVeteranStock[id] = stock - 1;
         this.cooldowns[veteran.unitKey] = Math.max(0, Number(unit.cooldown) || 0);
 
@@ -1860,7 +1959,13 @@ const game = {
             { veteran }
         );
         if (!spawned) {
-            this.supply += cost;
+            if (typeof BattleEconomy !== 'undefined'
+                && BattleEconomy
+                && typeof BattleEconomy.refundSupply === 'function') {
+                BattleEconomy.refundSupply(this, cost);
+            } else {
+                this.supply += cost;
+            }
             this.playerVeteranStock[id] = stock;
             this.cooldowns[veteran.unitKey] = 0;
             return false;
@@ -3903,7 +4008,12 @@ const game = {
             }
             if (this.skillCharges[u.chargeKey] <= 0) { ui.showToast("사용 가능 횟수 부족!"); return; }
         } else {
-            if (this.supply < u.cost || this.playerStock[key] <= 0) { ui.showToast("자원 또는 재고 부족!"); return; }
+            const canSpend = (typeof BattleEconomy !== 'undefined'
+                && BattleEconomy
+                && typeof BattleEconomy.canSpend === 'function')
+                ? BattleEconomy.canSpend(this, u.cost, { unitKey: key })
+                : (this.supply >= u.cost && this.playerStock[key] > 0);
+            if (!canSpend) { ui.showToast("자원 또는 재고 부족!"); return; }
         }
         this.targetingType = key;
         document.getElementById('targeting-overlay').classList.remove('hidden');
@@ -3970,9 +4080,13 @@ const game = {
             return;
         } else if (key === 'stealth_drone') {
             // 위치 지정형 (락온 없음): 지정 지점으로 침투 후 급강하 폭발
-            this.supply -= u.cost;
+            const spent = this.spendUnitCost(key, u.cost);
+            if (!spent) {
+                ui.showToast("자원 또는 재고 부족!");
+                this.cancelTargeting();
+                return;
+            }
             this.cooldowns[key] = u.cooldown;
-            this.playerStock[key]--;
 
             const drone = new Unit(key, 50, this.groundY, 'player', null);
             drone.x = 50;
@@ -3996,9 +4110,13 @@ const game = {
 
             if (u.lockOn && !target) { ui.showToast("타겟을 찾을 수 없습니다!"); return; }
 
-            this.supply -= u.cost;
+            const spent = this.spendUnitCost(key, u.cost);
+            if (!spent) {
+                ui.showToast("자원 또는 재고 부족!");
+                this.cancelTargeting();
+                return;
+            }
             this.cooldowns[key] = u.cooldown;
-            this.playerStock[key]--;
 
             const drone = new Unit(key, 50, this.groundY, 'player', target);
             if (key === 'blackhawk' || key === 'chinook') {
@@ -4337,7 +4455,12 @@ const game = {
             return;
         }
         const bData = CONFIG.constructable[buildingType];
-        if (this.supply < bData.cost) {
+        const canSpendSupply = (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.canSpendSupply === 'function')
+            ? BattleEconomy.canSpendSupply(this, bData.cost)
+            : this.supply >= bData.cost;
+        if (!canSpendSupply) {
             ui.showToast('자원 부족!');
             return;
         }
@@ -4418,12 +4541,26 @@ const game = {
         }
 
         // 자원 소모
-        if (this.supply < bData.cost) {
+        const canSpendSupply = (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.canSpendSupply === 'function')
+            ? BattleEconomy.canSpendSupply(this, bData.cost)
+            : this.supply >= bData.cost;
+        if (!canSpendSupply) {
             ui.showToast('자원 부족!');
             this.cancelBuildMode();
             return;
         }
-        this.supply -= bData.cost;
+        const spentBuildCost = (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.spendSupply === 'function')
+            ? BattleEconomy.spendSupply(this, bData.cost)
+            : ((this.supply -= bData.cost), true);
+        if (!spentBuildCost) {
+            ui.showToast('자원 부족!');
+            this.cancelBuildMode();
+            return;
+        }
 
         // [3.8] 감시탑 건설 1회 제한 플래그 설정
         if (bType === 'watchtower') {
@@ -4860,8 +4997,91 @@ const game = {
         this.holdKey = null;
     },
 
+    spendUnitCost(key, cost, options = {}) {
+        const unitKey = String(key || '').trim();
+        if (!unitKey) return false;
+
+        const opts = (options && typeof options === 'object') ? options : {};
+        const consumeStock = opts.consumeStock !== false;
+        const stockMap = (opts.stockMap && typeof opts.stockMap === 'object')
+            ? opts.stockMap
+            : this.playerStock;
+        const need = Math.max(0, Number(cost) || 0);
+        const readSupply = () => Math.max(0, Number(this.supply) || 0);
+        const readStock = () => {
+            if (!consumeStock) return 0;
+            if (!stockMap || typeof stockMap !== 'object') return 0;
+            return Math.max(0, Math.floor(Number(stockMap[unitKey]) || 0));
+        };
+
+        const beforeSupply = readSupply();
+        const beforeStock = readStock();
+        let spent = false;
+
+        if (typeof BattleEconomy !== 'undefined'
+            && BattleEconomy
+            && typeof BattleEconomy.spend === 'function') {
+            spent = BattleEconomy.spend(this, need, {
+                unitKey,
+                consumeStock,
+                stockMap
+            });
+        } else if (beforeSupply >= need && (!consumeStock || beforeStock > 0)) {
+            this.supply = beforeSupply - need;
+            if (consumeStock && stockMap && typeof stockMap === 'object') {
+                stockMap[unitKey] = beforeStock - 1;
+            }
+            spent = true;
+        }
+
+        if (!spent) {
+            // Guard against partially-applied deduction when an upstream implementation misbehaves.
+            this.supply = beforeSupply;
+            if (consumeStock && stockMap && typeof stockMap === 'object') {
+                stockMap[unitKey] = beforeStock;
+            }
+            return false;
+        }
+
+        const afterSupply = readSupply();
+        const afterStock = readStock();
+        const expectedSupply = Math.max(0, beforeSupply - need);
+        const expectedStock = consumeStock
+            ? Math.max(0, beforeStock - 1)
+            : afterStock;
+
+        const supplySynced = Math.abs(afterSupply - expectedSupply) <= 0.0001;
+        const stockSynced = !consumeStock || afterStock === expectedStock;
+        if (supplySynced && stockSynced) return true;
+
+        if (beforeSupply < need || (consumeStock && beforeStock <= 0)) {
+            return false;
+        }
+
+        this.supply = expectedSupply;
+        if (consumeStock && stockMap && typeof stockMap === 'object') {
+            stockMap[unitKey] = expectedStock;
+        }
+
+        try {
+            console.warn('[BattleEconomy.guard] forced spend reconciliation', {
+                unitKey,
+                need,
+                beforeSupply,
+                afterSupply,
+                expectedSupply,
+                beforeStock,
+                afterStock,
+                expectedStock
+            });
+        } catch (_) { }
+
+        return true;
+    },
+
     queueUnit(key) {
         const u = CONFIG.units[key];
+        if (!u) return;
         const isOperatorDroneLaunch = (key === 'drone_suicide' || key === 'drone_at');
         const isIcbmSkillLaunch = (typeof this.isIcbmSkillKey === 'function') && this.isIcbmSkillKey(key);
 
@@ -4909,9 +5129,8 @@ const game = {
             return;
         }
 
-        if (this.supply >= u.cost && this.playerStock[key] > 0) {
-            this.supply -= u.cost;
-            this.playerStock[key]--;
+        const spent = this.spendUnitCost(key, u.cost);
+        if (spent) {
             this.spawnQueue[key]++;
             // [FIX] 클릭 즉시 UI 갱신
             if (typeof app !== 'undefined') {

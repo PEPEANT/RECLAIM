@@ -154,9 +154,13 @@
         .map((spec) => String(spec?.id || '').trim())
         .filter(Boolean);
     const BUILD_QUEST_CHAIN_ID_SET = new Set(BUILD_QUEST_CHAIN_IDS);
-    const RECURRING_QUEST_ID_SET = new Set([
-        QUEST_IDS.KILL_CONTRACT,
-        QUEST_IDS.VICTORY_CONTRACT
+    const PERMANENT_ONE_TIME_QUEST_ID_SET = new Set([
+        QUEST_IDS.LOGIN_SUPPLY_BOX,
+        QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
+        QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
+        QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
+        QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT,
+        QUEST_IDS.EVENT_VISIT_UPDATE_GIFT
     ]);
     const QUEST_CLAIM_LEDGER_STORAGE_KEY = 'reclaim_city_quest_claim_ledger_v1';
     const GUEST_LEDGER_UID = '__guest__';
@@ -166,23 +170,10 @@
         return typeof value === 'function';
     }
 
-    function isRecurringQuestId(questId) {
-        const id = String(questId || '').trim();
-        if (!id) return false;
-        return RECURRING_QUEST_ID_SET.has(id);
-    }
-
-    function isTemporaryQuestId(questId) {
-        const id = String(questId || '').trim();
-        if (!id) return false;
-        return id.startsWith('tutorial_');
-    }
-
     function isOneTimeQuestId(questId) {
         const id = String(questId || '').trim();
         if (!id) return false;
-        if (isTemporaryQuestId(id)) return false;
-        return !isRecurringQuestId(id);
+        return PERMANENT_ONE_TIME_QUEST_ID_SET.has(id);
     }
 
     function getAuthUid() {
@@ -200,6 +191,11 @@
     function getQuestLedgerUid() {
         const uid = String(getAuthUid() || '').trim();
         return uid || GUEST_LEDGER_UID;
+    }
+
+    function isGuestLedgerContext(uid) {
+        const key = String(uid || '').trim();
+        return !key || key === GUEST_LEDGER_UID;
     }
 
     function parseQuestClaimLedger(raw) {
@@ -674,16 +670,27 @@
             if (!rewardOk) return { ok: false, expResult: null };
         }
 
-        if ((money > 0 || gold > 0 || honor > 0) && typeof CitySimState !== 'undefined' && CitySimState && isFn(CitySimState.mutate)) {
-            CitySimState.mutate(game, (draft) => {
-                if (!draft.res || typeof draft.res !== 'object') draft.res = {};
-                if (money > 0) draft.res.money = Math.max(0, Number(draft.res.money) || 0) + money;
-                if (gold > 0) draft.res.gold = Math.max(0, Number(draft.res.gold) || 0) + gold;
-                if (honor > 0) {
+        if (money > 0 || gold > 0 || honor > 0) {
+            if (typeof CitySimEconomy !== 'undefined'
+                && CitySimEconomy
+                && isFn(CitySimEconomy.grant)) {
+                CitySimEconomy.grant(game, {
+                    money,
+                    gold,
+                    honor
+                }, {
+                    render: false,
+                    save: false
+                });
+            } else if (typeof CitySimState !== 'undefined' && CitySimState && isFn(CitySimState.mutate)) {
+                CitySimState.mutate(game, (draft) => {
+                    if (!draft.res || typeof draft.res !== 'object') draft.res = {};
                     if (!draft.hud || typeof draft.hud !== 'object') draft.hud = {};
-                    draft.hud.honor = Math.max(0, Math.floor(Number(draft.hud.honor) || 0)) + honor;
-                }
-            });
+                    if (money > 0) draft.res.money = Math.max(0, Number(draft.res.money) || 0) + money;
+                    if (gold > 0) draft.res.gold = Math.max(0, Number(draft.res.gold) || 0) + gold;
+                    if (honor > 0) draft.hud.honor = Math.max(0, Math.floor(Number(draft.hud.honor) || 0)) + honor;
+                });
+            }
         }
 
         if (exp > 0 && typeof CitySimEconomy !== 'undefined' && CitySimEconomy && isFn(CitySimEconomy.addExp)) {
@@ -918,12 +925,14 @@
         return ids.map((id) => {
             const quest = getQuestById(state, id);
             if (!quest) return null;
-            if (quest.status === QUEST_STATUS.CLAIMED) return null;
+            const isClaimed = quest.status === QUEST_STATUS.CLAIMED;
             if (BUILD_QUEST_CHAIN_ID_SET.has(id)) {
+                if (isClaimed) return null;
                 if (!activeBuildQuestId) return null;
                 if (id !== activeBuildQuestId) return null;
             }
             if (levelBonusSet.has(id)) {
+                if (isClaimed) return null;
                 if (!currentLevelBonusId) return null;
                 if (id !== currentLevelBonusId) return null;
             }

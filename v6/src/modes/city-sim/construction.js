@@ -314,6 +314,16 @@
         { id: 'special', label: '특수' },
         { id: 'supply', label: '보급품' }
     ];
+    const DRILLGROUND_PICKER_CATEGORY_TABS = INVENTORY_TABS
+        .filter((tab) => tab && tab.id !== 'special' && tab.id !== 'supply')
+        .map((tab) => ({
+            id: String(tab.id || '').trim(),
+            label: String(tab.label || tab.id || '').trim()
+        }))
+        .filter((tab) => !!tab.id);
+    const DRILLGROUND_PICKER_CATEGORY_TAB_SET = new Set(
+        DRILLGROUND_PICKER_CATEGORY_TABS.map((tab) => tab.id)
+    );
     let inventoryVeteranMode = false;
     let inventoryVeteranToggleBound = false;
 
@@ -402,15 +412,15 @@
     const CITY_UNIT_COST_OVERRIDES = {
         infantry: 280,
         engineer: 480,
-        special_ops: 580,
-        sniper: 920,
+        special_ops: 1500,
+        sniper: 2000,
         drone_operator: 700,
         humvee: 700,
         apc: 1300,
         mbt: 2100,
         aa_tank: 1850,
         spg: 2900,
-        icbm: 2300,
+        icbm: 5000,
         recon: 1150,
         apache: 1800,
         fighter: 2300,
@@ -1529,6 +1539,43 @@
     }
 
     const DRILLGROUND_INFANTRY_MAX_STACK = 4;
+    const DRILLGROUND_VETERAN_PLACEMENT_ENABLED = false;
+
+    function isDrillgroundVeteranPlacementEnabled() {
+        return DRILLGROUND_VETERAN_PLACEMENT_ENABLED === true;
+    }
+
+    function purgeDrillgroundVeteranPlacements(game) {
+        if (isDrillgroundVeteranPlacementEnabled()) return false;
+        if (typeof CitySimState === 'undefined'
+            || !CitySimState
+            || typeof CitySimState.mutate !== 'function') {
+            return false;
+        }
+
+        let changed = false;
+        CitySimState.mutate(game, (state) => {
+            if (!state || typeof state !== 'object') return;
+            if (!state.drillgroundVeteranSlots || typeof state.drillgroundVeteranSlots !== 'object') {
+                return;
+            }
+            if (!state.drillgroundSlots || typeof state.drillgroundSlots !== 'object') {
+                state.drillgroundSlots = {};
+            }
+            if (!state.drillgroundInfantryCounts || typeof state.drillgroundInfantryCounts !== 'object') {
+                state.drillgroundInfantryCounts = {};
+            }
+
+            Object.keys(state.drillgroundVeteranSlots).forEach((rawIndex) => {
+                delete state.drillgroundVeteranSlots[rawIndex];
+                delete state.drillgroundSlots[rawIndex];
+                delete state.drillgroundInfantryCounts[rawIndex];
+                changed = true;
+            });
+        });
+
+        return changed;
+    }
 
     function isInfantryUnit(unitDefInput) {
         const category = String(unitDefInput?.category || '').trim().toLowerCase();
@@ -1583,10 +1630,11 @@
             const unitDef = getUnitDefByKey(unitKey);
             if (!isDrillgroundAssignableUnit(unitKey, unitDef)) return;
             const infantryCount = getDrillgroundInfantryCountAt(state, index, unitKey, unitDef);
+            const veteranPlacementEnabled = isDrillgroundVeteranPlacementEnabled();
             const storedVeteranId = getDrillgroundStoredVeteranIdAt(state, index);
             const stateVeteran = storedVeteranId ? findStateVeteranEntryById(state, storedVeteranId) : null;
             const veteranUnitKey = normalizeUnitKey(stateVeteran?.unitKey);
-            const sourceMode = (stateVeteran && veteranUnitKey === unitKey) ? 'veteran' : 'normal';
+            const sourceMode = (veteranPlacementEnabled && stateVeteran && veteranUnitKey === unitKey) ? 'veteran' : 'normal';
             const veteranId = sourceMode === 'veteran' ? storedVeteranId : '';
 
             const span = getDrillgroundUnitFootprintSlots(unitKey, unitDef);
@@ -1756,10 +1804,14 @@
 
         const key = normalizeUnitKey(unitKey);
         const opts = (options && typeof options === 'object') ? options : {};
-        const requestedSourceMode = String(opts.sourceMode || '').trim().toLowerCase() === 'veteran'
+        const veteranPlacementEnabled = isDrillgroundVeteranPlacementEnabled();
+        const requestedSourceMode = (
+            veteranPlacementEnabled
+            && String(opts.sourceMode || '').trim().toLowerCase() === 'veteran'
+        )
             ? 'veteran'
             : 'normal';
-        const requestedVeteranId = String(opts.veteranId || '').trim();
+        const requestedVeteranId = veteranPlacementEnabled ? String(opts.veteranId || '').trim() : '';
         let applied = false;
         CitySimStateRef.mutate(game, (state) => {
             if (!isDrillgroundCell(state, anchorIndex)) return;
@@ -2032,6 +2084,9 @@
     }
 
     function assignDrillgroundVeteran(game, index, nextVeteranId) {
+        if (!isDrillgroundVeteranPlacementEnabled()) {
+            return { ok: false, reason: '연병장은 현재 일반 유닛만 배치할 수 있습니다.' };
+        }
         const state = CitySimState.ensure(game);
         if (!Number.isInteger(index) || index < 0 || index >= state.grid.length) {
             return { ok: false, reason: '연병장 위치가 유효하지 않습니다.' };
@@ -2159,6 +2214,55 @@
         };
     }
 
+    function normalizeDrillgroundPickerCategory(categoryId) {
+        const raw = String(categoryId || '').trim();
+        if (DRILLGROUND_PICKER_CATEGORY_TAB_SET.has(raw)) return raw;
+        return DRILLGROUND_PICKER_CATEGORY_TABS[0]?.id || 'infantry';
+    }
+
+    function getDrillgroundPickerCategory(unitKey, unitDef) {
+        const mapped = getUnitCategoryForInventoryTab(unitKey, unitDef);
+        return normalizeDrillgroundPickerCategory(mapped);
+    }
+
+    function buildDrillgroundPickerCategoryBuckets(entries) {
+        const buckets = {};
+        DRILLGROUND_PICKER_CATEGORY_TABS.forEach((tab) => {
+            buckets[tab.id] = [];
+        });
+        (Array.isArray(entries) ? entries : []).forEach((entry) => {
+            if (!entry || typeof entry !== 'object') return;
+            const category = normalizeDrillgroundPickerCategory(
+                entry.category || getDrillgroundPickerCategory(entry.key, entry.unit)
+            );
+            entry.category = category;
+            if (!Array.isArray(buckets[category])) buckets[category] = [];
+            buckets[category].push(entry);
+        });
+        return buckets;
+    }
+
+    function getDrillgroundPickerCategorySelectableCount(bucketEntries) {
+        const list = Array.isArray(bucketEntries) ? bucketEntries : [];
+        return list.reduce((sum, entry) => {
+            if (!entry || typeof entry !== 'object') return sum;
+            return sum + ((entry.canAssign === true || entry.isCurrent === true) ? 1 : 0);
+        }, 0);
+    }
+
+    function getDrillgroundPickerInitialCategory(categoryBuckets, preferredCategory) {
+        const preferred = normalizeDrillgroundPickerCategory(preferredCategory);
+        const preferredEntries = Array.isArray(categoryBuckets?.[preferred]) ? categoryBuckets[preferred] : [];
+        if (preferredEntries.length > 0) return preferred;
+
+        const firstWithEntries = DRILLGROUND_PICKER_CATEGORY_TABS.find((tab) => {
+            const entries = Array.isArray(categoryBuckets?.[tab.id]) ? categoryBuckets[tab.id] : [];
+            return entries.length > 0;
+        });
+        if (firstWithEntries && firstWithEntries.id) return firstWithEntries.id;
+        return preferred;
+    }
+
     function getDrillgroundSelectableEntries(game, currentUnitKey, currentUnitCount = 1) {
         const currentKey = normalizeUnitKey(currentUnitKey);
         const currentCount = Math.max(1, Math.floor(Number(currentUnitCount) || 1));
@@ -2174,6 +2278,7 @@
                     entries.push({
                         key,
                         unit,
+                        category: getDrillgroundPickerCategory(key, unit),
                         available,
                         isCurrent: currentKey === key,
                         canAssign: available > 0
@@ -2205,6 +2310,7 @@
                     veteran,
                     key: unitKey,
                     unit: unitDef,
+                    category: getDrillgroundPickerCategory(unitKey, unitDef),
                     displayName: getVeteranDisplayName(veteran, unitDef),
                     itemCount: getVeteranOwnedItemCount(game, unitKey, veteran),
                     available: canAssign ? 1 : 0,
@@ -2310,6 +2416,14 @@
         if (typeof game.openCityActionModal !== 'function') return;
         closeFloatingPanelsForUnitAction(game);
 
+        if (purgeDrillgroundVeteranPlacements(game)) {
+            persist(game);
+            renderGrid(game);
+            renderContextBar(game);
+            refreshCityUnitPanels(game);
+        }
+        const veteranPlacementEnabled = isDrillgroundVeteranPlacementEnabled();
+
         const state = CitySimState.ensure(game);
         const occupancy = buildDrillgroundOccupancy(state);
         const anchorIndex = getDrillgroundPlacementAnchorIndex(state, selectionInfo.index, occupancy);
@@ -2319,7 +2433,10 @@
         }
         const currentEntry = getDrillgroundEntryAt(state, anchorIndex, occupancy);
         const currentUnitKey = currentEntry ? normalizeUnitKey(currentEntry.unitKey) : null;
-        const currentSourceMode = String(currentEntry?.sourceMode || '').trim().toLowerCase() === 'veteran'
+        const currentSourceMode = (
+            veteranPlacementEnabled
+            && String(currentEntry?.sourceMode || '').trim().toLowerCase() === 'veteran'
+        )
             ? 'veteran'
             : 'normal';
         const currentVeteranId = String(currentEntry?.veteranId || '').trim();
@@ -2331,23 +2448,40 @@
             ? clampDrillgroundInfantryCount(currentEntry.infantryCount)
             : 1;
         const occupiedMode = getDrillgroundOccupiedSourceMode(state, anchorIndex, occupancy);
-        const normalLocked = occupiedMode === 'veteran' || occupiedMode === 'mixed';
-        const veteranLocked = occupiedMode === 'normal' || occupiedMode === 'mixed';
+        const normalLocked = veteranPlacementEnabled && (occupiedMode === 'veteran' || occupiedMode === 'mixed');
+        const veteranLocked = !veteranPlacementEnabled || occupiedMode === 'normal' || occupiedMode === 'mixed';
         const normalEntries = getDrillgroundSelectableEntries(
             game,
             currentSourceMode === 'normal' ? currentUnitKey : null,
             currentSourceMode === 'normal' ? currentUnitCount : 1
         );
-        const veteranEntries = getDrillgroundSelectableVeteranEntries(
-            game,
-            currentSourceMode === 'veteran' ? currentVeteranId : '',
-            occupancy,
-            anchorIndex
-        );
+        const veteranEntries = veteranPlacementEnabled
+            ? getDrillgroundSelectableVeteranEntries(
+                game,
+                currentSourceMode === 'veteran' ? currentVeteranId : '',
+                occupancy,
+                anchorIndex
+            )
+            : [];
         if (normalEntries.length === 0 && veteranEntries.length === 0) {
             showToast('배치 가능한 유닛 목록을 불러올 수 없습니다.');
             return;
         }
+        const currentCategory = currentEntry
+            ? getDrillgroundPickerCategory(currentUnitKey, currentEntry.unitDef)
+            : '';
+        let normalCategoryBuckets = buildDrillgroundPickerCategoryBuckets(normalEntries);
+        let veteranCategoryBuckets = buildDrillgroundPickerCategoryBuckets(veteranEntries);
+        const activeCategoryByMode = {
+            normal: getDrillgroundPickerInitialCategory(
+                normalCategoryBuckets,
+                currentSourceMode === 'normal' ? currentCategory : ''
+            ),
+            veteran: getDrillgroundPickerInitialCategory(
+                veteranCategoryBuckets,
+                currentSourceMode === 'veteran' ? currentCategory : ''
+            )
+        };
 
         const title = currentUnitKey ? '연병장 유닛 변경' : '연병장 유닛 배치';
         const renderNormalButtonHtml = (entry) => {
@@ -2395,22 +2529,56 @@
             );
         };
 
-        const normalListHtml = normalEntries.length > 0
-            ? normalEntries.map(renderNormalButtonHtml).join('')
-            : `<div class="city-drillground-picker-empty">배치 가능한 일반 유닛이 없습니다.</div>`;
-        const veteranListHtml = veteranEntries.length > 0
-            ? veteranEntries.map(renderVeteranButtonHtml).join('')
-            : `<div class="city-drillground-picker-empty">배치 가능한 베테랑 유닛이 없습니다.</div>`;
+        const renderCategoryTabsHtml = (mode, categoryBuckets) => {
+            const activeCategory = activeCategoryByMode[mode];
+            return (
+                `<div class="city-inventory-tabs city-drillground-picker-category-tabs" data-city-drillground-category-tabs="${mode}">` +
+                DRILLGROUND_PICKER_CATEGORY_TABS.map((tab) => {
+                    const entries = Array.isArray(categoryBuckets?.[tab.id]) ? categoryBuckets[tab.id] : [];
+                    const count = getDrillgroundPickerCategorySelectableCount(entries);
+                    const active = tab.id === activeCategory;
+                    return (
+                        `<button type="button" class="btn-category flex-1 py-2 text-xs md:text-sm${active ? ' active' : ''}" ` +
+                        `data-city-drillground-category-mode="${mode}" data-city-drillground-category="${escapeHtml(tab.id)}">` +
+                        `<span>${escapeHtml(tab.label)}</span>` +
+                        `<span class="city-inventory-tab-count" data-city-drillground-category-count="${mode}:${escapeHtml(tab.id)}">${formatNumber(count)}</span>` +
+                        `</button>`
+                    );
+                }).join('') +
+                `</div>`
+            );
+        };
 
-        const modeNotice = normalLocked
-            ? '현재 연병장은 베테랑 전용 배치 상태입니다.'
-            : (veteranLocked ? '현재 연병장은 일반 유닛 전용 배치 상태입니다.' : '');
-        let activeMode = currentSourceMode;
-        if ((activeMode === 'normal' && normalLocked) || (activeMode === 'veteran' && veteranLocked)) {
-            activeMode = normalLocked ? 'veteran' : 'normal';
-        }
-        if ((activeMode !== 'normal' && activeMode !== 'veteran')) {
-            activeMode = normalLocked ? 'veteran' : 'normal';
+        const renderCategoryPanelsHtml = (mode, categoryBuckets, renderButtonHtml, emptyPrefix) => {
+            const activeCategory = activeCategoryByMode[mode];
+            return DRILLGROUND_PICKER_CATEGORY_TABS.map((tab) => {
+                const entries = Array.isArray(categoryBuckets?.[tab.id]) ? categoryBuckets[tab.id] : [];
+                const listHtml = entries.length > 0
+                    ? entries.map(renderButtonHtml).join('')
+                    : `<div class="city-drillground-picker-empty">배치 가능한 ${escapeHtml(emptyPrefix)} ${escapeHtml(tab.label)} 유닛이 없습니다.</div>`;
+                return (
+                    `<div class="city-inventory-unit-strip city-drillground-picker-list${activeCategory === tab.id ? '' : ' hidden'}" ` +
+                    `data-city-drillground-panel="${mode}" data-city-drillground-category-panel="${escapeHtml(tab.id)}">${listHtml}</div>`
+                );
+            }).join('');
+        };
+
+        const modeNotice = veteranPlacementEnabled
+            ? (
+                normalLocked
+                    ? '현재 연병장은 베테랑 전용 배치 상태입니다.'
+                    : (veteranLocked ? '현재 연병장은 일반 유닛 전용 배치 상태입니다.' : '')
+            )
+            : '연병장은 현재 일반 유닛만 배치할 수 있습니다.';
+        let activeMode = 'normal';
+        if (veteranPlacementEnabled) {
+            activeMode = currentSourceMode;
+            if ((activeMode === 'normal' && normalLocked) || (activeMode === 'veteran' && veteranLocked)) {
+                activeMode = normalLocked ? 'veteran' : 'normal';
+            }
+            if ((activeMode !== 'normal' && activeMode !== 'veteran')) {
+                activeMode = normalLocked ? 'veteran' : 'normal';
+            }
         }
 
         const bodyHtml = (
@@ -2420,9 +2588,17 @@
             `<button type="button" class="btn-category flex-1 py-2 text-xs md:text-sm${activeMode === 'normal' ? ' active' : ''}" data-city-drillground-mode="normal"${normalLocked ? ' disabled' : ''}>일반</button>` +
             `<button type="button" class="btn-category flex-1 py-2 text-xs md:text-sm${activeMode === 'veteran' ? ' active' : ''}" data-city-drillground-mode="veteran"${veteranLocked ? ' disabled' : ''}>베테랑</button>` +
             `</div>` +
-            `<div class="city-action-unitbar-wrap">` +
-            `<div class="city-inventory-unit-strip city-drillground-picker-list${activeMode === 'normal' ? '' : ' hidden'}" data-city-drillground-panel="normal">${normalListHtml}</div>` +
-            `<div class="city-inventory-unit-strip city-drillground-picker-list${activeMode === 'veteran' ? '' : ' hidden'}" data-city-drillground-panel="veteran">${veteranListHtml}</div>` +
+            `<div class="city-drillground-picker-mode-panel${activeMode === 'normal' ? '' : ' hidden'}" data-city-drillground-mode-panel="normal">` +
+            renderCategoryTabsHtml('normal', normalCategoryBuckets) +
+            `<div class="city-action-unitbar-wrap city-drillground-picker-list-wrap">` +
+            renderCategoryPanelsHtml('normal', normalCategoryBuckets, renderNormalButtonHtml, '일반') +
+            `</div>` +
+            `</div>` +
+            `<div class="city-drillground-picker-mode-panel${activeMode === 'veteran' ? '' : ' hidden'}" data-city-drillground-mode-panel="veteran">` +
+            renderCategoryTabsHtml('veteran', veteranCategoryBuckets) +
+            `<div class="city-action-unitbar-wrap city-drillground-picker-list-wrap">` +
+            renderCategoryPanelsHtml('veteran', veteranCategoryBuckets, renderVeteranButtonHtml, '베테랑') +
+            `</div>` +
             `</div>` +
             `</div>`
         );
@@ -2442,11 +2618,35 @@
         if (!msgEl) return;
         const noticeEl = msgEl.querySelector('#city-drillground-picker-notice');
         const tabsEl = msgEl.querySelector('[data-city-drillground-tabs]') || null;
-        const panelNormalEl = msgEl.querySelector('[data-city-drillground-panel="normal"]');
-        const panelVeteranEl = msgEl.querySelector('[data-city-drillground-panel="veteran"]');
+        const modePanelNormalEl = msgEl.querySelector('[data-city-drillground-mode-panel="normal"]');
+        const modePanelVeteranEl = msgEl.querySelector('[data-city-drillground-mode-panel="veteran"]');
+
+        const normalizeMode = (value) => {
+            return String(value || '').trim().toLowerCase() === 'veteran' ? 'veteran' : 'normal';
+        };
+
+        const setActiveCategory = (modeInput, categoryInput) => {
+            const mode = normalizeMode(modeInput);
+            const category = normalizeDrillgroundPickerCategory(categoryInput);
+            activeCategoryByMode[mode] = category;
+            msgEl.querySelectorAll(`[data-city-drillground-category-mode="${mode}"]`).forEach((btn) => {
+                const tabCategory = normalizeDrillgroundPickerCategory(btn.getAttribute('data-city-drillground-category'));
+                btn.classList.toggle('active', tabCategory === category);
+            });
+            msgEl.querySelectorAll(`[data-city-drillground-panel="${mode}"]`).forEach((panel) => {
+                const panelCategory = normalizeDrillgroundPickerCategory(panel.getAttribute('data-city-drillground-category-panel'));
+                panel.classList.toggle('hidden', panelCategory !== category);
+            });
+        };
+
+        const ensureActiveCategory = (modeInput, categoryBuckets) => {
+            const mode = normalizeMode(modeInput);
+            const next = getDrillgroundPickerInitialCategory(categoryBuckets, activeCategoryByMode[mode]);
+            setActiveCategory(mode, next);
+        };
 
         const setActiveMode = (modeInput) => {
-            const nextMode = String(modeInput || '').trim().toLowerCase() === 'veteran' ? 'veteran' : 'normal';
+            const nextMode = normalizeMode(modeInput);
             if (nextMode === 'normal') {
                 const disabled = tabsEl?.querySelector('[data-city-drillground-mode="normal"]')?.hasAttribute('disabled') === true;
                 if (disabled) return;
@@ -2456,12 +2656,13 @@
                 if (disabled) return;
             }
             activeMode = nextMode;
-            if (panelNormalEl) panelNormalEl.classList.toggle('hidden', activeMode !== 'normal');
-            if (panelVeteranEl) panelVeteranEl.classList.toggle('hidden', activeMode !== 'veteran');
+            if (modePanelNormalEl) modePanelNormalEl.classList.toggle('hidden', activeMode !== 'normal');
+            if (modePanelVeteranEl) modePanelVeteranEl.classList.toggle('hidden', activeMode !== 'veteran');
             msgEl.querySelectorAll('[data-city-drillground-mode]').forEach((btn) => {
                 const mode = String(btn.getAttribute('data-city-drillground-mode') || '').trim().toLowerCase();
                 btn.classList.toggle('active', mode === activeMode);
             });
+            setActiveCategory(activeMode, activeCategoryByMode[activeMode]);
         };
 
         const applyAssignResult = (result, mode) => {
@@ -2513,7 +2714,10 @@
             const latestAnchorIndex = getDrillgroundPlacementAnchorIndex(latestState, selectionInfo.index, latestOccupancy);
             if (!Number.isInteger(latestAnchorIndex)) return;
             const latestEntry = getDrillgroundEntryAt(latestState, latestAnchorIndex, latestOccupancy);
-            const latestCurrentMode = String(latestEntry?.sourceMode || '').trim().toLowerCase() === 'veteran'
+            const latestCurrentMode = (
+                veteranPlacementEnabled
+                && String(latestEntry?.sourceMode || '').trim().toLowerCase() === 'veteran'
+            )
                 ? 'veteran'
                 : 'normal';
             const latestCurrentUnitKey = latestEntry ? latestEntry.unitKey : null;
@@ -2530,21 +2734,29 @@
                 latestCurrentMode === 'normal' ? latestCurrentUnitKey : null,
                 latestCurrentMode === 'normal' ? latestCurrentCount : 1
             );
-            const latestVeteranEntries = getDrillgroundSelectableVeteranEntries(
-                game,
-                latestCurrentMode === 'veteran' ? latestCurrentVeteranId : '',
-                latestOccupancy,
-                latestAnchorIndex
-            );
+            const latestVeteranEntries = veteranPlacementEnabled
+                ? getDrillgroundSelectableVeteranEntries(
+                    game,
+                    latestCurrentMode === 'veteran' ? latestCurrentVeteranId : '',
+                    latestOccupancy,
+                    latestAnchorIndex
+                )
+                : [];
+            normalCategoryBuckets = buildDrillgroundPickerCategoryBuckets(latestNormalEntries);
+            veteranCategoryBuckets = buildDrillgroundPickerCategoryBuckets(latestVeteranEntries);
             const normalEntryMap = new Map(latestNormalEntries.map((entry) => [entry.key, entry]));
             const veteranEntryMap = new Map(latestVeteranEntries.map((entry) => [entry.veteranId, entry]));
 
             const latestOccupiedMode = getDrillgroundOccupiedSourceMode(latestState, latestAnchorIndex, latestOccupancy);
-            const latestNormalLocked = latestOccupiedMode === 'veteran' || latestOccupiedMode === 'mixed';
-            const latestVeteranLocked = latestOccupiedMode === 'normal' || latestOccupiedMode === 'mixed';
-            const latestNotice = latestNormalLocked
-                ? '현재 연병장은 베테랑 전용 배치 상태입니다.'
-                : (latestVeteranLocked ? '현재 연병장은 일반 유닛 전용 배치 상태입니다.' : '');
+            const latestNormalLocked = veteranPlacementEnabled && (latestOccupiedMode === 'veteran' || latestOccupiedMode === 'mixed');
+            const latestVeteranLocked = !veteranPlacementEnabled || latestOccupiedMode === 'normal' || latestOccupiedMode === 'mixed';
+            const latestNotice = veteranPlacementEnabled
+                ? (
+                    latestNormalLocked
+                        ? '현재 연병장은 베테랑 전용 배치 상태입니다.'
+                        : (latestVeteranLocked ? '현재 연병장은 일반 유닛 전용 배치 상태입니다.' : '')
+                )
+                : '연병장은 현재 일반 유닛만 배치할 수 있습니다.';
             if (noticeEl) {
                 noticeEl.textContent = latestNotice;
                 noticeEl.classList.toggle('hidden', !latestNotice);
@@ -2563,6 +2775,16 @@
                 if (activeMode === 'normal' && latestNormalLocked) setActiveMode('veteran');
                 else if (activeMode === 'veteran' && latestVeteranLocked) setActiveMode('normal');
             }
+            DRILLGROUND_PICKER_CATEGORY_TABS.forEach((tab) => {
+                const normalCount = getDrillgroundPickerCategorySelectableCount(normalCategoryBuckets?.[tab.id]);
+                const normalCountEl = msgEl.querySelector(`[data-city-drillground-category-count="normal:${tab.id}"]`);
+                if (normalCountEl) normalCountEl.textContent = formatNumber(normalCount);
+                const veteranCount = getDrillgroundPickerCategorySelectableCount(veteranCategoryBuckets?.[tab.id]);
+                const veteranCountEl = msgEl.querySelector(`[data-city-drillground-category-count="veteran:${tab.id}"]`);
+                if (veteranCountEl) veteranCountEl.textContent = formatNumber(veteranCount);
+            });
+            ensureActiveCategory('normal', normalCategoryBuckets);
+            ensureActiveCategory('veteran', veteranCategoryBuckets);
 
             msgEl.querySelectorAll('[data-city-drillground-unit]').forEach((itemEl) => {
                 const itemKey = normalizeUnitKey(itemEl.getAttribute('data-city-drillground-unit'));
@@ -2613,7 +2835,15 @@
                 setActiveMode(mode);
             });
         });
+        msgEl.querySelectorAll('[data-city-drillground-category-mode][data-city-drillground-category]').forEach((btn) => {
+            btn.addEventListener('click', () => {
+                const mode = String(btn.getAttribute('data-city-drillground-category-mode') || '').trim().toLowerCase();
+                const category = String(btn.getAttribute('data-city-drillground-category') || '').trim();
+                setActiveCategory(mode, category);
+            });
+        });
 
+        setActiveMode(activeMode);
         refreshPickerButtons();
         msgEl.querySelectorAll('[data-city-drillground-unit]').forEach((btn) => {
             btn.addEventListener('click', () => {
@@ -2867,7 +3097,18 @@
         }
     }
 
-    function getCityUnitMoneyCost(key, unitDef) {
+    function _getInflationMult(game) {
+        if (!game) return 1.0;
+        if (typeof CitySimMarket !== 'undefined'
+            && CitySimMarket
+            && typeof CitySimMarket.getInflationMultiplier === 'function') {
+            return Math.max(1.0, Number(CitySimMarket.getInflationMultiplier(game)) || 1.0);
+        }
+        return 1.0;
+    }
+
+    function getCityUnitMoneyCost(key, unitDef, game) {
+        const inflationMult = _getInflationMult(game);
         if (Object.prototype.hasOwnProperty.call(CITY_UNIT_COST_OVERRIDES, key)) {
             const baseOverrideCost = Math.max(0, Math.floor(Number(CITY_UNIT_COST_OVERRIDES[key]) || 0));
             const hasUnitDef = !!(
@@ -2876,11 +3117,11 @@
                 && CONFIG.units
                 && Object.prototype.hasOwnProperty.call(CONFIG.units, key)
             );
-            if (!hasUnitDef) return normalizeMoneyStep(baseOverrideCost, 10);
-            return normalizeMoneyStep(Math.max(1, Math.floor(baseOverrideCost * getUnitGlobalCostMultiplier())), 10);
+            if (!hasUnitDef) return normalizeMoneyStep(Math.max(1, Math.floor(baseOverrideCost * inflationMult)), 10);
+            return normalizeMoneyStep(Math.max(1, Math.floor(baseOverrideCost * getUnitGlobalCostMultiplier() * inflationMult)), 10);
         }
         const baseSupplyCost = Math.max(1, Math.floor(Number(unitDef?.cost) || 20));
-        return normalizeMoneyStep(Math.max(120, baseSupplyCost * 14), 10);
+        return normalizeMoneyStep(Math.max(120, Math.floor(baseSupplyCost * 14 * inflationMult)), 10);
     }
 
     function getCityUnitPopulationNeed(unitKey, unitDef) {
@@ -2905,7 +3146,7 @@
                     return {
                         key,
                         unit: null,
-                        costMoney: normalizeMoneyStep(CITY_UNIT_COST_OVERRIDES['supply_box'] || 300, 10),
+                        costMoney: getCityUnitMoneyCost('supply_box', null, game),
                         popNeed: 0
                     };
                 }
@@ -2913,7 +3154,7 @@
                 return {
                     key,
                     unit,
-                    costMoney: getCityUnitMoneyCost(key, unit),
+                    costMoney: getCityUnitMoneyCost(key, unit, game),
                     popNeed: getCityUnitPopulationNeed(key, unit)
                 };
             });
@@ -3142,12 +3383,14 @@
             const defaultCost = Math.max(0, Math.floor(Number(entry?.costMoney) || 0));
             let nextCost = defaultCost;
             if (tutorialApi && typeof tutorialApi.getProductionCostOverride === 'function') {
-                const override = Number(tutorialApi.getProductionCostOverride(game, {
+                const rawOverride = tutorialApi.getProductionCostOverride(game, {
                     tile,
                     unitKey: entry?.key,
                     defaultCost
-                }));
-                if (Number.isFinite(override) && override >= 0) {
+                });
+                const hasOverride = rawOverride !== null && rawOverride !== undefined;
+                const override = hasOverride ? Number(rawOverride) : NaN;
+                if (hasOverride && Number.isFinite(override) && override >= 0) {
                     nextCost = Math.max(0, Math.floor(override));
                 }
             }
@@ -3241,7 +3484,20 @@
                         showToast('자금이 부족합니다.');
                         return;
                     }
-                    CitySimEconomy.payCost(game, { costMoney: entry.costMoney });
+                    const paid = CitySimEconomy.payCost(game, { costMoney: entry.costMoney });
+                    if (paid === false) {
+                        showToast('자금 차감 처리에 실패했습니다.');
+                        return;
+                    }
+                }
+
+                if (tutorialApi && typeof tutorialApi.consumeProductionCostOverride === 'function') {
+                    try {
+                        tutorialApi.consumeProductionCostOverride(game, {
+                            tile: selectionInfo.tile,
+                            unitKey
+                        });
+                    } catch (_) { }
                 }
 
                 const cooldownMeta = setProductionCooldownForBuilding(game, selectionInfo.index, entry);
@@ -3744,8 +4000,9 @@
         }
 
         const canvas = document.createElement('canvas');
-        canvas.width = 192;
-        canvas.height = 128;
+        const isIcbm = key === 'icbm';
+        canvas.width = isIcbm ? 224 : 192;
+        canvas.height = isIcbm ? 144 : 128;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
             drillgroundUnitIconCache.set(cacheKey, null);
@@ -3867,13 +4124,13 @@
                     ? 4
                     : ((unitCategory === 'armored' || unitType === 'mech') ? 18 : 20)
             ),
-            padding: (key === 'icbm') ? 1 : 2,
+            padding: (key === 'icbm') ? 3 : 2,
             verticalBias,
             trimBottomSoftLine: false,
             allowUpscale: (unitCategory === 'armored' || unitType === 'mech'),
             maxUpscale: (
                 key === 'icbm'
-                    ? 1.24
+                    ? 1.2
                     : ((key === 'mbt' || key === 'spg') ? 1.16 : 1.1)
             )
         });
@@ -5113,8 +5370,9 @@
     }
 
     // unitKey 기준 보유 아이템 수량:
-    // - 인벤토리 잔여량
-    // - 장착(베테랑 로드아웃) 수량
+    // - veteranEntry 지정 시: 해당 베테랑에게 현재 지급(장착)된 수량만 반환
+    //   (고정 스킬 슬롯은 getVeteranEquippedItemCount에서 제외)
+    // - veteranEntry 미지정 시: 기존 합산(인벤토리 잔여량 + 장착 수량) 반환
     function getVeteranOwnedItemCount(game, unitKey, veteranEntry = null) {
         const unit = normalizeUnitKey(unitKey);
         if (!unit || !game) return 0;
@@ -5126,6 +5384,13 @@
         } else {
             return 0;
         }
+
+        const targetVeteranId = String(veteranEntry?.id || '').trim();
+        if (targetVeteranId) {
+            if (normalizeUnitKey(veteranEntry?.unitKey) !== unit) return 0;
+            return getVeteranEquippedItemCount(veteranEntry);
+        }
+
         const state = CitySimState.ensure(game);
         let inventoryTotal = 0;
         for (const key of Object.keys(itemMap)) {
@@ -5133,18 +5398,11 @@
         }
 
         let equippedTotal = 0;
-        const targetVeteranId = String(veteranEntry?.id || '').trim();
-        if (targetVeteranId) {
-            if (normalizeUnitKey(veteranEntry.unitKey) === unit) {
-                equippedTotal += getVeteranEquippedItemCount(veteranEntry);
-            }
-        } else {
-            const veterans = getVeteranEntries(game);
-            veterans.forEach((entry) => {
-                if (normalizeUnitKey(entry?.unitKey) !== unit) return;
-                equippedTotal += getVeteranEquippedItemCount(entry);
-            });
-        }
+        const veterans = getVeteranEntries(game);
+        veterans.forEach((entry) => {
+            if (normalizeUnitKey(entry?.unitKey) !== unit) return;
+            equippedTotal += getVeteranEquippedItemCount(entry);
+        });
         return inventoryTotal + equippedTotal;
     }
 
@@ -8095,6 +8353,8 @@
         getDrillgroundPlacementAnchorIndex,
         canPlaceDrillgroundUnitAtAnchor,
         setDrillgroundUnitAtAnchor,
+        isDrillgroundVeteranPlacementEnabled,
+        purgeDrillgroundVeteranPlacements,
         isDrillgroundUnitTarget,
         isProductionClaimTarget,
         isIncomeClaimTarget,
@@ -8124,6 +8384,8 @@
         PROFILE_SKILL_COMMAND_META,
         getUnitProfileSkillCommandKeys,
         getInventoryDisplayName,
+        drawInventoryUnitIcon,
+        drawInventoryUnitProfileIcon,
         getVeteranDisplayName,
         VETERAN_ITEM_DEFS,
         VETERAN_ITEM_ORDER,
@@ -8191,6 +8453,7 @@
         triggerPrimaryAction,
         sellSelected,
         moveSelected,
-        confirmSelection
+        confirmSelection,
+        isDrillgroundVeteranPlacementEnabled
     };
 })(window);

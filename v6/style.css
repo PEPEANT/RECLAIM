@@ -5686,10 +5686,10 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-drillground-unit.city-drillground-unit-infantry {
-    --dg-left: 16%;
-    --dg-top: 1%;
-    --dg-width: 68%;
-    --dg-height: 96%;
+    --dg-left: 11%;
+    --dg-top: -5%;
+    --dg-width: 78%;
+    --dg-height: 112%;
 }
 
 .city-drillground-infantry-squad {
@@ -5708,10 +5708,10 @@ input[type=range]::-webkit-slider-runnable-track {
 
 .city-drillground-infantry-squad-unit {
     position: absolute;
-    left: 17%;
-    top: 1%;
-    width: 66%;
-    height: 94%;
+    left: 13%;
+    top: -4%;
+    width: 74%;
+    height: 108%;
     object-fit: contain;
     user-select: none;
     -webkit-user-drag: none;
@@ -5720,39 +5720,39 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-drillground-infantry-squad[data-stack-count="2"] .city-drillground-infantry-squad-unit:nth-child(1) {
-    transform: translate(-38%, -2%);
+    transform: translate(-34%, -2%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="2"] .city-drillground-infantry-squad-unit:nth-child(2) {
-    transform: translate(38%, -2%);
+    transform: translate(34%, -2%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="3"] .city-drillground-infantry-squad-unit:nth-child(1) {
-    transform: translate(-38%, -14%);
+    transform: translate(-34%, -12%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="3"] .city-drillground-infantry-squad-unit:nth-child(2) {
-    transform: translate(38%, -14%);
+    transform: translate(34%, -12%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="3"] .city-drillground-infantry-squad-unit:nth-child(3) {
-    transform: translate(0, 18%);
+    transform: translate(0, 16%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="4"] .city-drillground-infantry-squad-unit:nth-child(1) {
-    transform: translate(-38%, -14%);
+    transform: translate(-34%, -12%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="4"] .city-drillground-infantry-squad-unit:nth-child(2) {
-    transform: translate(38%, -14%);
+    transform: translate(34%, -12%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="4"] .city-drillground-infantry-squad-unit:nth-child(3) {
-    transform: translate(-38%, 18%);
+    transform: translate(-34%, 16%);
 }
 
 .city-drillground-infantry-squad[data-stack-count="4"] .city-drillground-infantry-squad-unit:nth-child(4) {
-    transform: translate(38%, 18%);
+    transform: translate(34%, 16%);
 }
 
 .city-drillground-unit.city-drillground-unit-span-2 {
@@ -5802,9 +5802,9 @@ input[type=range]::-webkit-slider-runnable-track {
 }
 
 .city-drillground-unit.city-drillground-unit-key-icbm.city-drillground-unit-span-2 {
-    --dg-top: -2%;
-    --dg-width: 184%;
-    --dg-height: 96%;
+    --dg-top: -4%;
+    --dg-width: 196%;
+    --dg-height: 104%;
     image-rendering: -webkit-optimize-contrast;
     image-rendering: crisp-edges;
 }
@@ -7132,6 +7132,19 @@ input[type=range]::-webkit-slider-runnable-track {
     padding-bottom: 1px;
 }
 
+/* 모바일 건설 카드: 긴 이름이 잘리지 않도록 2줄까지 표시 */
+#city-build-cards .city-build-card-name {
+    white-space: normal;
+    overflow: hidden;
+    text-overflow: clip;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    line-height: 1.08;
+    min-height: calc(1.08em * 2);
+    word-break: keep-all;
+}
+
 .city-build-card-type,
 .city-build-card-owned {
     font-size: 0.49rem;
@@ -8206,6 +8219,13 @@ input[type=range]::-webkit-slider-runnable-track {
 .city-drillground-picker {
     display: grid;
     gap: 0.34rem;
+    min-height: 0;
+}
+
+.city-drillground-picker-mode-panel {
+    display: grid;
+    gap: 0.28rem;
+    min-height: 0;
 }
 
 #city-action-modal.city-action-modal-bar.city-action-modal-drillground-picker .city-action-panel.city-action-panel-bar.city-action-panel-drillground-picker {
@@ -8224,18 +8244,35 @@ input[type=range]::-webkit-slider-runnable-track {
     margin-top: 0.04rem;
 }
 
+.city-drillground-picker-category-tabs {
+    margin-top: 0;
+}
+
+.city-drillground-picker-list-wrap {
+    min-height: 0;
+    max-height: min(52vh, 420px);
+    overflow: auto;
+}
+
 .city-drillground-picker-list {
     min-height: 84px;
 }
 
 .city-drillground-picker-list.city-inventory-unit-strip {
-    min-height: 96px;
-    align-items: center;
-    gap: 0.48rem;
-    padding: 0.4rem;
+    min-height: 84px;
+    flex-wrap: wrap;
+    overflow-x: hidden;
+    overflow-y: visible;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 0.44rem;
+    padding: 0.02rem;
 }
 
 .city-drillground-picker-card {
+    width: 80px;
+    min-width: 80px;
+    height: 72px;
     cursor: pointer !important;
     pointer-events: auto !important;
 }
@@ -8787,9 +8824,20 @@ input[type=range]::-webkit-slider-runnable-track {
     }
 
     .city-drillground-picker-list.city-inventory-unit-strip {
-        min-height: 84px;
-        gap: 0.36rem;
-        padding: 0.3rem;
+        min-height: 74px;
+        gap: 0.32rem;
+        padding: 0.02rem;
+    }
+
+    .city-drillground-picker-list-wrap {
+        max-height: min(50vh, 320px);
+        padding: 0.24rem;
+    }
+
+    .city-drillground-picker-card {
+        width: 72px;
+        min-width: 72px;
+        height: 66px;
     }
 
     .city-drillground-picker-status {
@@ -8843,6 +8891,25 @@ input[type=range]::-webkit-slider-runnable-track {
         border: none !important;
         box-shadow: none !important;
         padding: calc(0.56rem + env(safe-area-inset-top)) 0.56rem calc(0.56rem + env(safe-area-inset-bottom)) !important;
+    }
+    #city-action-modal.city-action-modal-bar.city-action-modal-drillground-picker #city-action-msg {
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #city-action-modal.city-action-modal-bar.city-action-modal-drillground-picker .city-drillground-picker {
+        flex: 1 1 auto;
+        min-height: 0;
+    }
+    #city-action-modal.city-action-modal-bar.city-action-modal-drillground-picker .city-drillground-picker-mode-panel {
+        min-height: 0;
+    }
+    #city-action-modal.city-action-modal-bar.city-action-modal-drillground-picker .city-drillground-picker-list-wrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        max-height: none;
+        overflow: auto;
     }
 
     #city-action-modal.city-action-modal-bar.city-action-modal-unit-profile #city-action-title,
@@ -9839,7 +9906,7 @@ input[type=range]::-webkit-slider-runnable-track {
     .city-build-card {
         width: 76px;
         min-width: 76px;
-        height: 66px;
+        height: 70px;
         padding: 0.22rem 0.28rem;
     }
 
@@ -11517,5 +11584,41 @@ input[type=range]::-webkit-slider-runnable-track {
         border-radius: 0.36rem !important;
         padding: 0.14rem 0.42rem !important;
         white-space: nowrap !important;
+    }
+}
+
+/* Mobile quest panel: open as full-screen sheet with vertical scroll. */
+@media (pointer: coarse) and (max-width: 900px) {
+    .city-screen.city-mission-open .city-mission-card {
+        left: 0 !important;
+        top: 0 !important;
+        right: 0 !important;
+        bottom: 0 !important;
+        transform: none !important;
+        width: 100vw !important;
+        max-width: none !important;
+        height: 100dvh !important;
+        max-height: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border: none !important;
+        padding-top: calc(0.9rem + env(safe-area-inset-top)) !important;
+        padding-right: calc(0.8rem + env(safe-area-inset-right)) !important;
+        padding-bottom: calc(1.05rem + env(safe-area-inset-bottom)) !important;
+        padding-left: calc(0.8rem + env(safe-area-inset-left)) !important;
+        overflow-y: auto !important;
+        overflow-x: hidden !important;
+        -webkit-overflow-scrolling: touch !important;
+        overscroll-behavior: contain !important;
+        touch-action: pan-y !important;
+    }
+
+    .city-screen.city-mission-open .city-mission-close {
+        top: calc(0.52rem + env(safe-area-inset-top)) !important;
+        right: calc(0.52rem + env(safe-area-inset-right)) !important;
+    }
+
+    .city-screen.city-mission-open .city-mission-list {
+        padding-bottom: calc(0.45rem + env(safe-area-inset-bottom));
     }
 }

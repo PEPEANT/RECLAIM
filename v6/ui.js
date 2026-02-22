@@ -483,15 +483,11 @@ const ui = {
             ? game.getVeteranSpawnEntries()
             : [];
         const veteranCountsByUnit = {};
-        const veteranItemCountByUnit = {};
         if (Array.isArray(veteranEntries)) {
             veteranEntries.forEach((entry) => {
                 const unitKey = String(entry?.unitKey || '').trim();
                 if (!unitKey) return;
                 veteranCountsByUnit[unitKey] = Math.max(0, Math.floor(Number(veteranCountsByUnit[unitKey]) || 0)) + 1;
-                const itemCount = Math.max(0, Math.floor(Number(entry?.itemCount) || 0));
-                const currentItemCount = Math.max(0, Math.floor(Number(veteranItemCountByUnit[unitKey]) || 0));
-                veteranItemCountByUnit[unitKey] = currentItemCount + itemCount;
             });
         }
 
@@ -529,16 +525,8 @@ const ui = {
             const u = CONFIG.units[key];
             const veteranCount = Math.max(0, Math.floor(Number(veteranCountsByUnit[key]) || 0));
             if (cache.veteranBadge) {
-                if (!u.isSkill && u.droneLaunchOnly !== true && veteranCount > 0) {
-                    const itemCount = Math.max(0, Math.floor(Number(veteranItemCountByUnit[key]) || 0));
-                    const badgeText = `+${itemCount}`;
-                    if (this.lastValues[key].veteranCount !== veteranCount || cache.veteranBadge.innerText !== badgeText) {
-                        cache.veteranBadge.innerText = badgeText;
-                    }
-                    cache.veteranBadge.classList.remove('hidden');
-                } else {
-                    cache.veteranBadge.classList.add('hidden');
-                }
+                // 일반 유닛 생산바에서는 베테랑 아이템 배지(+n)를 노출하지 않는다.
+                cache.veteranBadge.classList.add('hidden');
                 this.lastValues[key].veteranCount = veteranCount;
             }
             const isDroneOnly = (u.droneLaunchOnly === true);
@@ -605,7 +593,8 @@ const ui = {
             const currentQ = Math.max(0, Number(safeQueue[key]) || 0);
             if (last.queue !== currentQ) {
                 if (currentQ > 0) {
-                    cache.qBadge.innerText = `+${currentQ}`;
+                    // 대기열 배지는 베테랑 아이템 배지(+n)와 구분되도록 Q 접두어를 사용.
+                    cache.qBadge.innerText = `Q${currentQ}`;
                     cache.qBadge.classList.remove('hidden');
                 } else {
                     cache.qBadge.classList.add('hidden');

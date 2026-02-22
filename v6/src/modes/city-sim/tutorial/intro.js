@@ -74,6 +74,17 @@
         CLAIM_FINAL_QUEST: 'claim_final_quest',
         DONE: 'done'
     });
+    const GUIDED_SKIRMISH_INGAME_STEPS = new Set([
+        GUIDED_BUILD_STEPS.PLAY_BATTLE_INGAME_VIDEO,
+        GUIDED_BUILD_STEPS.OPEN_VETERAN_TAB,
+        GUIDED_BUILD_STEPS.DEPLOY_INFANTRY,
+        GUIDED_BUILD_STEPS.DEPLOY_VETERAN,
+        GUIDED_BUILD_STEPS.START_BATTLE,
+        GUIDED_BUILD_STEPS.DRONE_CONTROL_MODE,
+        GUIDED_BUILD_STEPS.DRONE_SKILL_USE,
+        GUIDED_BUILD_STEPS.DRONE_LOCKDOWN,
+        GUIDED_BUILD_STEPS.WAIT_BATTLE_END
+    ]);
 
     let enterTimer = null;
     let activeVideo = null;
@@ -1256,6 +1267,7 @@
     function setGuidedStep(flow, step) {
         if (!flow || !step || flow.step === step) return;
         flow.step = step;
+        syncChoicePanelBattleLayout(flow, step);
         patchTutorialStep(flow.game, guidedStepToNumber(step));
     }
 
@@ -1481,6 +1493,21 @@
         const panel = overlay.querySelector('.city-tutorial-intro-choice-panel');
         if (!panel) return;
         panel.classList.toggle('is-guided', guided === true);
+        if (guided !== true) panel.classList.remove('is-skirmish-ingame');
+    }
+
+    function isSkirmishIngameGuideStep(step) {
+        const key = String(step || '').trim();
+        if (!key) return false;
+        return GUIDED_SKIRMISH_INGAME_STEPS.has(key);
+    }
+
+    function syncChoicePanelBattleLayout(flow, stepOverride) {
+        if (!flow || !flow.overlay) return;
+        const panel = flow.overlay.querySelector('.city-tutorial-intro-choice-panel');
+        if (!panel) return;
+        const step = String(stepOverride || flow.step || '').trim();
+        panel.classList.toggle('is-skirmish-ingame', isSkirmishIngameGuideStep(step));
     }
 
     function bindAudioResumeGesture(overlay) {
@@ -2801,13 +2828,16 @@
             honorVideoPlayed: false,
             veteranRenameRequestedAt: 0,
             veteranRenameCompleted: false,
-            battleIngameImpactClipQueued: false
+            battleIngameImpactClipQueued: false,
+            freeProductionConsumed: false,
+            freeShopPurchaseConsumed: false
         };
         guidedFlow = flow;
         markCityIntroSeen(game, false);
         patchTutorialStep(game, guidedStepToNumber(flow.step));
         setActionsVisible(overlay, false);
         setChoicePanelGuidedMode(overlay, true);
+        syncChoicePanelBattleLayout(flow, flow.step);
 
         if (typeof game.onQuestMissionEvent === 'function') {
             flow.originalQuestHandler = game.onQuestMissionEvent;
@@ -3285,6 +3315,8 @@
         const flow = guidedFlow;
         if (!flow || flow.active !== true) return null;
         if (flow.game !== game) return null;
+        if (!flow.overlay || flow.overlay.isConnected !== true) return null;
+        if (flow.freeProductionConsumed === true) return null;
         const step = String(flow.step || '').trim();
         if (step !== GUIDED_BUILD_STEPS.OPEN_PRODUCTION && step !== GUIDED_BUILD_STEPS.QUEUE_DRONE) {
             return null;
@@ -3295,10 +3327,29 @@
         return 0;
     }
 
+    function consumeProductionCostOverride(game, context = {}) {
+        const flow = guidedFlow;
+        if (!flow || flow.active !== true) return false;
+        if (flow.game !== game) return false;
+        if (!flow.overlay || flow.overlay.isConnected !== true) return false;
+        if (flow.freeProductionConsumed === true) return false;
+        const step = String(flow.step || '').trim();
+        if (step !== GUIDED_BUILD_STEPS.OPEN_PRODUCTION && step !== GUIDED_BUILD_STEPS.QUEUE_DRONE) {
+            return false;
+        }
+        const tile = String(context.tile || '').trim();
+        const unitKey = String(context.unitKey || '').trim();
+        if (tile !== 'barracks' || unitKey !== 'drone_operator') return false;
+        flow.freeProductionConsumed = true;
+        return true;
+    }
+
     function getShopCostOverride(game, context = {}) {
         const flow = guidedFlow;
         if (!flow || flow.active !== true) return null;
         if (flow.game !== game) return null;
+        if (!flow.overlay || flow.overlay.isConnected !== true) return null;
+        if (flow.freeShopPurchaseConsumed === true) return null;
         const step = String(flow.step || '').trim();
         if (step !== GUIDED_BUILD_STEPS.OPEN_SHOP && step !== GUIDED_BUILD_STEPS.BUY_SPECIAL_BOX) {
             return null;
@@ -3310,6 +3361,23 @@
             costMoney: 0,
             costGold: 0
         };
+    }
+
+    function consumeShopCostOverride(game, context = {}) {
+        const flow = guidedFlow;
+        if (!flow || flow.active !== true) return false;
+        if (flow.game !== game) return false;
+        if (!flow.overlay || flow.overlay.isConnected !== true) return false;
+        if (flow.freeShopPurchaseConsumed === true) return false;
+        const step = String(flow.step || '').trim();
+        if (step !== GUIDED_BUILD_STEPS.OPEN_SHOP && step !== GUIDED_BUILD_STEPS.BUY_SPECIAL_BOX) {
+            return false;
+        }
+        const itemId = String(context.itemId || '').trim();
+        const rewardType = String(context.rewardType || '').trim();
+        if (itemId !== 'box_level2' && rewardType !== 'box_level2') return false;
+        flow.freeShopPurchaseConsumed = true;
+        return true;
     }
 
     function consumeForcedBoxItemReward(game, context = {}) {
@@ -3362,7 +3430,9 @@
         handleBattleLaunch,
         onSkirmishEvent,
         getProductionCostOverride,
+        consumeProductionCostOverride,
         getShopCostOverride,
+        consumeShopCostOverride,
         consumeForcedBoxItemReward,
         isBattleUnitSelectionAllowed,
         onVeteranNameApplied

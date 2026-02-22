@@ -202,9 +202,13 @@
         .map((spec) => toText(spec?.id, ''))
         .filter(Boolean);
     const BUILD_QUEST_CHAIN_SET = new Set(BUILD_QUEST_CHAIN_IDS);
-    const RECURRING_QUEST_ID_SET = new Set([
-        QUEST_IDS.KILL_CONTRACT,
-        QUEST_IDS.VICTORY_CONTRACT
+    const PERMANENT_ONE_TIME_QUEST_ID_SET = new Set([
+        QUEST_IDS.LOGIN_SUPPLY_BOX,
+        QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
+        QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
+        QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
+        QUEST_IDS.EVENT_VETERAN_UPDATE_GIFT,
+        QUEST_IDS.EVENT_VISIT_UPDATE_GIFT
     ]);
 
     function clampInt(value, fallback, min = 0, max = Number.MAX_SAFE_INTEGER) {
@@ -220,16 +224,10 @@
         return text || fallback;
     }
 
-    function isRecurringQuestId(id) {
+    function isPermanentOneTimeQuestId(id) {
         const key = toText(id, '');
         if (!key) return false;
-        return RECURRING_QUEST_ID_SET.has(key);
-    }
-
-    function isTemporaryQuestId(id) {
-        const key = toText(id, '');
-        if (!key) return false;
-        return key.startsWith('tutorial_');
+        return PERMANENT_ONE_TIME_QUEST_ID_SET.has(key);
     }
 
     function normalizePermanentClaimed(rawList) {
@@ -238,7 +236,7 @@
         const seen = new Set();
         list.forEach((value) => {
             const id = toText(value, '');
-            if (!id || seen.has(id) || isRecurringQuestId(id) || isTemporaryQuestId(id)) return;
+            if (!id || seen.has(id) || !isPermanentOneTimeQuestId(id)) return;
             seen.add(id);
             out.push(id);
         });
@@ -578,9 +576,13 @@
             if (permanentlyClaimed || quest.status === QUEST_STATUS.CLAIMED) {
                 quest.status = QUEST_STATUS.CLAIMED;
                 quest.progress = Math.max(level, base.target);
-                if (permanentClaimedSet) permanentClaimedSet.add(id);
             } else {
                 quest.status = (level >= base.target) ? QUEST_STATUS.CLAIMABLE : QUEST_STATUS.IN_PROGRESS;
+            }
+            if (quest.status === QUEST_STATUS.CLAIMED && level < base.target) {
+                // Repair impossible claimed states from stale/corrupted merge data.
+                quest.status = QUEST_STATUS.IN_PROGRESS;
+                quest.progress = level;
             }
 
             state.quests[id] = quest;
@@ -625,30 +627,12 @@
             const quest = state.quests[id];
             if (!quest || typeof quest !== 'object') return;
             if (String(quest.status || '') === QUEST_STATUS.CLAIMED
-                && !isRecurringQuestId(id)
-                && !isTemporaryQuestId(id)) {
+                && isPermanentOneTimeQuestId(id)) {
                 permanentClaimedSet.add(id);
             }
         });
 
         const level = getCityQuestLevel(gameRef);
-        const cityGrid = Array.isArray(gameRef?.citySim?.grid) ? gameRef.citySim.grid : [];
-        const countBuiltFromGrid = (tools) => {
-            if (!Array.isArray(tools) || tools.length <= 0) return 0;
-            if (!Array.isArray(cityGrid) || cityGrid.length <= 0) return 0;
-            const toolSet = new Set(
-                tools
-                    .map((tool) => String(tool || '').trim())
-                    .filter(Boolean)
-            );
-            if (toolSet.size <= 0) return 0;
-            let count = 0;
-            cityGrid.forEach((tile) => {
-                const key = String(tile || '').trim();
-                if (key && toolSet.has(key)) count += 1;
-            });
-            return count;
-        };
         const firstUnclaimedBuildQuestId = BUILD_QUEST_CHAIN_IDS.find((id) => {
             const q = state.quests[id];
             return q && typeof q === 'object' && q.status !== QUEST_STATUS.CLAIMED;
@@ -679,12 +663,7 @@
                 const rawProgress = clampInt(quest.progress, 0, 0, quest.target);
                 const isActiveBuildQuest = firstUnclaimedBuildQuestId === id;
                 if (isActiveBuildQuest) {
-                    // Sequential build quest: active step can inherit current city placement count.
-                    const builtCount = Math.min(
-                        quest.target,
-                        Math.max(0, Math.floor(countBuiltFromGrid(spec?.tools)))
-                    );
-                    quest.progress = Math.max(rawProgress, builtCount);
+                    quest.progress = rawProgress;
                     quest.status = (quest.progress >= quest.target)
                         ? QUEST_STATUS.CLAIMABLE
                         : QUEST_STATUS.IN_PROGRESS;
@@ -702,6 +681,39 @@
             quest.actionName = formatBuildQuestAction(spec, quest.progress);
             state.quests[id] = quest;
         });
+        const firstPendingBuildIndex = BUILD_QUEST_CHAIN_IDS.findIndex((id) => {
+            const quest = state.quests[id];
+            return !(quest && typeof quest === 'object' && quest.status === QUEST_STATUS.CLAIMED);
+        });
+        if (firstPendingBuildIndex >= 0) {
+            BUILD_QUEST_SPECS.forEach((spec, index) => {
+                if (index <= firstPendingBuildIndex) return;
+                const id = toText(spec?.id, '');
+                if (!id) return;
+                const quest = state.quests[id];
+                if (!quest || typeof quest !== 'object') return;
+                if (quest.status !== QUEST_STATUS.CLAIMED) return;
+                quest.progress = 0;
+                quest.status = QUEST_STATUS.IN_PROGRESS;
+                quest.actionName = formatBuildQuestAction(spec, quest.progress);
+            });
+        }
+        const allBuildChainClaimed = BUILD_QUEST_CHAIN_IDS.length > 0
+            && BUILD_QUEST_CHAIN_IDS.every((id) => {
+                const quest = state.quests[id];
+                return !!(quest && typeof quest === 'object' && quest.status === QUEST_STATUS.CLAIMED);
+            });
+        if (allBuildChainClaimed) {
+            BUILD_QUEST_SPECS.forEach((spec) => {
+                const id = toText(spec?.id, '');
+                if (!id) return;
+                const quest = state.quests[id];
+                if (!quest || typeof quest !== 'object') return;
+                quest.progress = 0;
+                quest.status = QUEST_STATUS.IN_PROGRESS;
+                quest.actionName = formatBuildQuestAction(spec, quest.progress);
+            });
+        }
 
         const legacyIds = [
             QUEST_IDS.LOGIN_SUPPLY_BOX,
@@ -857,7 +869,7 @@
         Object.keys(state.quests).forEach((id) => {
             const quest = state.quests[id];
             if (!quest || typeof quest !== 'object') return;
-            if (String(quest.status || '') === QUEST_STATUS.CLAIMED && !isRecurringQuestId(id)) {
+            if (String(quest.status || '') === QUEST_STATUS.CLAIMED && isPermanentOneTimeQuestId(id)) {
                 permanentClaimedSet.add(id);
             }
         });
