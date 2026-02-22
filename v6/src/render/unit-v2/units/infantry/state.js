@@ -288,6 +288,43 @@
         if (state.recoil < 0.05) state.recoil = 0;
         state.muzzleFlash = Math.max(0, Number(state.muzzleFlash || 0) - 1);
 
+        var forcedStanceRaw = String(unit._forcedInfantryStance || '').trim().toLowerCase();
+        var forcedStance = (
+            forcedStanceRaw === 'standing'
+            || forcedStanceRaw === 'crouching'
+            || forcedStanceRaw === 'prone'
+        ) ? forcedStanceRaw : '';
+        if (forcedStance && String(unit.commandMode || '').trim().toLowerCase() === 'stop') {
+            var xForced = Number(unit.x) || 0;
+            state.prevX = xForced;
+            state.velocityX = 0;
+            state.stationaryAnchorX = xForced;
+            state.stationaryFrames = (Number(state.stationaryFrames) || 0) + 1;
+            state.stance = forcedStance;
+            state.desiredStance = forcedStance;
+            state.desiredStanceFrames = 0;
+            state.stanceStableFrames = (Number(state.stanceStableFrames) || 0) + 1;
+            state.moveBlend = 0;
+            state.legSwing = 0;
+            state.armSwing = 0;
+            if (state.phaseSeedReady !== true) {
+                var seedBase = Math.abs((Number(unit.x) || 0) * 0.17 + (Number(unit.y) || 0) * 0.07);
+                state.phaseSeed = seedBase % TAU;
+                state.phaseSeedReady = true;
+            }
+            var idleForced = (frameNow * 0.07) + state.phaseSeed;
+            state.idleBreath = Math.sin(idleForced) * 0.35;
+            state.bodyBob = Math.abs(state.idleBreath) * 0.4;
+            state.torsoLean = 0;
+            state.weaponBobX = 0;
+            state.weaponBobY = state.idleBreath * 0.3;
+            state.weaponSway = 0;
+            return;
+        } else if (forcedStance) {
+            // Intro pose should only lock while holding position.
+            unit._forcedInfantryStance = null;
+        }
+
         var xNow = Number(unit.x) || 0;
         var vx = Number(unit.vx);
         if (!Number.isFinite(vx) || Math.abs(vx) < 0.001) {

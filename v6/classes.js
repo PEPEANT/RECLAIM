@@ -150,6 +150,14 @@ class Unit extends Entity {
             this.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
         }
 
+        if (stats.id === 'bagpiper') {
+            this.bagpipeActive = false;
+            this.bagpipeEffectActive = false;
+            this.bagpipeHealTick = 0;
+            this._bagpipePlayPending = false;
+            this._bagpipeAudio = null;
+        }
+
         // [NEW] 미사일 특수 명령 초기화 (기본 1회)
         const hasMissileCommand = (
             stats.missileCommand === true
@@ -462,6 +470,10 @@ class Unit extends Entity {
                 AudioSystem.stopIcbmRaise();
             }
             if (this.stats && (this.stats.id === 'icbm' || this.stats.id === 'icbm_enemy')) this.icbmRaiseSoundPlaying = false;
+            if (this.stats && this.stats.id === 'bagpiper') {
+                this.bagpipeActive = false;
+                this._stopBagpipeLoopAudio();
+            }
             this.dead = true;
             if (this.stats && this.stats.id === 'mbt') {
                 this._stopTankMGSound();
@@ -515,7 +527,13 @@ class Unit extends Entity {
             ]);
             const skipCorpseByAttack = cleanAttackType && noCorpseAttackTypes.has(cleanAttackType);
             const disableCorpses = !!(typeof game !== 'undefined' && game.debug && game.debug.disableCorpses);
-            if (!disableCorpses && !skipCorpseByAttack && (isInfantry || isCivilianHuman) && typeof Corpse !== 'undefined' && typeof game !== 'undefined' && Array.isArray(game.corpses)) {
+            // Infantry should always show death motion regardless of attack type.
+            const allowCorpseSpawn = (
+                !disableCorpses
+                && (isInfantry || isCivilianHuman)
+                && (!skipCorpseByAttack || isInfantry)
+            );
+            if (allowCorpseSpawn && typeof Corpse !== 'undefined' && typeof game !== 'undefined' && Array.isArray(game.corpses)) {
                 const deathInfo = {
                     attackType: cleanAttackType,
                     hitVx: cleanHitVx,
@@ -1034,8 +1052,211 @@ class Unit extends Entity {
         return true;
     }
 
+    isBagpiperUnit() {
+        return !!(this.stats && this.stats.id === 'bagpiper');
+    }
+
+    startBagpipeSkill() {
+        if (!this.isBagpiperUnit()) return false;
+        if (this.dead) return false;
+        if (this.bagpipeActive === true) return false;
+        this.bagpipeActive = true;
+        this.bagpipeEffectActive = false;
+        this.bagpipeHealTick = 0;
+        this._bagpipePlayPending = false;
+        if (this._bagpipeAudio) {
+            try { this._bagpipeAudio.pause(); } catch (e) { }
+            try { this._bagpipeAudio.currentTime = 0; } catch (e) { }
+        }
+        this._syncBagpipeLoopAudio();
+        if (typeof game !== 'undefined' && game && typeof game.createParticles === 'function') {
+            game.createParticles(this.x, this.y - 10, 8, '#fbbf24');
+        }
+        return true;
+    }
+
+    _applyBagpipeAura() {
+        if (!this.isBagpiperUnit()) return;
+        if (this.bagpipeActive !== true) return;
+        if (this.bagpipeEffectActive !== true) return;
+        if (typeof game === 'undefined' || !game || !Array.isArray(game.units)) return;
+
+        const tickFrames = Math.max(8, Math.floor(Number(this.stats?.bagpipeHealTickFrames) || 30));
+        if (!Number.isFinite(this.bagpipeHealTick) || this.bagpipeHealTick <= 0) {
+            this.bagpipeHealTick = tickFrames;
+        }
+        this.bagpipeHealTick = Math.max(0, this.bagpipeHealTick - 1);
+        if (this.bagpipeHealTick > 0) return;
+        this.bagpipeHealTick = tickFrames;
+
+        const radius = Math.max(40, Number(this.stats?.bagpipeHealRadius) || 180);
+        const flatHeal = Math.max(1, Math.floor(Number(this.stats?.bagpipeHealFlat) || 2));
+        let healedCount = 0;
+        for (let i = 0; i < game.units.length; i += 1) {
+            const ally = game.units[i];
+            if (!ally || ally.dead || ally === this) continue;
+            if (ally.team !== this.team) continue;
+            const allyCategory = String(ally.stats?.category || '').trim().toLowerCase();
+            if (allyCategory !== 'infantry') continue;
+            const dx = Math.abs((Number(ally.x) || 0) - (Number(this.x) || 0));
+            if (dx > radius) continue;
+            const dy = Math.abs((Number(ally.y) || 0) - (Number(this.y) || 0));
+            if (dy > 140) continue;
+
+            const maxHp = Math.max(1, Number(ally.maxHp) || 1);
+            const nowHp = Math.max(0, Number(ally.hp) || 0);
+            if (nowHp >= maxHp) continue;
+            const healAmount = Math.max(flatHeal, Math.floor(maxHp * 0.03));
+            const nextHp = Math.min(maxHp, nowHp + healAmount);
+            if (nextHp <= nowHp) continue;
+            ally.hp = nextHp;
+            healedCount += 1;
+
+            if (typeof game.createParticles === 'function') {
+                game.createParticles(ally.x, ally.y - 8, 3, '#4ade80');
+            }
+        }
+
+        if (healedCount > 0 && typeof game.createParticles === 'function') {
+            game.createParticles(this.x, this.y - 16, 4, '#fde047');
+        }
+    }
+
+    _syncBagpipeLoopAudio() {
+        if (!this.isBagpiperUnit()) return;
+        if (typeof AudioSystem === 'undefined' || !AudioSystem) {
+            this.bagpipeEffectActive = false;
+            return;
+        }
+
+        if (this.bagpipeActive !== true || this.dead) {
+            this._stopBagpipeLoopAudio();
+            return;
+        }
+
+        if (!AudioSystem.volume || AudioSystem.volume.sfx <= 0 || AudioSystem.volume.master <= 0) {
+            if (this._bagpipeAudio && !this._bagpipeAudio.paused) {
+                try { this._bagpipeAudio.pause(); } catch (e) { }
+            }
+            this.bagpipeEffectActive = false;
+            return;
+        }
+
+        try {
+            const audibility = (typeof AudioSystem.getWorldAudibility === 'function')
+                ? AudioSystem.getWorldAudibility(this.x)
+                : 1;
+            if (audibility <= 0.02) {
+                if (this._bagpipeAudio && !this._bagpipeAudio.paused) {
+                    try { this._bagpipeAudio.pause(); } catch (e) { }
+                }
+                this.bagpipeEffectActive = false;
+                return;
+            }
+            if (!this._bagpipeAudio) {
+                const a = new Audio('bgm/Brave.mp3');
+                a.preload = 'auto';
+                a.loop = false;
+                a.playsInline = true;
+                a.addEventListener('ended', () => {
+                    this.bagpipeActive = false;
+                    this.bagpipeEffectActive = false;
+                    this.bagpipeHealTick = 0;
+                    this._bagpipePlayPending = false;
+                    if (typeof game !== 'undefined' && game && game.cooldowns && Number(game.cooldowns.bagpipe_skill) <= 0) {
+                        game.cooldowns.bagpipe_skill = 30 * 60;
+                    }
+                    if (typeof game !== 'undefined' && game && typeof game.updateHUDSelection === 'function') {
+                        game.updateHUDSelection();
+                    }
+                });
+                this._bagpipeAudio = a;
+            }
+            if (this._bagpipeAudio.ended) {
+                this.bagpipeActive = false;
+                this.bagpipeEffectActive = false;
+                this.bagpipeHealTick = 0;
+                return;
+            }
+            const vol = Math.max(0, Math.min(1, AudioSystem.volume.sfx * AudioSystem.volume.master * 0.75 * audibility));
+            this._bagpipeAudio.volume = vol;
+            if (!this._bagpipeAudio.paused && !this._bagpipeAudio.ended) {
+                this.bagpipeEffectActive = true;
+                return;
+            }
+            if (this._bagpipePlayPending === true) return;
+            this._bagpipePlayPending = true;
+            const p = this._bagpipeAudio.play();
+            if (p && p.then) {
+                p.then(() => {
+                    this._bagpipePlayPending = false;
+                    this.bagpipeEffectActive = !!(this.bagpipeActive && this._bagpipeAudio && !this._bagpipeAudio.paused && !this._bagpipeAudio.ended);
+                }).catch(() => {
+                    this._bagpipePlayPending = false;
+                    this.bagpipeEffectActive = false;
+                });
+            } else {
+                this._bagpipePlayPending = false;
+                this.bagpipeEffectActive = !!(this._bagpipeAudio && !this._bagpipeAudio.paused && !this._bagpipeAudio.ended);
+            }
+        } catch (e) { }
+    }
+
+    _stopBagpipeLoopAudio() {
+        this.bagpipeEffectActive = false;
+        this._bagpipePlayPending = false;
+        if (!this._bagpipeAudio) return;
+        try { this._bagpipeAudio.pause(); } catch (e) { }
+        try { this._bagpipeAudio.currentTime = 0; } catch (e) { }
+    }
+
+    updateBagpiper(enemies, buildings) {
+        if (!this.isBagpiperUnit()) return false;
+        this.attackTarget = null;
+        this.combatHoldAnchorX = null;
+        this.combatHoldTarget = null;
+        this.combatHoldStartFrame = -1;
+
+        this._tryAutoEnterRetreat(null, enemies, buildings);
+        if (this.commandMode === 'retreat') {
+            this._updateRetreat(enemies, buildings);
+            this.updateFacing();
+            return true;
+        }
+
+        const speed = Number(this.stats?.speed) || 0;
+        if (this.commandMode === 'stop') {
+            // no-op
+        } else if (this.commandMode === 'move') {
+            const moveX = Number.isFinite(this.commandTargetX) ? this.commandTargetX : this.targetX;
+            if (Number.isFinite(moveX)) {
+                const dx = moveX - this.x;
+                if (Math.abs(dx) < 10) {
+                    this.commandMode = (this.team === 'enemy') ? 'attack' : 'stop';
+                    this.targetX = null;
+                    this.commandTargetX = null;
+                } else {
+                    this.x += speed * Math.sign(dx);
+                }
+            } else {
+                this.commandMode = (this.team === 'enemy') ? 'attack' : 'stop';
+                this.targetX = null;
+                this.commandTargetX = null;
+            }
+        } else {
+            const moveDir = this.team === 'player' ? 1 : -1;
+            this.x += speed * moveDir;
+        }
+
+        this.updateFacing();
+        return true;
+    }
+
     update(enemies, buildings) {
-        if (this.dead) return;
+        if (this.dead) {
+            if (this.isBagpiperUnit()) this._stopBagpipeLoopAudio();
+            return;
+        }
         if (this.recoil && this.recoil > 0) {
             this.recoil = Math.max(0, this.recoil - 0.6);
         }
@@ -1043,6 +1264,10 @@ class Unit extends Entity {
             this.missileFlash = Math.max(0, this.missileFlash - 1);
         }
         if (this.commandMode !== 'retreat') this.returnToBase = false;
+        if (this.isBagpiperUnit()) {
+            this._syncBagpipeLoopAudio();
+            this._applyBagpipeAura();
+        }
 
         // ?ㅽ꽩 ?곹깭 (EMP ??
         if (this.stunTimer > 0) {
@@ -1162,6 +1387,10 @@ class Unit extends Entity {
         if (this.isIcbmLauncherUnit()) {
             if (this.updateIcbmLauncher()) return;
             if (this.stats.id === 'icbm_enemy' && this.updateEnemyIcbmAnchor()) return;
+        }
+
+        if (this.updateBagpiper(enemies, buildings)) {
+            return;
         }
 
         // 보병 AI 연막탄 1회 사용
@@ -3136,6 +3365,7 @@ class Unit extends Entity {
         if (this.stats.onlyAir && (!target || !target.stats || target.stats.type !== 'air')) return;
         if (target && target.stats && target.stats.invulnerable) return;
         const id = this.stats.id;
+        if (id === 'bagpiper') return;
         let dmg = this.stats.damage;
 
         if (target?.stats?.type === 'air' && this.stats.damageAir != null) {
@@ -3947,6 +4177,74 @@ class Unit extends Entity {
             ctx.fillStyle = clothingColor;
             ctx.fillRect(4, -18, 4, 6);
             ctx.fillRect(-2, -20, 4, 4);
+        }
+        else if (id === 'bagpiper') {
+            const uniformColor = '#556b2f';
+            const vestColor = '#3e4e26';
+            const helmetColor = '#3a4a20';
+            const active = this.bagpipeActive === true;
+
+            // Infantry-aligned olive uniform palette.
+            ctx.fillStyle = uniformColor;
+            ctx.fillRect(-6, -20, 12, 20);
+            ctx.fillStyle = vestColor;
+            ctx.fillRect(-7, -19, 14, 12);
+
+            ctx.fillStyle = '#ffdbac';
+            ctx.beginPath();
+            ctx.arc(0, -24, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = helmetColor;
+            ctx.beginPath();
+            ctx.arc(0, -25, 6, Math.PI, 0);
+            ctx.fill();
+
+            // Bag + pipes
+            ctx.fillStyle = '#b91c1c';
+            ctx.beginPath();
+            ctx.ellipse(-2, -13, 8, 6, Math.PI / 8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#7f1d1d';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(-8, -15);
+            ctx.lineTo(2, -10);
+            ctx.moveTo(-7, -10);
+            ctx.lineTo(3, -15);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#111827';
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-4, -19); ctx.lineTo(-10, -37);
+            ctx.moveTo(0, -19); ctx.lineTo(-3, -35);
+            ctx.moveTo(3, -18); ctx.lineTo(4, -31);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#111827';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(1, -11);
+            ctx.lineTo(12, -2);
+            ctx.stroke();
+
+            if (active) {
+                const t = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
+                const pulse = 0.45 + (Math.sin(t * 0.18) * 0.25);
+                ctx.save();
+                ctx.globalAlpha = Math.max(0.2, Math.min(0.9, pulse));
+                ctx.fillStyle = '#facc15';
+                ctx.beginPath();
+                ctx.arc(10, -16, 1.8, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(14, -21, 1.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillRect(11, -24, 1.2, 7);
+                ctx.fillRect(15, -28, 1.2, 7);
+                ctx.restore();
+            }
         }
         else if (id === 'infantry') { ctx.fillRect(-6, -20, 12, 20); ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#1e293b'; ctx.fillRect(2, -18, 10, 3); }
         else if (id === 'sniper') {

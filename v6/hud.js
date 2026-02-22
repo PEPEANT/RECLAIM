@@ -489,6 +489,8 @@ const HUD = {
                 return { key: 'cmd_smoke', fallback: 'SMOKE', icon: 'fa-solid fa-smog', targetingType: '__smoke__' };
             case 'medkit':
                 return { key: 'cmd_medkit', fallback: 'MEDKIT', icon: 'fa-solid fa-kit-medical' };
+            case 'bagpipe':
+                return { key: 'cmd_bagpipe', fallback: 'BAGPIPE', icon: 'fa-solid fa-music' };
             case 'drop':
                 return { key: 'cmd_drop', fallback: 'DROP', icon: 'fa-solid fa-arrow-down', targetingType: '__drop__' };
             case 'missile':
@@ -594,6 +596,10 @@ const HUD = {
         let hasMissileCharge = false;
         let hasCameraman = false;
         let hasMedkitCharge = false;
+        let hasBagpiperSelection = false;
+        let bagpiperSelectionCount = 0;
+        let bagpiperInactiveCount = 0;
+        let bagpipeSongActive = false;
 
         selectedUnits.forEach(u => {
             const stats = u.stats || {};
@@ -604,6 +610,12 @@ const HUD = {
             if ((u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
             // [ITEM] 의료 키트: medkitChargesLeft > 0인 베테랑 유닛
             if ((u.medkitChargesLeft || 0) > 0) hasMedkitCharge = true;
+            if (id === 'bagpiper') {
+                hasBagpiperSelection = true;
+                bagpiperSelectionCount += 1;
+                if (u.bagpipeActive === true) bagpipeSongActive = true;
+                else bagpiperInactiveCount += 1;
+            }
             if (id && ['blackhawk', 'chinook', 'apc', 'humvee'].includes(id) && (u.transportDropsLeft || 0) > 0) {
                 canDrop = true;
             }
@@ -652,6 +664,8 @@ const HUD = {
         const canIcbmTactical = this.isIcbmPayloadReady('tactical_missile');
         const canIcbmEmp = this.isIcbmPayloadReady('emp');
         const canIcbmNuke = this.isIcbmPayloadReady('nuke');
+        const bagpipeCooldownFrames = Math.max(0, Number(game.cooldowns?.bagpipe_skill) || 0);
+        const canUseBagpipe = hasBagpiperSelection && bagpiperInactiveCount > 0 && bagpipeCooldownFrames <= 0;
 
         const cameraLocked = (typeof game.isCameraLocked === 'function') ? game.isCameraLocked() : false;
 
@@ -690,6 +704,11 @@ const HUD = {
             hasRecon,
             hasSmokeCharge,
             hasMedkitCharge,
+            hasBagpiperSelection,
+            hasBagpipeSkill: hasBagpiperSelection,
+            bagpipeSongActive,
+            bagpipeCooldownFrames,
+            canUseBagpipe,
             canDrop,
             hasMissileCharge,
             hasCameraman,
@@ -754,6 +773,7 @@ const HUD = {
             case 'recon': return !!ctx.hasRecon;
             case 'smoke': return !!ctx.hasSmokeCharge;
             case 'medkit': return !!ctx.hasMedkitCharge;
+            case 'bagpipe': return !!ctx.hasBagpiperSelection && !!ctx.canUseBagpipe;
             case 'drop': return !!ctx.canDrop;
             case 'missile': return !!ctx.hasMissileCharge;
             case 'news': return !!ctx.hasCameraman;
@@ -847,6 +867,15 @@ const HUD = {
             return map;
         }
 
+        if (ctx.hasBagpiperSelection) {
+            map.skill1 = 'bagpipe';
+            used.add('bagpipe');
+            map.skill2 = pick(['smoke', 'medkit', 'missile', 'recon', 'news']);
+            map.skill3 = pick(['medkit', 'smoke', 'recon', 'news', 'missile']);
+            map.interact = directControlInteract || pick(['drop', 'eject', 'news', 'recon']);
+            return map;
+        }
+
         if (!map.skill1) {
             map.skill1 = pick(['missile', 'smoke', 'medkit', 'recon', 'news']);
         }
@@ -902,10 +931,20 @@ const HUD = {
             )
             : '';
         const iconClass = (isSkillRole && !isIcbmCmd) ? 'fa-solid fa-bolt' : meta.icon;
+        const baseLabel = this.getLangText(meta.key, meta.fallback);
+        let buttonLabel = baseLabel;
+        if (mappedCmd === 'bagpipe') {
+            const cdFrames = Math.max(0, Number(ctx?.bagpipeCooldownFrames) || 0);
+            if (cdFrames > 0) {
+                buttonLabel = `${baseLabel} ${Math.max(1, Math.ceil(cdFrames / 60))}s`;
+            } else if (ctx?.bagpipeSongActive) {
+                buttonLabel = `${baseLabel} ON`;
+            }
+        }
         this.setHudCommandButtonVisual(
             btn,
             iconClass,
-            this.getLangText(meta.key, meta.fallback),
+            buttonLabel,
             iconImageUrl,
             useImageIcon ? (meta.iconImageClass || '') : ''
         );
@@ -913,7 +952,9 @@ const HUD = {
 
         const isActive = (mappedCmd === 'camera')
             ? !!ctx.cameraLocked
-            : (meta.targetingType ? ctx.targetingType === meta.targetingType : false);
+            : (mappedCmd === 'bagpipe')
+                ? !!ctx.bagpipeSongActive
+                : (meta.targetingType ? ctx.targetingType === meta.targetingType : false);
         btn.classList.toggle('active', isActive);
         btn.dataset.hudResolvedCmd = mappedCmd;
     },
@@ -1091,6 +1132,11 @@ const HUD = {
                     return game.useMedkitCommand() === true;
                 }
                 return false;
+            case 'bagpipe':
+                if (typeof game.useBagpipeCommand === 'function') {
+                    return game.useBagpipeCommand() === true;
+                }
+                return false;
             case 'drop':
                 if (typeof game.prepareDropCommand === 'function') {
                     game.prepareDropCommand();
@@ -1243,6 +1289,9 @@ const HUD = {
             `recon:${ctx.hasRecon ? 1 : 0}`,
             `smoke:${ctx.hasSmokeCharge ? 1 : 0}`,
             `medkit:${ctx.hasMedkitCharge ? 1 : 0}`,
+            `bagSel:${ctx.hasBagpiperSelection ? 1 : 0}`,
+            `bagOn:${ctx.bagpipeSongActive ? 1 : 0}`,
+            `bagCd:${Math.max(0, Number(ctx.bagpipeCooldownFrames) || 0)}`,
             `drop:${ctx.canDrop ? 1 : 0}`,
             `missile:${ctx.hasMissileCharge ? 1 : 0}`,
             `news:${ctx.hasCameraman ? 1 : 0}`,

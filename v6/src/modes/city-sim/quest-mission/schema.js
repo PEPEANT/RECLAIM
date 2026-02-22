@@ -1,5 +1,6 @@
 ﻿(function (global) {
     const C = global.CityQuestMissionConstants || {};
+    const Attendance = global.CityQuestMissionAttendance || null;
 
     const QUEST_SCHEMA_VERSION = Number(C.QUEST_SCHEMA_VERSION) || 1;
     const QUEST_STATUS = C.QUEST_STATUS || {
@@ -9,6 +10,7 @@
     };
     const QUEST_TYPES = C.QUEST_TYPES || {
         LEGACY_BUILD: 'legacy_build',
+        ATTENDANCE: 'attendance_login',
         LEGACY_LOGIN: 'legacy_login',
         LEGACY_SKIRMISH_WIN: 'legacy_skirmish_win',
         LEGACY_EVENT: 'legacy_event',
@@ -203,7 +205,6 @@
         .filter(Boolean);
     const BUILD_QUEST_CHAIN_SET = new Set(BUILD_QUEST_CHAIN_IDS);
     const PERMANENT_ONE_TIME_QUEST_ID_SET = new Set([
-        QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
         QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
         QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
@@ -420,13 +421,17 @@
             quests[quest.id] = quest;
         });
 
-        quests[QUEST_IDS.LOGIN_SUPPLY_BOX] = createLegacyQuest(
-            QUEST_IDS.LOGIN_SUPPLY_BOX,
-            QUEST_TYPES.LEGACY_LOGIN,
-            '출석 보급',
-            '로그인 완료',
-            { box: '특수 보급박스 x1', boxType: 'box_level2', gold: 15 }
-        );
+        quests[QUEST_IDS.LOGIN_SUPPLY_BOX] = {
+            id: QUEST_IDS.LOGIN_SUPPLY_BOX,
+            type: QUEST_TYPES.ATTENDANCE,
+            missionName: '출석 보급',
+            actionName: '출석 정보 갱신 중',
+            target: 1,
+            progress: 0,
+            status: QUEST_STATUS.IN_PROGRESS,
+            reward: normalizeReward({}, {}),
+            tier: 1
+        };
 
         quests[QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX] = createLegacyQuest(
             QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
@@ -523,7 +528,12 @@
                 lastLevel: level,
                 loginSupplyClaimed: false,
                 skirmishFirstWinClaimed: false,
-                permanentClaimed: []
+                permanentClaimed: [],
+                attendance: {
+                    day: 1,
+                    claimedDays: 0,
+                    lastClaimDate: ''
+                }
             }
         };
     }
@@ -601,11 +611,20 @@
         state.meta.skirmishFirstWinClaimed = state.meta.skirmishFirstWinClaimed === true;
         state.meta.permanentClaimed = normalizePermanentClaimed(state.meta.permanentClaimed);
         const permanentClaimedSet = new Set(state.meta.permanentClaimed);
-        if (state.meta.loginSupplyClaimed) {
-            permanentClaimedSet.add(QUEST_IDS.LOGIN_SUPPLY_BOX);
-        }
         if (state.meta.skirmishFirstWinClaimed) {
             permanentClaimedSet.add(QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX);
+        }
+        if (Attendance && typeof Attendance.normalizeMeta === 'function') {
+            state.meta.attendance = Attendance.normalizeMeta(state.meta.attendance);
+        } else {
+            const attendanceMeta = state.meta.attendance && typeof state.meta.attendance === 'object'
+                ? state.meta.attendance
+                : {};
+            state.meta.attendance = {
+                day: Math.max(1, clampInt(attendanceMeta.day, 1, 1, 8)),
+                claimedDays: Math.max(0, clampInt(attendanceMeta.claimedDays, 0, 0, 7)),
+                lastClaimDate: toText(attendanceMeta.lastClaimDate, '')
+            };
         }
 
         if (!state.quests || typeof state.quests !== 'object') {
@@ -716,7 +735,6 @@
         }
 
         const legacyIds = [
-            QUEST_IDS.LOGIN_SUPPLY_BOX,
             QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
             QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
             QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
@@ -731,12 +749,6 @@
             quest.target = 1;
             quest.progress = clampInt(quest.progress, 0, 0, 1);
             quest.reward = normalizeReward(quest.reward, defaultQuests[id] && defaultQuests[id].reward);
-            if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
-                quest.reward = normalizeReward(
-                    { box: '특수 보급박스 x1', boxType: 'box_level2', gold: 15 },
-                    defaultQuests[id] && defaultQuests[id].reward
-                );
-            }
             if (id === QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX) {
                 quest.reward = normalizeReward(
                     { box: '일반 보급상자 x1', boxType: 'box_level1' },
@@ -778,7 +790,6 @@
 
             const permanentlyClaimed = permanentClaimedSet.has(id);
             if (permanentlyClaimed
-                || (id === QUEST_IDS.LOGIN_SUPPLY_BOX && state.meta.loginSupplyClaimed === true)
                 || (id === QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX && state.meta.skirmishFirstWinClaimed === true)) {
                 quest.status = QUEST_STATUS.CLAIMED;
                 quest.progress = 1;
@@ -804,13 +815,34 @@
                 quest.status = QUEST_STATUS.IN_PROGRESS;
             }
 
-            if (id === QUEST_IDS.LOGIN_SUPPLY_BOX && quest.status === QUEST_STATUS.CLAIMED) {
-                state.meta.loginSupplyClaimed = true;
-            }
             if (id === QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX && quest.status === QUEST_STATUS.CLAIMED) {
                 state.meta.skirmishFirstWinClaimed = true;
             }
         });
+
+        const attendanceQuest = state.quests[QUEST_IDS.LOGIN_SUPPLY_BOX];
+        if (attendanceQuest && typeof attendanceQuest === 'object') {
+            if (Attendance && typeof Attendance.syncQuestState === 'function') {
+                Attendance.syncQuestState(state, attendanceQuest, {
+                    questStatus: QUEST_STATUS,
+                    normalizeReward,
+                    questType: QUEST_TYPES.ATTENDANCE
+                });
+            } else {
+                attendanceQuest.id = QUEST_IDS.LOGIN_SUPPLY_BOX;
+                attendanceQuest.type = QUEST_TYPES.ATTENDANCE;
+                attendanceQuest.missionName = '출석 보급';
+                attendanceQuest.actionName = '출석 보상 수령';
+                attendanceQuest.target = 1;
+                attendanceQuest.progress = 1;
+                attendanceQuest.status = QUEST_STATUS.CLAIMABLE;
+                attendanceQuest.reward = normalizeReward(
+                    { box: '특수 보급박스 x1', boxType: 'box_level2' },
+                    defaultQuests[QUEST_IDS.LOGIN_SUPPLY_BOX] && defaultQuests[QUEST_IDS.LOGIN_SUPPLY_BOX].reward
+                );
+                attendanceQuest.tier = 1;
+            }
+        }
 
         state.counters = state.counters && typeof state.counters === 'object' ? state.counters : {};
         state.counters.kill = clampInt(state.counters.kill, 0, 0, 999999999);
@@ -876,7 +908,7 @@
 
         state.meta.lastLevel = level;
         state.meta.permanentClaimed = normalizePermanentClaimed(Array.from(permanentClaimedSet));
-        state.meta.loginSupplyClaimed = state.meta.permanentClaimed.includes(QUEST_IDS.LOGIN_SUPPLY_BOX);
+        state.meta.loginSupplyClaimed = false;
         state.meta.skirmishFirstWinClaimed = state.meta.permanentClaimed.includes(QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX);
         state.version = QUEST_SCHEMA_VERSION;
         return state;
@@ -903,7 +935,10 @@
                 lastLevel: clampInt(raw?.meta?.lastLevel, base.meta.lastLevel, 1, 19),
                 loginSupplyClaimed: raw?.meta?.loginSupplyClaimed === true,
                 skirmishFirstWinClaimed: raw?.meta?.skirmishFirstWinClaimed === true,
-                permanentClaimed: normalizePermanentClaimed(raw?.meta?.permanentClaimed)
+                permanentClaimed: normalizePermanentClaimed(raw?.meta?.permanentClaimed),
+                attendance: (raw?.meta?.attendance && typeof raw.meta.attendance === 'object')
+                    ? raw.meta.attendance
+                    : base.meta.attendance
             }
         };
 
@@ -949,7 +984,18 @@
                 lastLevel: safe.meta.lastLevel,
                 loginSupplyClaimed: safe.meta.loginSupplyClaimed === true,
                 skirmishFirstWinClaimed: safe.meta.skirmishFirstWinClaimed === true,
-                permanentClaimed: normalizePermanentClaimed(safe.meta.permanentClaimed)
+                permanentClaimed: normalizePermanentClaimed(safe.meta.permanentClaimed),
+                attendance: (safe.meta.attendance && typeof safe.meta.attendance === 'object')
+                    ? {
+                        day: clampInt(safe.meta.attendance.day, 1, 1, 8),
+                        claimedDays: clampInt(safe.meta.attendance.claimedDays, 0, 0, 7),
+                        lastClaimDate: toText(safe.meta.attendance.lastClaimDate, '')
+                    }
+                    : {
+                        day: 1,
+                        claimedDays: 0,
+                        lastClaimDate: ''
+                    }
             }
         };
 

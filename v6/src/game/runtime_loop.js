@@ -2,7 +2,14 @@
     'use strict';
 
     function loop(game) {
-        if (!game.running) return;
+        if (!game.running) {
+            if (typeof AudioSystem !== 'undefined'
+                && AudioSystem
+                && typeof AudioSystem.stopBattleMovementAmbience === 'function') {
+                try { AudioSystem.stopBattleMovementAmbience(); } catch (_) { }
+            }
+            return;
+        }
 
         // [New] Speed Logic
         // 1x: Update once
@@ -35,6 +42,16 @@
                 game._reportLoopError('draw', e);
                 // 첫 프레임 draw 실패 시 완전한 검은 화면으로 보이는 현상을 방지한다.
                 game._drawFallbackFrame();
+            }
+        }
+
+        if (typeof AudioSystem !== 'undefined'
+            && AudioSystem
+            && typeof AudioSystem.updateBattleMovementAmbience === 'function') {
+            try {
+                AudioSystem.updateBattleMovementAmbience(game, { paused: !!game.paused });
+            } catch (e) {
+                game._reportLoopError('audio:movement', e);
             }
         }
 

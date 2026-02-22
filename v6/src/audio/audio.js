@@ -278,6 +278,12 @@
     _icbmRaiseWorldX: null,
     _icbmRaiseStopTimer: null,
     panicMuted: false,
+    _battleMoveLoops: null,
+    _battleMoveProbe: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
+    _battleMoveLastDistantArmorMs: 0,
+    _battleMoveHeliIdMap: { apache: true, blackhawk: true, chinook: true, uh60: true },
+    _battleMoveTankIdMap: { mbt: true, apc: true, aa_tank: true, spg: true },
+    _battleMoveDistantArmorIdMap: { mbt: true, apc: true, aa_tank: true, spg: true },
     getWorldAudibility(worldX, pad = 220, fadeDistance = 280) {
         if (!Number.isFinite(worldX)) return 1;
         if (typeof game === 'undefined' || !game || !Number.isFinite(game.cameraX)) return 1;
@@ -319,6 +325,210 @@
             return a;
         } catch (e) { }
         return null;
+    },
+
+    _ensureBattleMoveState() {
+        if (!this._battleMoveLoops || typeof this._battleMoveLoops !== 'object') {
+            this._battleMoveLoops = {
+                helicopter: null,
+                tank: null,
+                humvee: null
+            };
+        }
+        if (!this._battleMoveProbe || typeof this._battleMoveProbe.get !== 'function') {
+            this._battleMoveProbe = (typeof WeakMap !== 'undefined') ? new WeakMap() : null;
+        }
+    },
+
+    _clamp01(v) {
+        return Math.max(0, Math.min(1, Number(v) || 0));
+    },
+
+    _getBattleViewRange(gameRef = null) {
+        const g = gameRef || ((typeof game !== 'undefined') ? game : null);
+        if (!g) return null;
+        const viewW = (typeof Camera !== 'undefined' && Camera && typeof Camera.viewW === 'function')
+            ? Number(Camera.viewW(g))
+            : Number(g.width);
+        if (!Number.isFinite(viewW) || viewW <= 0) return null;
+        const minX = Number(g.cameraX) || 0;
+        return { minX, maxX: minX + viewW };
+    },
+
+    _isWorldXVisible(worldX, margin = 0, gameRef = null) {
+        const view = this._getBattleViewRange(gameRef);
+        if (!view || !Number.isFinite(worldX)) return false;
+        const m = Number.isFinite(margin) ? Math.max(0, Number(margin)) : 0;
+        return worldX >= (view.minX - m) && worldX <= (view.maxX + m);
+    },
+
+    _trackUnitMoveDelta(unit) {
+        if (!unit || !Number.isFinite(Number(unit.x))) return 0;
+        const x = Number(unit.x);
+        const probe = this._battleMoveProbe;
+        if (probe && typeof probe.get === 'function' && typeof probe.set === 'function') {
+            const hasPrev = typeof probe.has === 'function' ? probe.has(unit) : false;
+            const prev = hasPrev ? Number(probe.get(unit)) : NaN;
+            probe.set(unit, x);
+            if (!Number.isFinite(prev)) return NaN;
+            return Math.abs(x - prev);
+        }
+        const prev = Number(unit._audioPrevX);
+        unit._audioPrevX = x;
+        if (!Number.isFinite(prev)) return NaN;
+        return Math.abs(x - prev);
+    },
+
+    _isUnitActivelyMoving(unit) {
+        if (!unit || unit.dead) return false;
+        const cmd = String(unit.commandMode || '').trim().toLowerCase();
+        const delta = this._trackUnitMoveDelta(unit);
+        if (Number.isFinite(delta) && delta >= 0.35) return true;
+        if (!Number.isFinite(delta)) return cmd === 'move' || cmd === 'retreat';
+        if (cmd === 'move' || cmd === 'retreat') return delta >= 0.06;
+        return false;
+    },
+
+    _updateBattleMoveLoop(slotKey, file, shouldPlay, volume) {
+        this._ensureBattleMoveState();
+        const loops = this._battleMoveLoops;
+        if (!Object.prototype.hasOwnProperty.call(loops, slotKey)) return;
+        let a = loops[slotKey];
+        if (!a) {
+            a = new Audio(file);
+            a.preload = 'auto';
+            a.playsInline = true;
+            a.loop = true;
+            loops[slotKey] = a;
+        }
+        const vol = this._clamp01(volume);
+        if (!shouldPlay || vol <= 0.002) {
+            try { a.pause(); } catch (e) { }
+            try { a.currentTime = 0; } catch (e) { }
+            return;
+        }
+        a.volume = vol;
+        if (a.paused || a.ended) {
+            if (a.ended) {
+                try { a.currentTime = 0; } catch (e) { }
+            }
+            const p = a.play();
+            if (p && p.catch) p.catch(() => { });
+        }
+    },
+
+    _stopBattleMoveLoop(slotKey) {
+        this._ensureBattleMoveState();
+        const a = this._battleMoveLoops[slotKey];
+        if (!a) return;
+        try { a.pause(); } catch (e) { }
+        try { a.currentTime = 0; } catch (e) { }
+    },
+
+    stopBattleMovementAmbience() {
+        this._stopBattleMoveLoop('helicopter');
+        this._stopBattleMoveLoop('tank');
+        this._stopBattleMoveLoop('humvee');
+    },
+
+    updateBattleMovementAmbience(gameRef = null, opts = {}) {
+        this._ensureBattleMoveState();
+        const g = gameRef || ((typeof game !== 'undefined') ? game : null);
+        const paused = !!opts.paused;
+        if (!g || paused || g.running !== true || this.volume.sfx <= 0 || this.volume.master <= 0) {
+            this.stopBattleMovementAmbience();
+            return;
+        }
+
+        const HELI_IDS = this._battleMoveHeliIdMap || {};
+        const TANK_IDS = this._battleMoveTankIdMap || {};
+        const DISTANT_ARMOR_IDS = this._battleMoveDistantArmorIdMap || {};
+
+        const allUnits = [];
+        if (Array.isArray(g.players)) allUnits.push(...g.players);
+        if (Array.isArray(g.enemies)) allUnits.push(...g.enemies);
+
+        let heliAud = 0;
+        let tankAud = 0;
+        let humveeAud = 0;
+        for (let i = 0; i < allUnits.length; i += 1) {
+            const u = allUnits[i];
+            if (!u || u.dead || !u.stats) continue;
+            const id = String(u.stats.id || '').trim().toLowerCase();
+            const worldX = Number(u.x);
+            if (!Number.isFinite(worldX)) continue;
+            const isVisible = this._isWorldXVisible(worldX, 24, g);
+            if (!isVisible) continue;
+            const audibility = this.getWorldAudibility(worldX);
+            if (audibility <= 0.02) continue;
+
+            if (HELI_IDS[id] === true) {
+                heliAud = Math.max(heliAud, audibility);
+                continue;
+            }
+
+            if (id === 'humvee') {
+                if (this._isUnitActivelyMoving(u)) {
+                    humveeAud = Math.max(humveeAud, audibility);
+                }
+                continue;
+            }
+
+            if (TANK_IDS[id] === true && this._isUnitActivelyMoving(u)) {
+                tankAud = Math.max(tankAud, audibility);
+            }
+        }
+
+        const mix = this.volume.sfx * this.volume.master;
+        this._updateBattleMoveLoop(
+            'helicopter',
+            'bgm/mov/helicopter-moving.mp3',
+            heliAud > 0.02,
+            mix * 0.16 * heliAud
+        );
+        this._updateBattleMoveLoop(
+            'tank',
+            'bgm/mov/tank_moving.mp3',
+            tankAud > 0.02,
+            mix * 0.15 * tankAud
+        );
+        this._updateBattleMoveLoop(
+            'humvee',
+            'bgm/mov/tank_moving2.mp3',
+            humveeAud > 0.02,
+            mix * 0.13 * humveeAud
+        );
+
+        // 화면 밖에서 들리는 적 기갑 포성(짧게 1회) 트리거.
+        const frameNow = Math.max(0, Math.floor(Number(g.frame) || 0));
+        let bestDistantAud = 0;
+        let bestDistantX = null;
+        const enemies = Array.isArray(g.enemies) ? g.enemies : [];
+        for (let i = 0; i < enemies.length; i += 1) {
+            const u = enemies[i];
+            if (!u || u.dead || !u.stats) continue;
+            const id = String(u.stats.id || '').trim().toLowerCase();
+            if (DISTANT_ARMOR_IDS[id] !== true) continue;
+            const worldX = Number(u.x);
+            if (!Number.isFinite(worldX)) continue;
+            if (this._isWorldXVisible(worldX, 12, g)) continue;
+            const lastAttack = Math.max(0, Math.floor(Number(u.lastAttack) || 0));
+            if ((frameNow - lastAttack) > 3) continue;
+            const aud = this.getWorldAudibility(worldX);
+            if (aud <= 0.02) continue;
+            if (aud > bestDistantAud) {
+                bestDistantAud = aud;
+                bestDistantX = worldX;
+            }
+        }
+
+        if (bestDistantAud > 0.02) {
+            const nowMs = Date.now();
+            if ((nowMs - (Number(this._battleMoveLastDistantArmorMs) || 0)) >= 950) {
+                this._battleMoveLastDistantArmorMs = nowMs;
+                this._playOneShot('bgm/mov/freesound_community.mp3', mix * 0.34, 1, bestDistantX);
+            }
+        }
     },
 
     startIcbmRaise(worldX = null) {

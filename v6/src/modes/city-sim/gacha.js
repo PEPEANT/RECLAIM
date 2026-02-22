@@ -51,6 +51,7 @@
     const MISSILE_BLUEPRINT_ITEM_KEY = 'bp_missile';
     const BOX_LEVEL2_RARE_GOLD_CHANCE = 0.05;
     const BOX_LEVEL2_RARE_GOLD_AMOUNT = 10;
+    const BOX_LEVEL2_BAGPIPER_CHANCE = 0.06;
 
     const SHOP_TABS = [
         { id: 'supply', label: '보급상점' },
@@ -635,6 +636,9 @@
         if (key === 'nuke') {
             return _getUnitOwnedCount(gameRef, key) < 2;
         }
+        if (key === 'bagpiper') {
+            return _getUnitOwnedCount(gameRef, key) < 1;
+        }
         return true;
     }
 
@@ -789,8 +793,13 @@
                 Object.keys(grantPayload.units).forEach((key) => {
                     const current = Math.max(0, Math.floor(Number(draft.units[key]) || 0));
                     const addAmount = Math.max(0, Math.floor(Number(grantPayload.units[key]) || 0));
-                    if (key === 'nuke') {
+                    if (key === 'nuke' || key === 'icbm') {
                         const capped = Math.max(0, Math.min(addAmount, 2 - current));
+                        if (capped > 0) draft.units[key] = current + capped;
+                        return;
+                    }
+                    if (key === 'bagpiper') {
+                        const capped = Math.max(0, Math.min(addAmount, 1 - current));
                         if (capped > 0) draft.units[key] = current + capped;
                         return;
                     }
@@ -990,6 +999,31 @@
         }
 
         // 특수 보급상자 희귀 보너스: 낮은 확률로 골드 10개 추가 지급
+        if (boxId === 'box_level2'
+            && _getUnitOwnedCount(targetGame, 'bagpiper') < 1
+            && Math.random() < BOX_LEVEL2_BAGPIPER_CHANCE) {
+            let granted = 0;
+            if (typeof CitySimEconomy !== 'undefined'
+                && CitySimEconomy
+                && typeof CitySimEconomy.grant === 'function') {
+                const report = CitySimEconomy.grant(targetGame, { units: { bagpiper: 1 } }, { render: false, save: false });
+                granted = Math.max(0, Math.floor(Number(report?.units?.bagpiper) || 0));
+            } else if (typeof CitySimState !== 'undefined' && CitySimState && typeof CitySimState.mutate === 'function') {
+                CitySimState.mutate(targetGame, (draft) => {
+                    if (!draft.units || typeof draft.units !== 'object') draft.units = {};
+                    const current = Math.max(0, Math.floor(Number(draft.units.bagpiper) || 0));
+                    if (current < 1) {
+                        draft.units.bagpiper = 1;
+                        granted = 1;
+                    }
+                });
+            }
+            if (granted > 0) {
+                itemRewards.push({ type: 'unit', unitKey: 'bagpiper', unitName: '백파이프병', amount: granted });
+            }
+        }
+
+        // 특수 보급상자 희귀 보너스: 낮은 확률로 골드 10개 추가 지급
         if (boxId === 'box_level2' && Math.random() < BOX_LEVEL2_RARE_GOLD_CHANCE) {
             if (typeof CitySimEconomy !== 'undefined'
                 && CitySimEconomy
@@ -1089,14 +1123,19 @@
 
         const opts = (options && typeof options === 'object') ? options : {};
         const source = String(opts.source || '보상').trim() || '보상';
+        const shouldSave = opts.save !== false;
+        const shouldRender = opts.render !== false;
+        const shouldToast = opts.toast !== false;
 
         // 보관 가능 아이템이면 보관함에 저장
         if (_isStorableItem(item)) {
             addBoxToInventory(targetGame, item.rewardType, 1);
-            if (typeof targetGame.saveCitySimState === 'function') {
+            if (shouldSave && typeof targetGame.saveCitySimState === 'function') {
                 targetGame.saveCitySimState();
             }
-            showToast(`${source}: ${item.name} → 보관함에 저장됨`);
+            if (shouldToast) {
+                showToast(`${source}: ${item.name} → 보관함에 저장됨`);
+            }
             return { ok: true, reason: '', rewards: [], itemId: item.id };
         }
 
@@ -1104,17 +1143,21 @@
         const rewards = _rollRewards(item, targetGame);
         _applyRewards(rewards, targetGame);
 
-        if (typeof targetGame.saveCitySimState === 'function') {
+        if (shouldSave && typeof targetGame.saveCitySimState === 'function') {
             targetGame.saveCitySimState();
         }
-        if (typeof CitySimEconomy !== 'undefined' && CitySimEconomy && typeof CitySimEconomy.renderResources === 'function') {
-            CitySimEconomy.renderResources(targetGame);
-        } else if (typeof targetGame.renderCityResources === 'function') {
-            targetGame.renderCityResources();
+        if (shouldRender) {
+            if (typeof CitySimEconomy !== 'undefined' && CitySimEconomy && typeof CitySimEconomy.renderResources === 'function') {
+                CitySimEconomy.renderResources(targetGame);
+            } else if (typeof targetGame.renderCityResources === 'function') {
+                targetGame.renderCityResources();
+            }
         }
 
         const summary = rewards.map((reward) => _rewardText(reward)).filter(Boolean).join(', ');
-        showToast(`${source}: ${item.name} 지급${summary ? ` (${summary})` : ''}`);
+        if (shouldToast) {
+            showToast(`${source}: ${item.name} 지급${summary ? ` (${summary})` : ''}`);
+        }
 
         if (opts.showEffect === true) {
             _openingLocked = true;

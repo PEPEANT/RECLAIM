@@ -99,6 +99,16 @@
             width: 15, height: 25, color: '#60a5fa', type: 'bio', category: 'infantry',
             role: '기본 보병', description: '전선을 유지하는 기본 보병입니다.'
         },
+        bagpiper: {
+            id: 'bagpiper', name: '백파이프병', cost: 30, cooldown: 70, maxCount: 1,
+            hp: 80, damage: 0, range: 0, speed: 0.9,
+            width: 16, height: 26, color: '#60a5fa', type: 'bio', category: 'infantry',
+            role: '전투 치유 지원', description: '공격하지 않고 백파이프 연주로 주변 아군 보병을 치유합니다.',
+            bagpipeSkill: true,
+            bagpipeHealRadius: 180,
+            bagpipeHealFlat: 2,
+            bagpipeHealTickFrames: 30
+        },
         engineer: {
             id: 'engineer', name: '공병', cost: 30, cooldown: 20, maxCount: 12,
             hp: 60, damage: 15, range: 180, missileRange: 620, missileDamage: 80, speed: 0.7,

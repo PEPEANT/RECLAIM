@@ -1,6 +1,7 @@
 ﻿(function (global) {
     const C = global.CityQuestMissionConstants || {};
     const Schema = global.CityQuestMissionSchema || {};
+    const Attendance = global.CityQuestMissionAttendance || null;
 
     const QUEST_STATUS = C.QUEST_STATUS || Schema.QUEST_STATUS || {
         IN_PROGRESS: 'in_progress',
@@ -155,7 +156,6 @@
         .filter(Boolean);
     const BUILD_QUEST_CHAIN_ID_SET = new Set(BUILD_QUEST_CHAIN_IDS);
     const PERMANENT_ONE_TIME_QUEST_ID_SET = new Set([
-        QUEST_IDS.LOGIN_SUPPLY_BOX,
         QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX,
         QUEST_IDS.LUNAR_NEW_YEAR_GIFT,
         QUEST_IDS.EVENT_V62_SUPPLY_GIFT,
@@ -164,6 +164,7 @@
     ]);
     const QUEST_CLAIM_LEDGER_STORAGE_KEY = 'reclaim_city_quest_claim_ledger_v1';
     const GUEST_LEDGER_UID = '__guest__';
+    const PENDING_LEDGER_UID = '__pending_auth__';
     let questClaimLedgerCache = null;
 
     function isFn(value) {
@@ -176,26 +177,70 @@
         return PERMANENT_ONE_TIME_QUEST_ID_SET.has(id);
     }
 
-    function getAuthUid() {
+    function getCurrentAuthUser() {
         if (typeof CitySimAuth !== 'undefined' && CitySimAuth && isFn(CitySimAuth.getCurrentUser)) {
             const user = CitySimAuth.getCurrentUser();
-            if (user && user.uid) return String(user.uid);
+            if (user && typeof user === 'object') return user;
         }
         if (typeof RECLAIM_FB !== 'undefined' && RECLAIM_FB && isFn(RECLAIM_FB.getUser)) {
             const user = RECLAIM_FB.getUser();
-            if (user && user.uid) return String(user.uid);
+            if (user && typeof user === 'object') return user;
         }
+        return null;
+    }
+
+    function isGuestSessionActive() {
+        const user = getCurrentAuthUser();
+        if (user && user.uid && user.isAnonymous === true) return true;
+        if (typeof CitySimAuth !== 'undefined' && CitySimAuth && isFn(CitySimAuth.isGuestSession)) {
+            try {
+                return CitySimAuth.isGuestSession() === true;
+            } catch (_) { }
+        }
+        return false;
+    }
+
+    function isAuthTransitioningNow() {
+        if (typeof CitySimAuth !== 'undefined' && CitySimAuth && isFn(CitySimAuth.isAuthTransitioning)) {
+            try {
+                return CitySimAuth.isAuthTransitioning() === true;
+            } catch (_) { }
+        }
+        return false;
+    }
+
+    function getAuthUid() {
+        const user = getCurrentAuthUser();
+        if (user && user.uid) return String(user.uid);
         return '';
     }
 
     function getQuestLedgerUid() {
         const uid = String(getAuthUid() || '').trim();
-        return uid || GUEST_LEDGER_UID;
+        if (uid) return uid;
+        if (isGuestSessionActive()) return GUEST_LEDGER_UID;
+        // Auth is unresolved: do not fallback to guest ledger to avoid cross-account contamination.
+        return '';
     }
 
     function isGuestLedgerContext(uid) {
         const key = String(uid || '').trim();
         return !key || key === GUEST_LEDGER_UID;
+    }
+
+    function getResolvedLedgerUidForWrite(uid) {
+        const key = String(uid || '').trim();
+        if (key) return key;
+        if (isGuestSessionActive()) return GUEST_LEDGER_UID;
+        return PENDING_LEDGER_UID;
+    }
+
+    function getLedgerKeysForRead(uid) {
+        const key = String(uid || '').trim();
+        if (key) return [key];
+        const out = [PENDING_LEDGER_UID];
+        if (isGuestSessionActive()) out.push(GUEST_LEDGER_UID);
+        return out;
     }
 
     function parseQuestClaimLedger(raw) {
@@ -242,15 +287,16 @@
     }
 
     function getClaimedQuestIdSetFromLedger(uid) {
-        const key = String(uid || '').trim();
-        if (!key) return new Set();
         const ledger = readQuestClaimLedger();
-        const list = Array.isArray(ledger[key]) ? ledger[key] : [];
         const set = new Set();
-        list.forEach((value) => {
-            const id = String(value || '').trim();
-            if (!id || !isOneTimeQuestId(id)) return;
-            set.add(id);
+        const keys = getLedgerKeysForRead(uid);
+        keys.forEach((key) => {
+            const list = Array.isArray(ledger[key]) ? ledger[key] : [];
+            list.forEach((value) => {
+                const id = String(value || '').trim();
+                if (!id || !isOneTimeQuestId(id)) return;
+                set.add(id);
+            });
         });
         return set;
     }
@@ -263,7 +309,7 @@
     }
 
     function markQuestClaimedInLedger(uid, questId) {
-        const key = String(uid || '').trim();
+        const key = getResolvedLedgerUidForWrite(uid);
         const id = String(questId || '').trim();
         if (!key || !id || !isOneTimeQuestId(id)) return false;
 
@@ -272,6 +318,51 @@
         if (set.has(id)) return false;
         set.add(id);
         ledger[key] = Array.from(set);
+        writeQuestClaimLedger(ledger);
+        return true;
+    }
+
+    function unmarkQuestClaimedInLedger(uid, questId) {
+        const key = getResolvedLedgerUidForWrite(uid);
+        const id = String(questId || '').trim();
+        if (!key || !id || !isOneTimeQuestId(id)) return false;
+        const ledger = readQuestClaimLedger();
+        const set = new Set(Array.isArray(ledger[key]) ? ledger[key] : []);
+        if (!set.has(id)) return false;
+        set.delete(id);
+        if (set.size > 0) {
+            ledger[key] = Array.from(set);
+        } else if (Object.prototype.hasOwnProperty.call(ledger, key)) {
+            delete ledger[key];
+        }
+        writeQuestClaimLedger(ledger);
+        return true;
+    }
+
+    function clearClaimLedger(options) {
+        const opts = (options && typeof options === 'object') ? options : {};
+        const explicitUid = String(opts.uid || '').trim();
+        const activeUid = String(getQuestLedgerUid() || '').trim();
+        const includeGuest = opts.includeGuest === true;
+        const includePending = opts.includePending !== false;
+        const keys = new Set();
+
+        if (explicitUid) keys.add(explicitUid);
+        if (activeUid) keys.add(activeUid);
+        if (includeGuest) keys.add(GUEST_LEDGER_UID);
+        if (includePending) keys.add(PENDING_LEDGER_UID);
+        if (keys.size <= 0) return false;
+
+        const ledger = readQuestClaimLedger();
+        let changed = false;
+        keys.forEach((uid) => {
+            const key = String(uid || '').trim();
+            if (!key) return;
+            if (!Object.prototype.hasOwnProperty.call(ledger, key)) return;
+            delete ledger[key];
+            changed = true;
+        });
+        if (!changed) return false;
         writeQuestClaimLedger(ledger);
         return true;
     }
@@ -285,7 +376,6 @@
             if (!id || !isOneTimeQuestId(id)) return;
             set.add(id);
         });
-        if (meta.loginSupplyClaimed === true) set.add(QUEST_IDS.LOGIN_SUPPLY_BOX);
         if (meta.skirmishFirstWinClaimed === true) set.add(QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX);
         return set;
     }
@@ -311,10 +401,6 @@
             changed = true;
         }
 
-        if (current.has(QUEST_IDS.LOGIN_SUPPLY_BOX) && state.meta.loginSupplyClaimed !== true) {
-            state.meta.loginSupplyClaimed = true;
-            changed = true;
-        }
         if (current.has(QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX) && state.meta.skirmishFirstWinClaimed !== true) {
             state.meta.skirmishFirstWinClaimed = true;
             changed = true;
@@ -353,8 +439,8 @@
     }
 
     function syncClaimLedgerFromState(state, uid) {
-        const key = String(uid || '').trim();
-        if (!key || !state || typeof state !== 'object') return false;
+        const key = getResolvedLedgerUidForWrite(uid);
+        if (!state || typeof state !== 'object') return false;
 
         const questIds = new Set();
         const permanentSet = getPermanentClaimedSetFromState(state);
@@ -378,6 +464,34 @@
         questIds.forEach((id) => {
             if (markQuestClaimedInLedger(key, id)) changed = true;
         });
+        return changed;
+    }
+
+    function migratePendingClaimLedgerToUid(uid) {
+        const key = String(uid || '').trim();
+        if (!key || key === GUEST_LEDGER_UID || key === PENDING_LEDGER_UID) return false;
+        const pendingSet = getClaimedQuestIdSetFromLedger(PENDING_LEDGER_UID);
+        if (pendingSet.size <= 0) return false;
+
+        const ledger = readQuestClaimLedger();
+        const userSet = new Set(Array.isArray(ledger[key]) ? ledger[key] : []);
+        let changed = false;
+
+        pendingSet.forEach((id) => {
+            const questId = String(id || '').trim();
+            if (!questId || !isOneTimeQuestId(questId)) return;
+            if (userSet.has(questId)) return;
+            userSet.add(questId);
+            changed = true;
+        });
+        ledger[key] = Array.from(userSet);
+
+        if (Object.prototype.hasOwnProperty.call(ledger, PENDING_LEDGER_UID)) {
+            delete ledger[PENDING_LEDGER_UID];
+            changed = true;
+        }
+
+        if (changed) writeQuestClaimLedger(ledger);
         return changed;
     }
 
@@ -428,6 +542,9 @@
         }
         game.cityQuestMission = Schema.normalizeState(game, game.cityQuestMission);
         const ledgerUid = getQuestLedgerUid();
+        if (ledgerUid && ledgerUid !== GUEST_LEDGER_UID) {
+            migratePendingClaimLedgerToUid(ledgerUid);
+        }
         const ledgerSet = getClaimedQuestIdSetFromLedger(ledgerUid);
         const locked = applyPermanentClaimSetToState(game.cityQuestMission, ledgerSet);
         if (locked && isFn(Schema.syncDerivedFields)) {
@@ -445,6 +562,46 @@
         const quest = state.quests[id];
         if (!quest || typeof quest !== 'object') return null;
         return quest;
+    }
+
+    function getAttendanceSyncOptions() {
+        return {
+            questStatus: QUEST_STATUS,
+            normalizeReward: isFn(Schema.normalizeReward) ? Schema.normalizeReward : null,
+            questType: C?.QUEST_TYPES?.ATTENDANCE || Schema?.QUEST_TYPES?.ATTENDANCE || 'attendance_login'
+        };
+    }
+
+    function syncAttendanceQuestState(state) {
+        const quest = getQuestById(state, QUEST_IDS.LOGIN_SUPPLY_BOX);
+        if (!quest || !Attendance || !isFn(Attendance.syncQuestState)) {
+            return { quest, info: null, changed: false };
+        }
+
+        const beforeStatus = String(quest.status || '').trim();
+        const beforeAction = String(quest.actionName || '').trim();
+        const beforeReward = JSON.stringify(quest.reward || {});
+        const info = Attendance.syncQuestState(state, quest, getAttendanceSyncOptions());
+        const afterStatus = String(quest.status || '').trim();
+        const afterAction = String(quest.actionName || '').trim();
+        const afterReward = JSON.stringify(quest.reward || {});
+        const changed = beforeStatus !== afterStatus
+            || beforeAction !== afterAction
+            || beforeReward !== afterReward;
+        return { quest, info, changed };
+    }
+
+    function commitAttendanceQuestClaim(state) {
+        const quest = getQuestById(state, QUEST_IDS.LOGIN_SUPPLY_BOX);
+        if (!quest || !Attendance || !isFn(Attendance.commitClaim)) {
+            return { ok: false, reason: 'unsupported' };
+        }
+        return Attendance.commitClaim(state, quest, getAttendanceSyncOptions());
+    }
+
+    function getAttendanceProgressInfo(state) {
+        if (!Attendance || !isFn(Attendance.getProgressInfo)) return null;
+        return Attendance.getProgressInfo(state);
     }
 
     function getActiveBuildQuestSpec(state) {
@@ -491,6 +648,22 @@
 
         const quest = getQuestById(state, id);
         if (!quest) return false;
+
+        if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
+            const synced = syncAttendanceQuestState(state);
+            if (isFn(Schema.syncDerivedFields)) {
+                Schema.syncDerivedFields(state, game);
+            }
+            persistQuestState(game, {
+                refreshPanel: true,
+                save: synced.changed,
+                markDirty: synced.changed,
+                saveNow: false,
+                requireCloud: false,
+                silent: true
+            });
+            return synced.changed;
+        }
 
         if (isQuestPermanentlyClaimed(state, id, ledgerUid)) {
             const target = Math.max(1, Math.floor(Number(quest.target) || 1));
@@ -664,7 +837,12 @@
         if (boxType) {
             let rewardOk = false;
             if (typeof CitySimGacha !== 'undefined' && CitySimGacha && isFn(CitySimGacha.grantQuestReward)) {
-                const result = CitySimGacha.grantQuestReward(game, boxType, { source: sourceName });
+                const result = CitySimGacha.grantQuestReward(game, boxType, {
+                    source: sourceName,
+                    save: false,
+                    render: false,
+                    toast: false
+                });
                 rewardOk = !!(result && result.ok === true);
             }
             if (!rewardOk) return { ok: false, expResult: null };
@@ -758,6 +936,16 @@
         const id = String(questId || '').trim();
         const ledgerUid = getQuestLedgerUid();
 
+        if (isOneTimeQuestId(id) && !ledgerUid && isAuthTransitioningNow()) {
+            persistQuestState(game, {
+                refreshPanel: true,
+                markDirty: false,
+                silent: opts.silent === true,
+                toast: '[퀘스트] 계정 동기화 중입니다. 잠시 후 다시 시도해 주세요.'
+            });
+            return false;
+        }
+
         const preLocked = applyPermanentClaimSetToState(state, getClaimedQuestIdSetFromLedger(ledgerUid));
         if (preLocked && isFn(Schema.syncDerivedFields)) {
             Schema.syncDerivedFields(state, game);
@@ -792,14 +980,31 @@
             return false;
         }
 
+        let claimedAttendanceDay = 0;
+        let rewardPayload = quest.reward;
+        if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
+            syncAttendanceQuestState(state);
+            rewardPayload = isFn(Schema.normalizeReward)
+                ? Schema.normalizeReward(quest.reward, {})
+                : quest.reward;
+        }
+
         if (quest.status !== QUEST_STATUS.CLAIMABLE) {
             persistQuestState(game, { refreshPanel: true, silent: true, markDirty: false });
             return false;
         }
 
-        const rewardLabel = isFn(Schema.formatRewardLabel) ? Schema.formatRewardLabel(quest.reward) : '';
-        const rewardResult = applyQuestReward(game, quest, quest.reward);
+        let preLockedOneTimeClaim = false;
+        if (isOneTimeQuestId(id)) {
+            preLockedOneTimeClaim = markQuestClaimedInLedger(ledgerUid, id);
+        }
+
+        const rewardLabel = isFn(Schema.formatRewardLabel) ? Schema.formatRewardLabel(rewardPayload) : '';
+        const rewardResult = applyQuestReward(game, quest, rewardPayload);
         if (!rewardResult.ok) {
+            if (preLockedOneTimeClaim) {
+                unmarkQuestClaimedInLedger(ledgerUid, id);
+            }
             persistQuestState(game, {
                 refreshPanel: true,
                 silent: opts.silent === true,
@@ -808,8 +1013,21 @@
             return false;
         }
 
-        const missionTitle = String(quest.missionName || '작전 퀘스트').trim() || '작전 퀘스트';
-        if (id === QUEST_IDS.KILL_CONTRACT || id === QUEST_IDS.VICTORY_CONTRACT) {
+        let missionTitle = String(quest.missionName || '작전 퀘스트').trim() || '작전 퀘스트';
+        if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
+            const committed = commitAttendanceQuestClaim(state);
+            if (!committed || committed.ok !== true) {
+                quest.progress = Math.max(Math.floor(Number(quest.progress) || 0), Math.floor(Number(quest.target) || 1));
+                quest.status = QUEST_STATUS.CLAIMED;
+            } else {
+                claimedAttendanceDay = Math.max(0, Math.floor(Number(committed.claimedDay) || 0));
+            }
+            if (claimedAttendanceDay > 0) {
+                missionTitle = `출석 보급 ${claimedAttendanceDay}일차`;
+            } else {
+                missionTitle = '출석 보급';
+            }
+        } else if (id === QUEST_IDS.KILL_CONTRACT || id === QUEST_IDS.VICTORY_CONTRACT) {
             advanceRecurringQuest(state, id, game);
         } else {
             quest.progress = Math.max(quest.progress, quest.target);
@@ -824,14 +1042,10 @@
                         .filter(Boolean)
                 );
                 permanentSet.add(id);
-                if (id === QUEST_IDS.LOGIN_SUPPLY_BOX) {
-                    state.meta.loginSupplyClaimed = true;
-                }
                 if (id === QUEST_IDS.SKIRMISH_FIRST_WIN_SUPPLY_BOX) {
                     state.meta.skirmishFirstWinClaimed = true;
                 }
                 state.meta.permanentClaimed = Array.from(permanentSet);
-                markQuestClaimedInLedger(ledgerUid, id);
             }
         }
 
@@ -936,12 +1150,18 @@
                 if (!currentLevelBonusId) return null;
                 if (id !== currentLevelBonusId) return null;
             }
+            const attendanceInfo = (id === QUEST_IDS.LOGIN_SUPPLY_BOX)
+                ? getAttendanceProgressInfo(state)
+                : null;
             const rewardLabel = isFn(Schema.formatRewardLabel) ? Schema.formatRewardLabel(quest.reward) : '';
             const rewardParts = String(rewardLabel || '')
                 .split('·')
                 .map((part) => String(part || '').trim())
                 .filter(Boolean);
             const statusLabel = QUEST_STATUS_LABELS[quest.status] || QUEST_STATUS_LABELS[QUEST_STATUS.IN_PROGRESS] || '진행 중';
+            const text = attendanceInfo
+                ? `- ${quest.missionName} : (${quest.actionName}) [${attendanceInfo.day}/${attendanceInfo.maxDay}일차]`
+                : `- ${quest.missionName} : (${quest.actionName})`;
             return {
                 id: quest.id,
                 type: quest.type,
@@ -953,7 +1173,8 @@
                 statusLabel,
                 done: quest.status === QUEST_STATUS.CLAIMED,
                 canClaim: quest.status === QUEST_STATUS.CLAIMABLE,
-                text: `- ${quest.missionName} : (${quest.actionName})`
+                attendanceInfo,
+                text
             };
         }).filter(Boolean);
     }
@@ -1011,6 +1232,7 @@
         markLegacyQuest,
         claimQuest,
         claimAllQuests,
+        clearClaimLedger,
         serialize,
         hydrate,
         reset

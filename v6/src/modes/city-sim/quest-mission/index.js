@@ -39,6 +39,9 @@
         claimAllQuests(game, options) {
             return callEngine('claimAllQuests', [game, options], 0);
         },
+        clearClaimLedger(options) {
+            return callEngine('clearClaimLedger', [options], false);
+        },
         serialize(game) {
             return callEngine('serialize', [game], null);
         },

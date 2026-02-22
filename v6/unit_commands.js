@@ -1089,6 +1089,13 @@
                     return;
                 }
 
+                if (cmd === 'bagpipe') {
+                    if (typeof game.useBagpipeCommand === 'function') {
+                        game.useBagpipeCommand();
+                    }
+                    return;
+                }
+
                 // [NEW] transport drop command
                 if (cmd === 'drop') {
                     if (typeof game.prepareDropCommand === 'function') {

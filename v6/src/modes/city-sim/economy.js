@@ -226,6 +226,8 @@
                 let applied = amount;
                 if (key === 'nuke' || key === 'icbm') {
                     applied = Math.max(0, Math.min(amount, 2 - current));
+                } else if (key === 'bagpiper') {
+                    applied = Math.max(0, Math.min(amount, 1 - current));
                 }
                 if (applied <= 0) return;
                 draft.units[key] = current + applied;
@@ -905,6 +907,7 @@
 
             draft.units.icbm = Math.min(Math.max(0, Math.floor(Number(draft.units.icbm) || 0)), 2);
             draft.units.nuke = Math.min(Math.max(0, Math.floor(Number(draft.units.nuke) || 0)), 2);
+            draft.units.bagpiper = Math.min(Math.max(0, Math.floor(Number(draft.units.bagpiper) || 0)), 1);
 
             const nextMaxPop = computePopulationCapFromGrid(draft.grid);
             const usedPop = computePopulationUsage(draft);

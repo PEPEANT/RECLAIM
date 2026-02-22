@@ -659,7 +659,7 @@
                 if (key === 'claimable') return 1;
                 return 0;
             };
-            const recurringQuestIdSet = new Set(['kill_contract', 'victory_contract']);
+            const recurringQuestIdSet = new Set(['kill_contract', 'victory_contract', 'login_supply_box']);
             const isRecurringQuestId = (questId) => recurringQuestIdSet.has(String(questId || '').trim());
             const mergeQuestState = (preferred, fallback) => {
                 const base = cloneState(preferred) || {};
@@ -756,7 +756,51 @@
                     Math.floor(Number(baseMeta.lastLevel) || 1),
                     Math.floor(Number(otherMeta.lastLevel) || 1)
                 );
-                baseMeta.loginSupplyClaimed = (baseMeta.loginSupplyClaimed === true) || (otherMeta.loginSupplyClaimed === true);
+                const normalizeAttendanceDate = (value) => {
+                    const text = String(value || '').trim();
+                    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+                };
+                const normalizeAttendanceMeta = (rawMeta) => {
+                    const raw = (rawMeta && typeof rawMeta === 'object') ? rawMeta : {};
+                    let day = Math.max(1, Math.min(8, Math.floor(Number(raw.day) || 1)));
+                    let claimedDays = Math.max(0, Math.min(7, Math.floor(Number(raw.claimedDays) || 0)));
+                    if (claimedDays >= 7) {
+                        claimedDays = 7;
+                        day = 8;
+                    } else if (day < claimedDays + 1) {
+                        day = claimedDays + 1;
+                    }
+                    return {
+                        day,
+                        claimedDays,
+                        lastClaimDate: normalizeAttendanceDate(raw.lastClaimDate)
+                    };
+                };
+                const attendanceA = normalizeAttendanceMeta(baseMeta.attendance);
+                const attendanceB = normalizeAttendanceMeta(otherMeta.attendance);
+                const mergedAttendanceClaimed = Math.max(attendanceA.claimedDays, attendanceB.claimedDays);
+                let mergedAttendanceDay = Math.max(attendanceA.day, attendanceB.day);
+                if (mergedAttendanceClaimed >= 7) {
+                    mergedAttendanceDay = 8;
+                } else if (mergedAttendanceDay < mergedAttendanceClaimed + 1) {
+                    mergedAttendanceDay = mergedAttendanceClaimed + 1;
+                }
+                const attendanceLastDate = (() => {
+                    if (attendanceA.claimedDays > attendanceB.claimedDays) return attendanceA.lastClaimDate;
+                    if (attendanceB.claimedDays > attendanceA.claimedDays) return attendanceB.lastClaimDate;
+                    if (attendanceA.lastClaimDate && attendanceB.lastClaimDate) {
+                        return attendanceA.lastClaimDate >= attendanceB.lastClaimDate
+                            ? attendanceA.lastClaimDate
+                            : attendanceB.lastClaimDate;
+                    }
+                    return attendanceA.lastClaimDate || attendanceB.lastClaimDate || '';
+                })();
+                baseMeta.attendance = {
+                    day: mergedAttendanceDay,
+                    claimedDays: mergedAttendanceClaimed,
+                    lastClaimDate: attendanceLastDate
+                };
+                baseMeta.loginSupplyClaimed = false;
                 baseMeta.skirmishFirstWinClaimed = (baseMeta.skirmishFirstWinClaimed === true) || (otherMeta.skirmishFirstWinClaimed === true);
                 const permanentA = Array.isArray(baseMeta.permanentClaimed) ? baseMeta.permanentClaimed : [];
                 const permanentB = Array.isArray(otherMeta.permanentClaimed) ? otherMeta.permanentClaimed : [];
@@ -775,7 +819,7 @@
                     permanentSet.add(key);
                 });
                 baseMeta.permanentClaimed = Array.from(permanentSet);
-                baseMeta.loginSupplyClaimed = baseMeta.loginSupplyClaimed === true || permanentSet.has('login_supply_box');
+                baseMeta.loginSupplyClaimed = false;
                 baseMeta.skirmishFirstWinClaimed = baseMeta.skirmishFirstWinClaimed === true || permanentSet.has('skirmish_first_win_supply_box');
 
                 return base;
@@ -797,7 +841,8 @@
                 const kill = Math.max(0, Math.floor(Number(counters.kill) || 0));
                 const win = Math.max(0, Math.floor(Number(counters.win) || 0));
                 const levelUp = Math.max(0, Math.floor(Number(counters.levelUp) || 0));
-                return (claimed * 1000000) + (kill * 1000) + (win * 100) + levelUp;
+                const attendanceClaimed = Math.max(0, Math.floor(Number(state?.meta?.attendance?.claimedDays) || 0));
+                return (claimed * 1000000) + (attendanceClaimed * 10000) + (kill * 1000) + (win * 100) + levelUp;
             };
 
             const aScore = score(a);
@@ -830,7 +875,6 @@
             };
             const claimIds = [];
             if (flags.buildBarracksRewardClaimed === true) claimIds.push('build_barracks');
-            if (flags.loginSupplyRewardClaimed === true) claimIds.push('login_supply_box');
             if (flags.skirmishFirstWinRewardClaimed === true) claimIds.push('skirmish_first_win_supply_box');
             if (claimIds.length <= 0) return next;
 
@@ -848,7 +892,6 @@
             });
 
             nextMeta.permanentClaimed = Array.from(permanentSet);
-            if (permanentSet.has('login_supply_box')) nextMeta.loginSupplyClaimed = true;
             if (permanentSet.has('skirmish_first_win_supply_box')) nextMeta.skirmishFirstWinClaimed = true;
             return next;
         };
@@ -877,18 +920,21 @@
             : ((!saveBridge || typeof saveBridge.isLocalOwnedBy !== 'function')
                 ? true
                 : (!hasUid ? unresolvedUidBootFallbackAllowed : !!saveBridge.isLocalOwnedBy('main', uid)));
-        const allowRuntimeQuestFallback = (
+        const allowRuntimeQuestMerge = (
             !guestSession
+            && hasUid
+            && !authTransitioning
             && localOwnedByUid
-            && !!mainQuestMission
         );
-        const existingQuestMission = (allowRuntimeQuestFallback
+        const existingQuestMission = (allowRuntimeQuestMerge
             && game.cityQuestMission
             && typeof game.cityQuestMission === 'object')
             ? game.cityQuestMission
             : null;
         const questMissionPayload = pickQuestState(mainQuestMission, existingQuestMission);
-        const questMissionWithLegacy = applyLegacyQuestClaims(questMissionPayload, st.progress?.cityQuest);
+        const questMissionWithLegacy = mainQuestMission
+            ? questMissionPayload
+            : applyLegacyQuestClaims(questMissionPayload, st.progress?.cityQuest);
 
         if (typeof CityQuestMission !== 'undefined' && CityQuestMission && typeof CityQuestMission.hydrate === 'function') {
             CityQuestMission.hydrate(game, questMissionWithLegacy);

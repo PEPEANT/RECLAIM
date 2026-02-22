@@ -1070,7 +1070,7 @@
             const parsed = JSON.parse(raw);
             if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return;
             let changed = false;
-            const targets = new Set(['__guest__']);
+            const targets = new Set(['__guest__', '__pending_auth__']);
             if (uid) targets.add(uid);
             targets.forEach((key) => {
                 if (!Object.prototype.hasOwnProperty.call(parsed, key)) return;
@@ -1372,11 +1372,6 @@
         try {
             activeGame = game || null;
             lastGuestQuestLedgerResetUid = '';
-            const existingUser = getCurrentUser();
-            const existingGuestUid = (existingUser && existingUser.uid && isAnonymousUser(existingUser))
-                ? String(existingUser.uid)
-                : '';
-            clearGuestQuestClaimLedger(existingGuestUid);
 
             guestSessionActive = true;
             lastSyncedUid = '';
@@ -2066,9 +2061,7 @@
 
                     if (isGuestAuthUser) {
                         if (lastGuestQuestLedgerResetUid !== authUid) {
-                            clearGuestQuestClaimLedger(authUid);
                             lastGuestQuestLedgerResetUid = authUid;
-                            reloadSessionState(gameRef);
                         }
                         lastSyncedUid = '';
                         lastLoginQuestGrantUid = '';
@@ -2095,35 +2088,13 @@
                     }
                     if (flowToken > 0 && !isAuthFlowTokenCurrent(flowToken)) return;
 
-                    const grantLoginQuestReward = () => {
-                        const targetGame = activeGame || global.game || null;
-                        if (!targetGame || typeof targetGame.grantCityQuestReward !== 'function') return false;
-                        if (typeof targetGame.getCityQuestProgress === 'function') {
-                            try {
-                                const rows = targetGame.getCityQuestProgress();
-                                const loginRow = Array.isArray(rows)
-                                    ? rows.find((row) => String(row?.id || '').trim() === 'login_supply_box')
-                                    : null;
-                                if (loginRow && String(loginRow.status || '').trim() === 'claimed') {
-                                    return true;
-                                }
-                            } catch (_) { }
-                        }
-                        targetGame.grantCityQuestReward('login_supply_box');
-                        return true;
-                    };
-
-                    if (lastLoginQuestGrantUid !== authUid) {
-                        if (grantLoginQuestReward()) {
-                            lastLoginQuestGrantUid = authUid;
-                        } else {
-                            setTimeout(() => {
-                                if (grantLoginQuestReward()) {
-                                    lastLoginQuestGrantUid = authUid;
-                                }
-                            }, 600);
-                        }
+                    const targetGame = activeGame || global.game || null;
+                    if (targetGame && typeof targetGame.refreshCityQuestPanel === 'function') {
+                        try {
+                            targetGame.refreshCityQuestPanel();
+                        } catch (_) { }
                     }
+                    lastLoginQuestGrantUid = authUid;
                 } else {
                     lastSyncedUid = '';
                     lastGuestQuestLedgerResetUid = '';

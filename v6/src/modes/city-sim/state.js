@@ -34,23 +34,23 @@
         return Math.max(MIN_CITY_LEVEL, Math.min(MAX_CITY_LEVEL, Math.floor(Number(value) || MIN_CITY_LEVEL)));
     }
 
-    // 초반(이등병~병장)은 빠르게, 하사/중사/상사 구간부터 단계적으로 어렵게 만든 경험치 곡선.
+    // 레벨 게이지 난이도 상향 버전: 전 구간 필요 EXP를 크게 높여 성장 속도를 늦춘다.
     function getExpRequiredForLevel(level) {
         const safeLevel = clampLevel(level);
         if (safeLevel >= MAX_CITY_LEVEL) return 1;
-        if (safeLevel <= 1) return 12;
-        if (safeLevel <= 2) return 16;
-        if (safeLevel <= 3) return 20;
-        if (safeLevel <= 4) return 26;  // 하사 진입 전
-        if (safeLevel <= 5) return 36;  // 하사 이후
-        if (safeLevel <= 6) return 50;  // 중사 이후
-        if (safeLevel <= 7) return 68;  // 상사 이후
-        if (safeLevel <= 9) return 82;
-        if (safeLevel <= 11) return 98;
-        if (safeLevel <= 13) return 118;
-        if (safeLevel <= 15) return 142;
-        if (safeLevel <= 17) return 172;
-        return 206;
+        if (safeLevel <= 1) return 28;
+        if (safeLevel <= 2) return 40;
+        if (safeLevel <= 3) return 54;
+        if (safeLevel <= 4) return 72;
+        if (safeLevel <= 5) return 96;
+        if (safeLevel <= 6) return 126;
+        if (safeLevel <= 7) return 162;
+        if (safeLevel <= 9) return 198;
+        if (safeLevel <= 11) return 240;
+        if (safeLevel <= 13) return 290;
+        if (safeLevel <= 15) return 350;
+        if (safeLevel <= 17) return 430;
+        return 520;
     }
 
     function createDefaultResources() {

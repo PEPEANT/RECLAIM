@@ -15,6 +15,7 @@
 
     const QUEST_TYPES = {
         LEGACY_BUILD: 'legacy_build',
+        ATTENDANCE: 'attendance_login',
         LEGACY_LOGIN: 'legacy_login',
         LEGACY_SKIRMISH_WIN: 'legacy_skirmish_win',
         LEGACY_EVENT: 'legacy_event',

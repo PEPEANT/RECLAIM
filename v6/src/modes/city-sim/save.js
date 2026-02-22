@@ -166,9 +166,8 @@
         if (a && !b) return cloneJson(a) || a;
         if (!a && b) return cloneJson(b) || b;
 
-        const recurringIds = new Set(['kill_contract', 'victory_contract']);
+        const recurringIds = new Set(['kill_contract', 'victory_contract', 'login_supply_box']);
         const permanentOneTimeIds = new Set([
-            'login_supply_box',
             'skirmish_first_win_supply_box',
             'lunar_new_year_gift',
             'event_v62_supply_gift',
@@ -195,7 +194,8 @@
             const kill = Math.max(0, Math.floor(Number(counters.kill) || 0));
             const win = Math.max(0, Math.floor(Number(counters.win) || 0));
             const levelUp = Math.max(0, Math.floor(Number(counters.levelUp) || 0));
-            return (claimed * 1000000) + (kill * 1000) + (win * 100) + levelUp;
+            const attendanceClaimed = Math.max(0, Math.floor(Number(state?.meta?.attendance?.claimedDays) || 0));
+            return (claimed * 1000000) + (attendanceClaimed * 10000) + (kill * 1000) + (win * 100) + levelUp;
         };
 
         const preferred = (score(a) >= score(b)) ? a : b;
@@ -292,7 +292,51 @@
             Math.floor(Number(baseMeta.lastLevel) || 1),
             Math.floor(Number(otherMeta.lastLevel) || 1)
         );
-        baseMeta.loginSupplyClaimed = (baseMeta.loginSupplyClaimed === true) || (otherMeta.loginSupplyClaimed === true);
+        const normalizeAttendanceDate = (value) => {
+            const text = String(value || '').trim();
+            return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+        };
+        const normalizeAttendanceMeta = (rawMeta) => {
+            const raw = (rawMeta && typeof rawMeta === 'object') ? rawMeta : {};
+            let day = Math.max(1, Math.min(8, Math.floor(Number(raw.day) || 1)));
+            let claimedDays = Math.max(0, Math.min(7, Math.floor(Number(raw.claimedDays) || 0)));
+            if (claimedDays >= 7) {
+                claimedDays = 7;
+                day = 8;
+            } else if (day < claimedDays + 1) {
+                day = claimedDays + 1;
+            }
+            return {
+                day,
+                claimedDays,
+                lastClaimDate: normalizeAttendanceDate(raw.lastClaimDate)
+            };
+        };
+        const attendanceA = normalizeAttendanceMeta(baseMeta.attendance);
+        const attendanceB = normalizeAttendanceMeta(otherMeta.attendance);
+        const mergedAttendanceClaimed = Math.max(attendanceA.claimedDays, attendanceB.claimedDays);
+        let mergedAttendanceDay = Math.max(attendanceA.day, attendanceB.day);
+        if (mergedAttendanceClaimed >= 7) {
+            mergedAttendanceDay = 8;
+        } else if (mergedAttendanceDay < mergedAttendanceClaimed + 1) {
+            mergedAttendanceDay = mergedAttendanceClaimed + 1;
+        }
+        const attendanceLastDate = (() => {
+            if (attendanceA.claimedDays > attendanceB.claimedDays) return attendanceA.lastClaimDate;
+            if (attendanceB.claimedDays > attendanceA.claimedDays) return attendanceB.lastClaimDate;
+            if (attendanceA.lastClaimDate && attendanceB.lastClaimDate) {
+                return attendanceA.lastClaimDate >= attendanceB.lastClaimDate
+                    ? attendanceA.lastClaimDate
+                    : attendanceB.lastClaimDate;
+            }
+            return attendanceA.lastClaimDate || attendanceB.lastClaimDate || '';
+        })();
+        baseMeta.attendance = {
+            day: mergedAttendanceDay,
+            claimedDays: mergedAttendanceClaimed,
+            lastClaimDate: attendanceLastDate
+        };
+        baseMeta.loginSupplyClaimed = false;
         baseMeta.skirmishFirstWinClaimed = (baseMeta.skirmishFirstWinClaimed === true) || (otherMeta.skirmishFirstWinClaimed === true);
         const permanentSet = new Set();
         const permanentA = Array.isArray(baseMeta.permanentClaimed) ? baseMeta.permanentClaimed : [];
@@ -310,7 +354,6 @@
             if (String(quest.status || '') !== 'claimed') return;
             permanentSet.add(String(id || '').trim());
         });
-        if (baseMeta.loginSupplyClaimed === true) permanentSet.add('login_supply_box');
         if (baseMeta.skirmishFirstWinClaimed === true) permanentSet.add('skirmish_first_win_supply_box');
 
         permanentSet.forEach((id) => {
@@ -323,7 +366,7 @@
         });
 
         baseMeta.permanentClaimed = Array.from(permanentSet);
-        baseMeta.loginSupplyClaimed = permanentSet.has('login_supply_box');
+        baseMeta.loginSupplyClaimed = false;
         baseMeta.skirmishFirstWinClaimed = permanentSet.has('skirmish_first_win_supply_box');
         return base;
     }
@@ -1099,12 +1142,13 @@
         const loadedQuestMission = (loaded && loaded.questMission && typeof loaded.questMission === 'object')
             ? loaded.questMission
             : null;
-        const allowRuntimeQuestFallback = (
+        const allowRuntimeQuestMerge = (
             !guestSession
+            && hasUid
+            && !authTransitioning
             && localOwnedByUid
-            && !!loadedQuestMission
         );
-        const currentQuestMission = (allowRuntimeQuestFallback
+        const currentQuestMission = (allowRuntimeQuestMerge
             && game
             && game.cityQuestMission
             && typeof game.cityQuestMission === 'object')

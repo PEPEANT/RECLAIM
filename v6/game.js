@@ -1872,6 +1872,42 @@ const game = {
         return used;
     },
 
+    useBagpipeCommand() {
+        if (!this.selectedUnits) return false;
+        let started = 0;
+        let alreadyActive = 0;
+        this.selectedUnits.forEach((unit) => {
+            if (!unit || unit.dead) return;
+            if (!unit.stats || unit.stats.id !== 'bagpiper') return;
+            if (typeof unit.startBagpipeSkill === 'function') {
+                if (unit.startBagpipeSkill() === true) {
+                    started += 1;
+                    return;
+                }
+            }
+            if (unit.bagpipeActive === true) alreadyActive += 1;
+        });
+
+        if (started > 0) {
+            if (!this.cooldowns || typeof this.cooldowns !== 'object') this.cooldowns = {};
+            this.cooldowns.bagpipe_skill = Math.max(
+                Math.max(0, Number(this.cooldowns.bagpipe_skill) || 0),
+                30 * 60
+            );
+        }
+
+        if (started > 0 && typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
+            ui.showToast('백파이프 연주 시작!');
+        } else if (alreadyActive > 0 && typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
+            ui.showToast('이미 연주 중입니다.');
+        }
+
+        if ((started > 0 || alreadyActive > 0) && typeof this.updateHUDSelection === 'function') {
+            this.updateHUDSelection();
+        }
+        return started > 0;
+    },
+
     // [ITEM] 활성 연막 구름 위치 목록 반환 (데미지 감소 판정용)
     getSmokeZones() {
         if (!Array.isArray(this.particles)) return [];
@@ -3060,6 +3096,12 @@ const game = {
         this.currentMapId = 'city';
         this.devUnlockAllMaps = false;
         this._tempAdminUnlockUid = '';
+        if (typeof CityQuestMission !== 'undefined'
+            && CityQuestMission
+            && typeof CityQuestMission.clearClaimLedger === 'function') {
+            // Reset must clear one-time quest claim ledger, otherwise claimed states come back on next load.
+            CityQuestMission.clearClaimLedger({ includeGuest: true });
+        }
         if (typeof CityQuestMission !== 'undefined' && CityQuestMission && typeof CityQuestMission.reset === 'function') {
             CityQuestMission.reset(this);
         } else {
@@ -3683,8 +3725,10 @@ const game = {
             this.enemyStock[k] = enemyCount;
             this.spawnQueue[k] = 0;
         }
+        this.cooldowns.bagpipe_skill = 0;
 
         this.totalWarTriggered = false; // Reset Total War
+        this._landingIntroFormationSpawned = false;
         this._enemyHQWasPresent = false;
         this.cityArmorNewsShown = false;
         this.cityMidNewsShown = false;
@@ -3902,6 +3946,7 @@ const game = {
                 console.error('[GameStart] GameMapSetup.apply failed:', e);
             }
         }
+        this.spawnLandingIntroFormation();
         // [HUD/UX] 전투 시작 기본 속도는 1배속
         this.setSpeed(1.0);
         this.engineFrame = 0;
@@ -3970,6 +4015,68 @@ const game = {
         if (spawnFlag) return spawnFlag.x + 40;
         // HQ가 없는 맵(예: 해안 상륙)은 좌측 맵 끝에서 생성
         return 44;
+    },
+
+    spawnLandingIntroFormation() {
+        const campaignTab = String(this._campaignBattleTab || '').trim().toLowerCase();
+        if (campaignTab !== 'occupation') return false;
+        const stageId = Math.floor(Number(this.activeCampaignStageId) || 0);
+        if (stageId !== 1) return false;
+        if (this._landingIntroFormationSpawned === true) return false;
+
+        const mapId = (typeof Maps !== 'undefined' && Maps)
+            ? String(Maps.currentMap || '').trim().toLowerCase()
+            : '';
+        if (mapId !== 'landing') return false;
+
+        const stage = (typeof this.getCampaignStageById === 'function')
+            ? this.getCampaignStageById(stageId)
+            : null;
+        const stageStatus = String(stage?.status || '').trim().toLowerCase();
+        if (stageStatus === 'cleared') return false;
+
+        const hasExistingBagpiper = Array.isArray(this.players)
+            && this.players.some((u) => u && !u.dead && String(u.stats?.id || '').trim() === 'bagpiper');
+        if (hasExistingBagpiper) return false;
+
+        const spawnFlag = this.buildings.find((b) =>
+            b
+            && !b.dead
+            && b.type === 'spawn_flag_player'
+            && b.team === 'player'
+        );
+        const flagWidth = Math.max(48, Number(spawnFlag?.width) || 72);
+        const flagCenterX = spawnFlag
+            ? (Number(spawnFlag.x) + (flagWidth * 0.5))
+            : (this.getPlayerSpawnX() + 34);
+        const groundY = Number.isFinite(Number(this.groundY)) ? Number(this.groundY) : 0;
+
+        const bagpiper = this.spawnUnitDirect('bagpiper', flagCenterX, groundY, 'player', { bypassBlock: true });
+        if (bagpiper) {
+            bagpiper.commandMode = 'stop';
+            bagpiper.targetX = null;
+            bagpiper.commandTargetX = null;
+            bagpiper.returnToBase = false;
+            bagpiper.attackTarget = null;
+        }
+
+        // 기존 5기 + 7기 증원 = 총 12기, 백파이프병보다 전방으로 배치
+        const infantryAnchorX = flagCenterX + 148;
+        const infantryOffsets = [-132, -108, -84, -60, -36, -12, 12, 36, 60, 84, 108, 132];
+        const infantryStancePattern = ['prone', 'crouching', 'prone', 'crouching'];
+        for (let i = 0; i < infantryOffsets.length; i += 1) {
+            const infantry = this.spawnUnitDirect('infantry', infantryAnchorX + infantryOffsets[i], groundY, 'player', { bypassBlock: true });
+            if (!infantry) continue;
+            infantry.commandMode = 'stop';
+            infantry.targetX = null;
+            infantry.commandTargetX = null;
+            infantry.returnToBase = false;
+            infantry.attackTarget = null;
+            infantry._forcedInfantryStance = infantryStancePattern[i % infantryStancePattern.length];
+        }
+
+        this._landingIntroFormationSpawned = true;
+        return !!bagpiper;
     },
 
     getPlayerRetreatStopX() {

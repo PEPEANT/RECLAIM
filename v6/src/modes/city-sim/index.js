@@ -10,7 +10,7 @@
     const CITY_EVENT_V62_OVERLAY_ID = 'city-event-v62-overlay';
     const CITY_EVENT_V62_IMAGE = 'png/event/v6.2.png';
     const CITY_EVENT_V62_IMAGE_FALLBACK = 'png/event/event_0216.png';
-    const CITY_EVENT_V62_NEVER_SHOW_KEY = `reclaim_city_event_never_show_${CITY_EVENT_V62_ID}_v1`;
+    const CITY_EVENT_V62_NEVER_SHOW_KEY_PREFIX = `reclaim_city_event_never_show_${CITY_EVENT_V62_ID}_v2`;
 
     function clampNumber(value, min, max) {
         if (!Number.isFinite(value)) return min;
@@ -89,18 +89,72 @@
         }
     }
 
-    function isCityEventV62Disabled() {
+    function resolveCityEventV62StorageScope(game) {
+        let uid = '';
+        let isGuest = false;
+
         try {
-            return String(localStorage.getItem(CITY_EVENT_V62_NEVER_SHOW_KEY) || '') === '1';
+            if (game && typeof game.getActiveAuthUid === 'function') {
+                uid = String(game.getActiveAuthUid() || '').trim();
+            }
+        } catch (_) { }
+
+        try {
+            if (typeof CitySimAuth !== 'undefined' && CitySimAuth) {
+                if (typeof CitySimAuth.isGuestSession === 'function' && CitySimAuth.isGuestSession() === true) {
+                    isGuest = true;
+                }
+                if (!uid && typeof CitySimAuth.getCurrentUser === 'function') {
+                    const user = CitySimAuth.getCurrentUser();
+                    if (user && user.uid && user.isAnonymous !== true) {
+                        uid = String(user.uid).trim();
+                    }
+                    if (user && user.isAnonymous === true) {
+                        isGuest = true;
+                    }
+                }
+            }
+        } catch (_) { }
+
+        if (isGuest || !uid) return '';
+        return `${CITY_EVENT_V62_NEVER_SHOW_KEY_PREFIX}__uid_${uid}`;
+    }
+
+    function isCityEventV62Disabled(game) {
+        const key = resolveCityEventV62StorageScope(game);
+        if (!key) return false;
+        try {
+            return String(localStorage.getItem(key) || '') === '1';
         } catch (_) {
             return false;
         }
     }
 
-    function disableCityEventV62Forever() {
+    function disableCityEventV62Forever(game) {
+        const key = resolveCityEventV62StorageScope(game);
+        if (!key) return false;
         try {
-            localStorage.setItem(CITY_EVENT_V62_NEVER_SHOW_KEY, '1');
-        } catch (_) { }
+            localStorage.setItem(key, '1');
+            return true;
+        } catch (_) {
+            return false;
+        }
+    }
+
+    function startCityTutorialOnEnter(game) {
+        if (!game || !isCityScreenVisible()) return false;
+        if (typeof CitySimTutorialIntro === 'undefined'
+            || !CitySimTutorialIntro
+            || typeof CitySimTutorialIntro.startOnEnter !== 'function') {
+            return false;
+        }
+        try {
+            CitySimTutorialIntro.startOnEnter(game);
+            return true;
+        } catch (err) {
+            console.warn('[CitySimIndex] startOnEnter failed:', err);
+            return false;
+        }
     }
 
     function setCityEventV62Visible(overlay, visible) {
@@ -110,22 +164,35 @@
         overlay.setAttribute('aria-hidden', (visible === true) ? 'false' : 'true');
     }
 
-    function closeCityEventV62Popup() {
+    function closeCityEventV62Popup(game, options) {
+        const opts = (options && typeof options === 'object') ? options : {};
         const overlay = document.getElementById(CITY_EVENT_V62_OVERLAY_ID);
         if (!overlay) return;
         setCityEventV62Visible(overlay, false);
+
+        if (opts.runTutorial !== true) return;
+        const targetGame = game
+            || ((global && global.game && typeof global.game === 'object') ? global.game : null);
+        if (!targetGame) return;
+        if (targetGame._cityTutorialPendingAfterEvent !== true) return;
+        targetGame._cityTutorialPendingAfterEvent = false;
+        startCityTutorialOnEnter(targetGame);
     }
 
-    function ensureCityEventV62Popup() {
+    function ensureCityEventV62Popup(game) {
         const cityScreen = document.getElementById('city-screen');
         if (!cityScreen) return null;
 
         const existing = document.getElementById(CITY_EVENT_V62_OVERLAY_ID);
-        if (existing) return existing;
+        if (existing) {
+            existing.__cityEventGameRef = game || null;
+            return existing;
+        }
 
         const overlay = document.createElement('div');
         overlay.id = CITY_EVENT_V62_OVERLAY_ID;
         overlay.className = 'city-event-overlay hidden';
+        overlay.__cityEventGameRef = game || null;
 
         const panel = document.createElement('div');
         panel.className = 'city-event-panel';
@@ -144,7 +211,8 @@
         closeBtn.addEventListener('click', (event) => {
             if (event && typeof event.preventDefault === 'function') event.preventDefault();
             if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
-            closeCityEventV62Popup();
+            const refGame = overlay.__cityEventGameRef || game || null;
+            closeCityEventV62Popup(refGame, { runTutorial: true });
         });
 
         const neverBtn = document.createElement('button');
@@ -155,8 +223,9 @@
         neverBtn.addEventListener('click', (event) => {
             if (event && typeof event.preventDefault === 'function') event.preventDefault();
             if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
-            disableCityEventV62Forever();
-            closeCityEventV62Popup();
+            const refGame = overlay.__cityEventGameRef || game || null;
+            disableCityEventV62Forever(refGame);
+            closeCityEventV62Popup(refGame, { runTutorial: true });
         });
 
         const img = document.createElement('img');
@@ -184,16 +253,11 @@
             img.src = imageCandidates[idx];
         });
 
-        controls.appendChild(closeBtn);
         controls.appendChild(neverBtn);
+        panel.appendChild(closeBtn);
         panel.appendChild(controls);
         panel.appendChild(img);
         overlay.appendChild(panel);
-
-        overlay.addEventListener('pointerdown', (event) => {
-            if (event.target !== overlay) return;
-            closeCityEventV62Popup();
-        });
 
         cityScreen.appendChild(overlay);
         setCityEventV62Visible(overlay, false);
@@ -201,10 +265,11 @@
     }
 
     function openCityEventV62Popup(game) {
-        if (isCityEventV62Disabled()) return;
-        const overlay = ensureCityEventV62Popup();
-        if (!overlay) return;
+        if (isCityEventV62Disabled(game)) return false;
+        const overlay = ensureCityEventV62Popup(game);
+        if (!overlay) return false;
         setCityEventV62Visible(overlay, true);
+        return true;
     }
 
     function clampViewToVisibleBounds(game) {
@@ -728,6 +793,12 @@
             });
         }
 
+        if (typeof CitySimLevelPanel !== 'undefined'
+            && CitySimLevelPanel
+            && typeof CitySimLevelPanel.bindHud === 'function') {
+            CitySimLevelPanel.bindHud(game);
+        }
+
         const keyHandler = (e) => {
             const cityScreen = document.getElementById('city-screen');
             if (!cityScreen || cityScreen.classList.contains('hidden')) return;
@@ -771,16 +842,29 @@
         document.getElementById('campaign-screen')?.classList.add('hidden');
         document.getElementById('unitdex-screen')?.classList.add('hidden');
         document.getElementById('city-screen')?.classList.remove('hidden');
-        // v6.2 업데이트 이벤트 팝업
+        game._cityTutorialPendingAfterEvent = false;
+        const gateTutorialByEventPopup = () => {
+            const popupOpened = openCityEventV62Popup(game) === true;
+            if (popupOpened) {
+                game._cityTutorialPendingAfterEvent = true;
+                return;
+            }
+            startCityTutorialOnEnter(game);
+        };
         if (typeof requestAnimationFrame === 'function') {
-            requestAnimationFrame(() => openCityEventV62Popup(game));
+            requestAnimationFrame(gateTutorialByEventPopup);
         } else {
-            openCityEventV62Popup(game);
+            gateTutorialByEventPopup();
         }
 
         playCityBgm();
 
         if (typeof game.renderCityScreen === 'function') game.renderCityScreen();
+        if (typeof CitySimLevelPanel !== 'undefined'
+            && CitySimLevelPanel
+            && typeof CitySimLevelPanel.bindHud === 'function') {
+            CitySimLevelPanel.bindHud(game);
+        }
         if (typeof CitySimDrillgroundBubbles !== 'undefined'
             && CitySimDrillgroundBubbles
             && typeof CitySimDrillgroundBubbles.init === 'function') {
@@ -811,11 +895,6 @@
                 });
         }
 
-        if (typeof CitySimTutorialIntro !== 'undefined'
-            && CitySimTutorialIntro
-            && typeof CitySimTutorialIntro.startOnEnter === 'function') {
-            CitySimTutorialIntro.startOnEnter(game);
-        }
     }
 
     function leave(game) {
@@ -833,7 +912,8 @@
             game.cityActionConfirm();
         }
         CitySimState.setMissionOpen(game, false);
-        closeCityEventV62Popup();
+        game._cityTutorialPendingAfterEvent = false;
+        closeCityEventV62Popup(game, { runTutorial: false });
         if (typeof CitySimTutorialIntro !== 'undefined'
             && CitySimTutorialIntro
             && typeof CitySimTutorialIntro.onLeave === 'function') {
@@ -863,6 +943,11 @@
         }
 
         closeActionModal();
+        if (typeof CitySimLevelPanel !== 'undefined'
+            && CitySimLevelPanel
+            && typeof CitySimLevelPanel.close === 'function') {
+            CitySimLevelPanel.close();
+        }
         stopLoop(game);
     }
 
