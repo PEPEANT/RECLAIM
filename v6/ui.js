@@ -1223,10 +1223,13 @@ const ui = {
             return '';
         }
 
-        const vv = global.visualViewport || null;
-        const viewportWidth = Math.max(0, Math.floor((vv && Number(vv.width)) || global.innerWidth || document.documentElement.clientWidth || 0));
-        const hasCoarsePointer = !!(global.matchMedia && typeof global.matchMedia === 'function' && global.matchMedia('(pointer: coarse)').matches);
-        const hasTouch = hasCoarsePointer || ('ontouchstart' in global);
+        const runtime = (typeof globalThis !== 'undefined')
+            ? globalThis
+            : (typeof window !== 'undefined' ? window : {});
+        const vv = runtime.visualViewport || null;
+        const viewportWidth = Math.max(0, Math.floor((vv && Number(vv.width)) || runtime.innerWidth || document.documentElement.clientWidth || 0));
+        const hasCoarsePointer = !!(runtime.matchMedia && typeof runtime.matchMedia === 'function' && runtime.matchMedia('(pointer: coarse)').matches);
+        const hasTouch = hasCoarsePointer || ('ontouchstart' in runtime);
         const isMobileCropLayout = hasTouch && viewportWidth > 0 && viewportWidth <= 960;
 
         const modal = document.createElement('div');
