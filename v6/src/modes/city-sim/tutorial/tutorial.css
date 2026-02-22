@@ -13,6 +13,13 @@
     bottom: -24px;
     width: clamp(240px, 39vw, 520px);
     height: clamp(320px, 76vh, 720px);
+    transition: opacity 0.18s ease, visibility 0.18s ease;
+}
+
+.city-tutorial-intro-character.is-hidden {
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 .city-tutorial-intro-canvas {
@@ -130,6 +137,13 @@
     outline: 2px solid rgba(250, 204, 21, 0.92) !important;
     outline-offset: 2px;
     animation: cityTutorialTargetPulse 1.08s ease-in-out infinite;
+}
+
+.city-tutorial-tab-locked {
+    opacity: 0.35 !important;
+    filter: grayscale(0.85) saturate(0.55);
+    cursor: not-allowed !important;
+    pointer-events: none !important;
 }
 
 @media (max-width: 900px) {
