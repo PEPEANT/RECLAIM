@@ -1,7 +1,7 @@
 // Body rendering for: apache (AH-64D Longbow)
 // 좌표 계약: origin = 기체 중심(unit.x, unit.y), 기수 = +x 방향 (facing=1)
 // ctx는 이미 scale(1.4 * APACHE_SCALE) + floatOffset + facing 적용됨
-// 원형 좌표: apache_v2.html 프로토타입 기준 (로컬 px)
+// 원형 좌표: docs/prototypes/apache_v2.html 프로토타입 기준 (로컬 px)
 (function attachUnitRenderV2Body_apache(globalScope) {
     'use strict';
 
