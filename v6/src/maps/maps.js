@@ -23,7 +23,7 @@ const Maps = {
         }
     },
 
-    currentMap: 'skirmish',
+    currentMap: 'skirmish_kabul',
 
     _rand(seed) {
         let h = 2166136261;
@@ -50,7 +50,7 @@ const Maps = {
     },
 
     getRule(key) {
-        const mapId = String(this.currentMap || 'skirmish').trim() || 'skirmish';
+        const mapId = String(this.currentMap || 'skirmish_kabul').trim() || 'skirmish_kabul';
         const mapRules = (this.rules && this.rules[mapId]) ? this.rules[mapId] : null;
         if (mapRules && Object.prototype.hasOwnProperty.call(mapRules, key)) {
             return mapRules[key];
@@ -75,7 +75,7 @@ const Maps = {
         if (requested && this.types && this.types[requested]) {
             this.currentMap = requested;
         } else {
-            this.currentMap = 'skirmish';
+            this.currentMap = 'skirmish_kabul';
         }
         return this.currentMap;
     },
@@ -83,7 +83,7 @@ const Maps = {
     drawBase(ctx, width, height, groundY, cameraX = 0) {
         if (!ctx) return;
 
-        const mapId = String(this.currentMap || 'skirmish').trim() || 'skirmish';
+        const mapId = String(this.currentMap || 'skirmish_kabul').trim() || 'skirmish_kabul';
         const baseHook = this.getMapHook('renderBase', mapId);
         if (typeof baseHook === 'function') {
             try {
@@ -127,7 +127,7 @@ const Maps = {
     drawDecorations(ctx, width, height, groundY, cameraX = 0) {
         if (!ctx) return;
 
-        const mapId = String(this.currentMap || 'skirmish').trim() || 'skirmish';
+        const mapId = String(this.currentMap || 'skirmish_kabul').trim() || 'skirmish_kabul';
         const decorHook = this.getMapHook('renderDecor', mapId);
         if (typeof decorHook === 'function') {
             try {

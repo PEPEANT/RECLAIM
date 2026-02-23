@@ -211,7 +211,12 @@ const CONFIG = {
             id: 'bomber', name: '폭격기', cost: 200, cooldown: 400, maxCount: 3,
             hp: 1500, damage: 150, range: 100, speed: 2.5,
             width: 90, height: 30, color: '#334155', type: 'air', category: 'air', highAltitude: true,
-            role: '전략 폭격', description: '고고도 융단 폭격. 대공 미사일에만 피격됩니다. (생존 귀환 시 재고 회복)'
+            bombStrikeCooldown: 360,  // 융단폭격 런 재사용 대기(프레임)
+            carpetBurstCount: 7,      // 런 1회당 투하 수
+            carpetBurstInterval: 5,   // 런 중 투하 간격(프레임)
+            carpetTriggerRange: 120,  // 목표 감지 폭
+            carpetSpreadX: 24,        // 투하 산포(가로)
+            role: '전략 폭격', description: '긴 재장전 후 다수의 폭탄을 연속 투하하는 고고도 융단 폭격기. 대공 미사일에만 피격됩니다. (생존 귀환 시 재고 회복)'
         },
 
         // [RECON] 정찰기 (공중 탭에 배치)

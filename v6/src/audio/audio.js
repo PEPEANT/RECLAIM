@@ -220,7 +220,7 @@
             osc.type = 'square';
             osc.frequency.setValueAtTime(Math.random() * 100 + 150, t);
             osc.frequency.exponentialRampToValueAtTime(50, t + 0.1);
-            gain.gain.setValueAtTime(0.15 * vol, t);
+            gain.gain.setValueAtTime(0.34 * vol, t);
             gain.gain.exponentialRampToValueAtTime(0.01, t + 0.1);
             osc.connect(gain); gain.connect(this.ctx.destination); osc.start(t); osc.stop(t + 0.1);
         }
@@ -239,7 +239,7 @@
         }
         // [NEW] 공병 사운드
         else if (type === 'gun3') {
-            this._playOneShot('bgm/gun3.mp3', vol * 0.6, 8, worldX);
+            this._playOneShot('bgm/gun3.mp3', vol * 0.8, 8, worldX);
         }
         else if (type === 'rocket_launcher') {
             this._playOneShot('bgm/rocket-launcher-301426.mp3', vol * 0.7, 4, worldX);
@@ -248,7 +248,7 @@
             this._playOneShot('bgm/boom/death-exp.mp3', vol * 0.8, 6, worldX);
         }
         else if (type === 'tank_shell') {
-            this._playOneShot('bgm/boom/boom-5.mp3', vol * 0.8, 6, worldX);
+            this._playOneShot('bgm/boom/boom-5.mp3', vol * 1.42, 6, worldX);
         }
         else if (type === 'apache_missile') {
             this._playOneShot('bgm/boom/boom-4.mp3', vol * 0.7, 6, worldX);
@@ -722,7 +722,10 @@
         else if (type === 'flak') file = 'bgm/flak.mp3';
         else if (type === 'rifle_d') file = 'bgm/gun4.mp3';
 
-        const gunVolume = this.volume.sfx * this.volume.master * 0.5;
+        let gunGain = 0.84;
+        if (type === 'self') gunGain = 1.0;
+        else if (type === 'machine_gun' || type === 'flak') gunGain = 0.98;
+        const gunVolume = this.volume.sfx * this.volume.master * gunGain;
         if (type === 'special_ops') {
             const pool = this._audioPool[file];
             const playing = Array.isArray(pool)

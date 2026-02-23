@@ -3,11 +3,21 @@
  * hud.js - Fixed Bottom HUD (StarCraft-style)
  *
  * ??????????
- * - HUD??"??�?�?+ ?�?�????筌뤾봇遊뷸�??�??????
- * - ???깆젷 ???�뺤�?? ??�옇?????�?�??game, unit_commands)?????�먮�?
- * - ???�ㅎ?????�??game 1?? HUD????�?뻣嶺?
+ * - HUD??"??筌?六?+ ?類?????嶺뚮ㅎ遊뉔걡酉멥??癲??????
+ * - ???源놁졆 ???⑤벡彛?? ??れ삀?????筌?痢??game, unit_commands)?????얜Ŧ類?
+ * - ???ャ뀕?????獒??game 1?? HUD????筌?六ｏ┼?
  */
 
+function getHudTeamColor(team, variant = 'primary') {
+    const key = String(team || '').trim().toLowerCase();
+    if (typeof TeamColors !== 'undefined' && TeamColors && typeof TeamColors.get === 'function') {
+        if (key === 'neutral') return (variant === 'minimap') ? '#eab308' : '#64748b';
+        return TeamColors.get(key, variant === 'light' ? 'light' : 'primary');
+    }
+    if (key === 'player') return (variant === 'light') ? '#60a5fa' : '#3b82f6';
+    if (key === 'enemy') return (variant === 'light') ? '#8cab43' : '#6b8e23';
+    return (variant === 'minimap') ? '#eab308' : '#64748b';
+}
 const HUD = {
     // State
     initialized: false,
@@ -312,7 +322,7 @@ const HUD = {
         const units = this.getAllCommandablePlayerUnits();
         if (units.length === 0) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-                ui.showToast('���� ������ �Ʊ� ������ �����ϴ�.');
+                ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
             }
             return false;
         }
@@ -346,7 +356,7 @@ const HUD = {
         });
 
         if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            ui.showToast(`���� �̵� ���� (${issued})`);
+            ui.showToast(`전군 이동 명령 (${issued})`);
         }
         return issued > 0;
     },
@@ -360,7 +370,7 @@ const HUD = {
         const units = this.getAllCommandablePlayerUnits();
         if (units.length === 0) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-                ui.showToast('���� ������ �Ʊ� ������ �����ϴ�.');
+                ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
             }
             return false;
         }
@@ -398,8 +408,8 @@ const HUD = {
         });
 
         if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            const recallSuffix = recalled > 0 ? ` / ��� ���� ${recalled}` : '';
-            ui.showToast(`���� ���� ���� (${issued}${recallSuffix})`);
+            const recallSuffix = recalled > 0 ? ` / 드론 복귀 ${recalled}` : '';
+            ui.showToast(`전군 후퇴 명령 (${issued}${recallSuffix})`);
         }
         return issued > 0;
     },
@@ -413,7 +423,7 @@ const HUD = {
         const units = this.getAllCommandablePlayerUnits();
         if (units.length === 0) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-                ui.showToast('���� ������ �Ʊ� ������ �����ϴ�.');
+                ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
             }
             return false;
         }
@@ -428,7 +438,7 @@ const HUD = {
         });
 
         if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            ui.showToast(`���� ��� ���� (${issued})`);
+            ui.showToast(`전군 방어 명령 (${issued})`);
         }
         return issued > 0;
     },
@@ -813,9 +823,9 @@ const HUD = {
             const id = stats.id;
 
             if (id === 'recon') hasRecon = true;
-            // [ITEM] ?�막?? special_forces 기본 ?�거, smokeChargesLeft > 0??모든 ?�닛 지??
+            // [ITEM] ?곕쭑?? special_forces 湲곕낯 ?쒓굅, smokeChargesLeft > 0??紐⑤뱺 ?좊떅 吏??
             if ((u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
-            // [ITEM] ?�료 ?�트: medkitChargesLeft > 0??베테???�닛
+            // [ITEM] ?섎즺 ?ㅽ듃: medkitChargesLeft > 0??踰좏뀒???좊떅
             if ((u.medkitChargesLeft || 0) > 0) hasMedkitCharge = true;
             if (id === 'bagpiper') {
                 hasBagpiperSelection = true;
@@ -1043,7 +1053,7 @@ const HUD = {
             map.skill1 = pick(['icbm_tactical', 'icbm_emp', 'icbm_nuke']);
             map.skill2 = pick(['icbm_emp', 'icbm_nuke', 'icbm_tactical']);
             map.skill3 = pick(['icbm_nuke', 'icbm_tactical', 'icbm_emp']);
-            map.interact = directControlInteract || pick(['drop', 'eject', 'recon']);
+            map.interact = directControlInteract || pick(['drop', 'eject']);
             return map;
         }
 
@@ -1071,7 +1081,7 @@ const HUD = {
         if (ctx.hasBagpiperSelection) {
             if (!map.skill2) map.skill2 = pick(['smoke', 'medkit', 'missile', 'recon']);
             if (!map.skill3) map.skill3 = pick(['medkit', 'smoke', 'recon', 'missile']);
-            map.interact = directControlInteract || pick(['drop', 'eject', 'recon']);
+            map.interact = directControlInteract || pick(['drop', 'eject']);
             return map;
         }
 
@@ -1080,7 +1090,7 @@ const HUD = {
         }
         map.skill2 = pick(['smoke', 'medkit', 'missile', 'recon']);
         map.skill3 = pick(['medkit', 'recon', 'missile', 'smoke']);
-        map.interact = directControlInteract || pick(['drop', 'eject', 'recon', 'missile', 'smoke', 'medkit']);
+        map.interact = directControlInteract || pick(['drop', 'eject']);
 
         return map;
     },
@@ -1089,8 +1099,10 @@ const HUD = {
         const btn = this.getHudCommandButton(role);
         if (!btn) return;
         const isSkillRole = role === 'skill1' || role === 'skill2' || role === 'skill3';
+        const isHideableRole = isSkillRole || role === 'interact';
 
         if (!mappedCmd) {
+            if (isHideableRole) btn.classList.add('hidden');
             const fallbackMeta = this.getRoleDefaultMeta(role);
             this.setHudCommandButtonVisual(
                 btn,
@@ -1102,6 +1114,8 @@ const HUD = {
             btn.dataset.hudResolvedCmd = '';
             return;
         }
+
+        if (isHideableRole) btn.classList.remove('hidden');
 
         if (mappedCmd === 'weapon_toggle') {
             const info = (typeof game.getDirectControlWeaponToggleInfo === 'function')
@@ -1315,7 +1329,7 @@ const HUD = {
                 );
                 if (!canEject || typeof b.ejectAllGarrison !== 'function') return false;
                 b.ejectAllGarrison();
-                ui.showToast('?�뚯?�紐???�딅�??袁⑷???�쏄???');
+                ui.showToast('?낅슣?뽳쭗???ル봾六??熬곣뫕???꾩룄???');
                 if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
                 return true;
             }
@@ -1457,12 +1471,9 @@ const HUD = {
         const topActions = this.elements.topActions || document.getElementById('hud-top-actions');
         if (topActions) topActions.classList.remove('hidden');
         [
-            this.elements.allMoveBtn,
             this.elements.allRetreatBtn,
             this.elements.allDefenseBtn,
-            this.elements.optionBtn,
-            this.elements.cameraBtn,
-            this.elements.cancelBtn
+            this.elements.allMoveBtn
         ].forEach((btn) => {
             if (btn) btn.classList.remove('hidden');
         });
@@ -1488,12 +1499,9 @@ const HUD = {
         const topActions = this.elements.topActions || document.getElementById('hud-top-actions');
         if (topActions) topActions.classList.add('hidden');
         [
-            this.elements.allMoveBtn,
             this.elements.allRetreatBtn,
             this.elements.allDefenseBtn,
-            this.elements.optionBtn,
-            this.elements.cameraBtn,
-            this.elements.cancelBtn
+            this.elements.allMoveBtn
         ].forEach((btn) => {
             if (btn) btn.classList.add('hidden');
         });
@@ -1545,17 +1553,17 @@ const HUD = {
                 const label = (selection.buildingType === 'spawn_flag_player') ? 'SPAWN FLAG' : 'HQ';
                 info.innerHTML = `<span class="hud-placeholder-text">${label}</span>`;
             } else if (isBunker && selection.building) {
-                // [NEW] ?�?�??�뜮?濾곌??�? ???�ㅎ??????�슣?뽳쭗??곌랜????筌먲?�沅???�?�?
+                // [NEW] ?類???λ쑏?癲꾧퀗??癲? ???ャ뀕??????낆뒩?戮녹춻??怨뚮옖????嶺뚮㉡?€쾮???筌?六?
                 const b = selection.building;
                 const garrisonCount = b.garrisonUnits ? b.garrisonUnits.length : 0;
                 const maxGarrison = b.maxGarrison || 7;
                 const defBonus = Math.min(35, garrisonCount * 5);
-                const teamColor = b.team === 'neutral' ? '#64748b' : (b.team === 'player' ? '#3b82f6' : '#ef4444');
+                const teamColor = getHudTeamColor(b.team);
                 const isDestroyed = b.isDestroyed || false;
 
                 let statusHtml = '';
                 if (!isDestroyed && garrisonCount > 0 && b.team === 'player') {
-                    // [NEW] ??�슣?뽳쭗??곌랜??????�턁筌잛?????�갭�?���??
+                    // [NEW] ??낆뒩?戮녹춻??怨뚮옖??????ろ꼤嶺뚯옕?????숆강筌?쓣爾??
                     const unitGroups = {};
                     b.garrisonUnits.forEach((u, idx) => {
                         if (!u || u.dead) return;
@@ -1567,7 +1575,7 @@ const HUD = {
                         unitGroups[id].indices.push(idx);
                     });
 
-                    // ???�턁筌잛?????�곣뫁夷??UI ??諛댁??
+                    // ???ろ꼤嶺뚯옕?????ш끽維곩ㅇ??UI ??獄쏅똻??
                     let profileHtml = '';
                     for (const [id, group] of Object.entries(unitGroups)) {
                         profileHtml += `
@@ -1604,27 +1612,27 @@ const HUD = {
 
                 info.innerHTML = `<div class="hud-selection-item">${statusHtml}</div>`;
 
-                // [NEW] ??�룇�???꾩룄????�?�??????�???꾩룆????
+                // [NEW] ??좊즵獒???袁⑸즲????類???????濚???袁⑸즴????
                 info.querySelectorAll('[data-eject-type]').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const unitType = btn.dataset.ejectType;
                         if (b.ejectOneByType) {
                             b.ejectOneByType(unitType);
-                            ui.showToast(`${unitType} 1???�쏄???`);
+                            ui.showToast(`${unitType} 1???꾩룄???`);
                             game.updateHUDSelection();
                         }
                     });
                 });
 
-                // [NEW] ??�곣�???꾩룄????�?�??????�???꾩룆????
+                // [NEW] ??ш끽維???袁⑸즲????類???????濚???袁⑸즴????
                 const ejectAllBtn = document.getElementById('hud-eject-all-btn');
                 if (ejectAllBtn) {
                     ejectAllBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         if (b.ejectAllGarrison) {
                             b.ejectAllGarrison();
-                            ui.showToast('?�뚯?�紐???�딅�??袁⑷???�쏄???');
+                            ui.showToast('?낅슣?뽳쭗???ル봾六??熬곣뫕???꾩룄???');
                             game.updateHUDSelection();
                         }
                     });
@@ -1766,17 +1774,17 @@ const HUD = {
 
         // Buildings
         game.buildings.forEach(b => {
-            ctx.fillStyle = b.team === 'player' ? '#3b82f6' : (b.team === 'enemy' ? '#ef4444' : '#eab308');
+            ctx.fillStyle = getHudTeamColor(b.team, 'minimap');
             const w = Math.max(2, b.width * scale);
             const h = Math.max(2, b.height * scale);
             ctx.fillRect(b.x * scale - w / 2, groundY - h, w, h);
         });
 
         // Units
-        ctx.fillStyle = '#60a5fa';
+        ctx.fillStyle = getHudTeamColor('player', 'light');
         game.players.forEach(u => ctx.fillRect(u.x * scale, groundY - 2, 2, 2));
 
-        ctx.fillStyle = '#f87171';
+        ctx.fillStyle = getHudTeamColor('enemy', 'light');
         game.enemies.forEach(u => ctx.fillRect(u.x * scale, groundY - 2, 2, 2));
 
         // Camera viewport
@@ -1788,7 +1796,7 @@ const HUD = {
     },
 
     // ============================================
-    // [NEW] ???????濾곌????��??�?�??????�????�??
+    // [NEW] ???????癲꾧퀗????빝??類???????굿????縕??
     // ============================================
     checkWorkerSelected() {
         if (!game.selectedUnits || game.selectedUnits.size === 0) return false;
@@ -1950,8 +1958,8 @@ const HUD = {
         if (buildingLabel) buildingLabel.textContent = '';
     },
 
-    // [嶺뚮?�維?�쭗?C/D] HQ ???�ㅎ???????�봾�????�곣�???production area????�곣�???
-    // worker??infantry ?곸궠??誘ㅒ??μ�????????琉우�????�봾�???????諛댄????�럾???
+    // [癲ル슢?꾤땟?룹춻?C/D] HQ ???ャ뀕???????ル늅筌????ш끽維???production area????ш끽維???
+    // worker??infantry ?怨멸텭??沃섅뀙??關履????????筌뚯슦苑????ル늅筌???????獄쏅똾????좊읈???
     showHQProductionUI(productionArea, footer, buildingLabel, options = null) {
         if (!productionArea) return;
 
@@ -1982,20 +1990,20 @@ const HUD = {
         }
     },
 
-    // [NEW] ???�ㅎ?????諛댄??濾곌??�???�럾??筌뤾?�沅롧뼨?
+    // [NEW] ???ャ뀕?????獄쏅똾??癲꾧퀗??癲???좊읈??嶺뚮ㅎ?닸쾮濡㏓섀?
     getSelectedProductionBuilding() {
         if (!this.selection || this.selection.kind !== 'building') return null;
         if (!game.selectedBuilding) return null;
 
         const b = game.selectedBuilding;
-        // canProduce ?????�윜諛멥?? ????�츎 濾곌??囹�?�?(?곌랜????�춹?源껎?? ??�곣뫕而㎫뼨轅명?)
+        // canProduce ?????μ쐺獄쏅ı?? ????덉툗 癲꾧퀗??癲⑸?異?(?怨뚮옖????좎떴?繹먭퍗?? ??ш끽維뺠뚣렖堉②퐛紐끒?)
         if (b.canProduce && b.productionTab && b.team === 'player') {
             return b;
         }
         return null;
     },
 
-    // [NEW] ??諛댄??濾곌??�?UI ??�?�?
+    // [NEW] ??獄쏅똾??癲꾧퀗??癲?UI ??筌?六?
     showProductionBuildingUI(building, productionArea, footer, buildingLabel) {
         if (!productionArea) return;
         this.setContextRightSlotMode(false);
@@ -2004,7 +2012,7 @@ const HUD = {
         const bData = CONFIG.constructable[building.type];
         const buildingName = bData ? bData.name : building.type;
 
-        // ????????????�봾�?嶺뚮?�維뽨빳???�럾??筌뤾?�沅롧뼨?
+        // ????????????ル늅筌?癲ル슢?꾤땟戮⑤뭄???좊읈??嶺뚮ㅎ?닸쾮濡㏓섀?
         const units = CONFIG.units;
         const tabUnits = [];
 
@@ -2015,7 +2023,7 @@ const HUD = {
             }
         }
 
-        // ??�옇??????�몃�?嶺뚯?????�슦????諛댄???�?�?????諛댁??
+        // ??れ삀??????⑤챶裕?癲ル슣?????ㅼ뒭????獄쏅똾???類??????獄쏅똻??
         productionArea.innerHTML = '';
 
         const btnContainer = document.createElement('div');
@@ -2045,14 +2053,14 @@ const HUD = {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (canAfford && inStock && !onCooldown) {
-                    // 濾곌??�????????�봾�?????�폕
+                    // 癲꾧퀗??癲????????ル늅筌?????뚰룙
                     this.spawnFromBuilding(building, key);
                 } else if (onCooldown) {
-                    ui.showToast('?묅뫂???�?');
+                    ui.showToast('?臾낅쳜???繞?');
                 } else if (!inStock) {
-                    ui.showToast('??????곸벉!');
+                    ui.showToast('??????怨몃쾳!');
                 } else {
-                    ui.showToast('??????봔??');
+                    ui.showToast('??????遊붋??');
                 }
             });
 
@@ -2061,12 +2069,12 @@ const HUD = {
 
         productionArea.appendChild(btnContainer);
 
-        // ???�객????�?�?
+        // ???ㅺ컼????筌?六?
         if (footer) footer.classList.add('hud-show-production');
         if (buildingLabel) buildingLabel.textContent = buildingName;
     },
 
-    // [NEW] 濾곌??�????????�봾�?????�폕
+    // [NEW] 癲꾧퀗??癲????????ル늅筌?????뚰룙
     spawnFromBuilding(building, unitKey) {
         const uData = CONFIG.units[unitKey];
         if (!uData) return;
@@ -2085,12 +2093,12 @@ const HUD = {
             return;
         }
 
-        // ????????�?????????�룆???
+        // ????????椰?????????좊즴???
         game.supply -= uData.cost;
         game.playerStock[unitKey]--;
         game.cooldowns[unitKey] = uData.cooldown;
 
-        // 濾곌??�????�룻�??????�폕 (濾곌??�?????�꿰춯?+ ??袁⑺???????�뒆??
+        // 癲꾧퀗??癲????⑤；諭??????뚰룙 (癲꾧퀗??癲?????렺轅곗땡?+ ??熬곣뫚???????덈뭷??
         const spawnX = building.x + building.width / 2 + 30;
         const spawnY = game.groundY;
 
@@ -2099,7 +2107,7 @@ const HUD = {
         ui.showToast(`${uData.name} produced.`);
     },
 
-    // [3.8] ??????????�ㅎ??????�룆????濾곌????��??�?�???(???�봾六�?뵓怨뚯�????????��???????
+    // [3.8] ??????????ャ뀕??????좊즴????癲꾧퀗????빝??類????(???ル늅筌묐?逾볠⑤슣維????????⑥???????
     showBuildButtons(productionArea, footer, buildingLabel) {
         if (!productionArea) return;
         this.setContextRightSlotMode(false);
@@ -2107,31 +2115,31 @@ const HUD = {
         const buildings = CONFIG.constructable || {};
         const worker = this.getSelectedWorker();
 
-        // ??�옇??????�몃�?嶺뚯?????�슦??濾곌??�??�?�?????諛댁??
+        // ??れ삀??????⑤챶裕?癲ル슣?????ㅼ뒭??癲꾧퀗??癲??類??????獄쏅똻??
         productionArea.innerHTML = '';
 
         const btnContainer = document.createElement('div');
         btnContainer.className = 'flex gap-2 items-center overflow-x-auto hide-scrollbar';
         btnContainer.style.cssText = 'padding: 4px; height: 100%;';
 
-        // [3.8] watchtower�???�?�?
+        // [3.8] watchtower癲???筌?六?
         for (const key in buildings) {
             if (key !== 'watchtower') continue;
 
             const bData = buildings[key];
             const canAfford = game.supply >= bData.cost;
             const onCooldown = game.builderCooldown > 0;
-            const alreadyBuilt = game.watchtowerBuilt;  // [3.8] 1??濾곌????��?????�┰ 嶺뚳???�칰?
+            const alreadyBuilt = game.watchtowerBuilt;  // [3.8] 1??癲꾧퀗????빝?????モ뵲 癲ル슪???띿물?
             const isDisabled = !canAfford || onCooldown || alreadyBuilt;
 
-            // [3.8] btn-unit ??????��???????(???�봾六�?뵓怨뚯�???�?????�뎄??????��??
+            // [3.8] btn-unit ??????⑥???????(???ル늅筌묐?逾볠⑤슣維???◈?????곕럡??????깼??
             const btn = document.createElement('div');
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none flex flex-col items-center justify-center';
             if (isDisabled) {
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
             }
 
-            // �????????�곣뫗�??(??�옇?????�룆??????븐슦???- ??�옇??�땟??�?�??�뜮??????
+            // 癲????????ш끽維쀩??(??れ삀?????좊즴??????釉먯뒭???- ??れ삀??먮븶??類???λ쑏??????
             const iconCvs = document.createElement('canvas');
             iconCvs.width = 60;
             iconCvs.height = 40;
@@ -2139,46 +2147,46 @@ const HUD = {
             const ctx = iconCvs.getContext('2d');
             ctx.save();
             ctx.translate(30, 38);
-            ctx.scale(0.16, 0.16);  // ??????브�???
-            // ??�옇???watchtower ??븐슦????????�?(buildings.js 嶺뚣?�?��??
-            ctx.fillStyle = '#555';  // ??�옇??�땟?
+            ctx.scale(0.16, 0.16);  // ??????釉뚰???
+            // ??れ삀???watchtower ??釉먯뒭????????異?(buildings.js 癲ル슔?蹂?덫??
+            ctx.fillStyle = '#555';  // ??れ삀??먮븶?
             ctx.fillRect(-25, -150, 50, 150);
-            ctx.fillStyle = '#444';  // ?꾩룇?�뉓???
+            ctx.fillStyle = '#444';  // ?袁⑸즵?룸돀???
             ctx.fillRect(-45, -150, 90, 10);
-            ctx.fillStyle = '#111';  // ??�옇????
+            ctx.fillStyle = '#111';  // ??れ삀????
             ctx.fillRect(25, -185, 35, 6);
-            ctx.fillStyle = '#666';  // ?�?�??�뜮??곌랜�?��??
+            ctx.fillStyle = '#666';  // ?類???λ쑏??怨뚮옖筌?（??
             ctx.fillRect(-40, -210, 80, 60);
-            ctx.fillStyle = '#333';  // ????�꿰춯??꾩렮�?��젆源??
+            ctx.fillStyle = '#333';  // ????렺轅곗땡??袁⑸젻泳?μ젂繹먃??
             ctx.fillRect(20, -220, 20, 70);
-            ctx.fillStyle = '#444';  // 嶺뚯????
+            ctx.fillStyle = '#444';  // 癲ル슣????
             ctx.fillRect(-45, -220, 90, 10);
             ctx.restore();
             btn.appendChild(iconCvs);
 
-            // ?????(?筌뤾?????????
+            // ?????(?嶺뚮ㅎ?????????
             const nameSpan = document.createElement('span');
             nameSpan.className = 'font-bold text-[10px] z-10 absolute top-0 w-full text-center bg-black/30 text-white';
             nameSpan.innerText = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : bData.name;
             btn.appendChild(nameSpan);
 
-            // ???????�?�?
+            // ???????筌?六?
             const costSpan = document.createElement('span');
             costSpan.className = 'text-yellow-400 text-[10px] z-10 absolute bottom-1 right-1';
             costSpan.innerText = String(bData.cost);
-            // [REQ] watchtower�???????�?�????
+            // [REQ] watchtower癲???????筌?六????
             if (key !== 'watchtower') {
                 btn.appendChild(costSpan);
             }
 
-            // [3.8] ???? 濾곌????��??????�뮅???깅턄
+            // [3.8] ???? 癲꾧퀗????빝??????곷츉???源낇꼧
             if (alreadyBuilt) {
                 const builtDiv = document.createElement('div');
                 builtDiv.className = 'absolute inset-0 bg-gray-800/70 flex items-center justify-center z-20';
                 builtDiv.innerHTML = '<span class="text-white text-[9px] font-bold">BUILT</span>';
                 btn.appendChild(builtDiv);
             }
-            // ??�낅�???????�뮅???깅턄
+            // ??얜굝爾???????곷츉???源낇꼧
             else if (onCooldown) {
                 const cdDiv = document.createElement('div');
                 cdDiv.className = 'cooldown-overlay';
@@ -2186,29 +2194,23 @@ const HUD = {
                 btn.appendChild(cdDiv);
             }
 
-            // ??濡ル????롫맩?롧뛾?
-            const colorBar = document.createElement('div');
-            colorBar.className = 'absolute bottom-0 w-full h-1 z-10';
-            colorBar.style.backgroundColor = alreadyBuilt ? '#6b7280' : '#3b82f6';
-            btn.appendChild(colorBar);
-
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (alreadyBuilt) {
-                    ui.showToast('?�쏅Ŋ???? 1???�?椰꾨?�苑??�쎛??館鍮????�뼄!');
+                    ui.showToast('?띠룆흮???? 1???異?濾곌쑬?삭땻??띠럾??繞③뜮????덈펲!');
                 } else if (worker && canAfford && !onCooldown) {
                     game.enterBuildMode(key, worker);
                 } else if (onCooldown) {
-                    ui.showToast('椰꾨?�苑??묅뫂???�?');
+                    ui.showToast('濾곌쑬?삭땻??臾낅쳜???繞?');
                 } else if (!canAfford) {
-                    ui.showToast('??????봔??');
+                    ui.showToast('??????遊붋??');
                 }
             });
 
             btnContainer.appendChild(btn);
         }
 
-        // ???�???�?�???(濾곌????��?嶺뚮?�維???繞벿?�탳???????
+        // ???爾???類????(癲꾧퀗????빝?癲ル슢?꾤땟???濚욌꼬?댄꺍???????
         if (game.buildMode && game.buildMode.active) {
             const cancelBtn = document.createElement('button');
             cancelBtn.className = 'px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold';
@@ -2222,7 +2224,7 @@ const HUD = {
 
         productionArea.appendChild(btnContainer);
 
-        // ???�객????�?�?(?筌뤾?????????
+        // ???ㅺ컼????筌?六?(?嶺뚮ㅎ?????????
         if (footer) footer.classList.add('hud-show-production');
         const workerName = (typeof Lang !== 'undefined') ? Lang.getText('unit_worker_name') : 'Worker';
         const towerName = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : 'Watchtower';
@@ -2233,7 +2235,7 @@ const HUD = {
      * Hide legacy UI elements (replaced by new HUD)
      */
     hideLegacyUI() {
-        // [3.8] Hide old minimap/toggle/ctrl/cmd buttons (???깆젧 ?�?�???? ???)
+        // [3.8] Hide old minimap/toggle/ctrl/cmd buttons (???源놁젳 ?類????? ???)
         ['hud-minimap-container', 'hud-minimap-toggle', 'hud-ctrl-wrapper', 'unit-cmd-wrapper']
             .forEach(id => {
                 const el = document.getElementById(id);
@@ -2251,4 +2253,5 @@ const HUD = {
 
 // Export for global access
 window.HUD = HUD;
+
 

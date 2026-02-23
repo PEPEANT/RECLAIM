@@ -100,6 +100,7 @@
 
         this.special.charges.emp--;
         this.special.cd.emp = 60 * 45;
+        this.special.lastEmpFrame = Number(game.frame) || 0;
         return true;
     },
 
@@ -246,11 +247,20 @@
         const enoughTime = frame > this.special.tacticalGraceUntil;
         const tacX = unitCluster ? unitX : bx;
         const wantTac = enoughTime && (
-            (!!unitCluster && unitCount >= 6) ||
+            (!!unitCluster && unitCount >= 7) ||
             (!!unitCluster && unitCount >= 4 && bNearUnits >= 2) ||
             (cluster.count >= 5 && bNear >= 1) ||
-            (cluster.count >= 4 && bNear >= 2 && frame > 60 * 120)
+            (cluster.count >= 5 && bNear >= 2 && frame > 60 * 140)
         );
+
+        const empForceEvery = Math.max(60 * 60, Number(this.special.empForceInterval) || (60 * 100));
+        const lastEmpFrame = Number(this.special.lastEmpFrame) || -999999;
+        const empOverdue = (frame - lastEmpFrame) >= empForceEvery;
+
+        // EMP 강제 주기: 너무 오래 EMP가 없으면 우선 발사
+        if (empOverdue && this.special.charges.emp > 0 && this.special.cd.emp <= 0) {
+            if (this._castEMP(bx, by)) return;
+        }
 
         // 우선순위: (조건 만족 시) 핵 > EMP > 전술미사일
         if (wantNuke && this.special.charges.nuke > 0 && this.special.cd.nuke <= 0) {

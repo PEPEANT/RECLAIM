@@ -1,5 +1,19 @@
-// [FILE] buildings.js: ?? ??? ??? ?? ??/?? ??? ??.
-// [RULE] 인게임 안내/상태/채팅 메시지는 UI 토스트 금지. ChatPanel.push()로만 출력.
+﻿// [FILE] buildings.js: ?? ??? ??? ?? ??/?? ??? ??.
+// [RULE] ?멸쾶???덈궡/?곹깭/梨꾪똿 硫붿떆吏??UI ?좎뒪??湲덉?. ChatPanel.push()濡쒕쭔 異쒕젰.
+function resolveTeamColor(team, variant = 'primary') {
+    if (typeof TeamColors !== 'undefined' && TeamColors && typeof TeamColors.get === 'function') {
+        return TeamColors.get(team, variant);
+    }
+    if (team === 'player') return (variant === 'light') ? '#60a5fa' : '#3b82f6';
+    if (team === 'enemy') return (variant === 'light') ? '#8cab43' : '#6b8e23';
+    return '#64748b';
+}
+
+function resolveTeamOrNeutralColor(team, variant = 'primary') {
+    if (team === 'neutral') return '#64748b';
+    return resolveTeamColor(team, variant);
+}
+
 class Building extends Entity {
     constructor(type, x, y, team) {
         const data = CONFIG.buildings[type];
@@ -16,10 +30,10 @@ class Building extends Entity {
         this.ignoreDrone = data.ignoreDrone || false;
         this.airDamageMult = (data.airDamageMult == null) ? 1.0 : data.airDamageMult;
         this.requiresGarrison = (type === 'bunker');
-        this.garrisonUnits = [];  // [NEW] 여러 유닛 주둔 가능
+        this.garrisonUnits = [];  // [NEW] ?щ윭 ?좊떅 二쇰몦 媛??
         this.maxGarrison = (type === 'bunker') ? 7 : 0;
-        this.garrisonUnit = null; // [LEGACY] 하위 호환용
-        this.isDestroyed = false; // [NEW] 도시맵 파괴 건물 재점령 불가
+        this.garrisonUnit = null; // [LEGACY] ?섏쐞 ?명솚??
+        this.isDestroyed = false; // [NEW] ?꾩떆留??뚭눼 嫄대Ъ ?ъ젏??遺덇?
         this.hideHp = true;
         this.hpVisibleUntil = 0;
         this.destroyedAt = -1;
@@ -103,19 +117,19 @@ class Building extends Entity {
             this.hp = Math.max(1, fallbackHp);
         }
 
-        // [NEW] 피격 시 HP바 표시 + 3초 뒤 숨김 예약(피격될 때마다 연장)
+        // [NEW] ?쇨꺽 ??HP諛??쒖떆 + 3珥????④? ?덉빟(?쇨꺽???뚮쭏???곗옣)
         if (dmg > 0) {
             this.hideHp = false;
-            this.hpVisibleUntil = game.frame + 180; // 60fps 기준 3초
+            this.hpVisibleUntil = game.frame + 180; // 60fps 湲곗? 3珥?
         }
 
-        // [NEW] 주둔 보병 수에 따른 방어력 증가 (보병 1기당 5% 피해 감소, 최대 35%)
+        // [NEW] 二쇰몦 蹂대퀝 ?섏뿉 ?곕Ⅸ 諛⑹뼱??利앷? (蹂대퀝 1湲곕떦 5% ?쇳빐 媛먯냼, 理쒕? 35%)
         if (this.type === 'bunker' && this.garrisonUnits && this.garrisonUnits.length > 0) {
             const defenseBonus = Math.min(0.35, this.garrisonUnits.length * 0.05);
             dmg *= (1 - defenseBonus);
         }
 
-        // [NEW] 폭발형 공격인지 확인 (탱크/폭격기/미사일/드론/험비 등)
+        // [NEW] ??컻??怨듦꺽?몄? ?뺤씤 (?깊겕/??꺽湲?誘몄궗???쒕줎/?섎퉬 ??
         const explosiveAttacks = ['artillery', 'bomb', 'nuke', 'tactical_missile', 'fighter_missile', 'rocket', 'shell', 'engineer_missile', 'drone_explosion', 'humvee_burst'];
         const isExplosive = attackType && explosiveAttacks.includes(attackType);
 
@@ -126,13 +140,13 @@ class Building extends Entity {
             }
             this.hp -= dmg;
             if (this.hp <= 0) {
-                // [NEW] 폭발형 공격으로 파괴 시 재점령 불가 + 파괴 상태로 변경
+                // [NEW] ??컻??怨듦꺽?쇰줈 ?뚭눼 ???ъ젏??遺덇? + ?뚭눼 ?곹깭濡?蹂寃?
                 if (isExplosive) {
                     this._destroyBunkerInstant();
                     return;
                 }
 
-                // 보병 공격: 기존처럼 중립화만 (재점령 가능)
+                // 蹂대퀝 怨듦꺽: 湲곗〈泥섎읆 以묐┰?붾쭔 (?ъ젏??媛??
                 this.ejectAllGarrison();
                 this.team = 'neutral';
                 this.hp = this.maxHp * 0.2;
@@ -172,7 +186,7 @@ class Building extends Entity {
     }
 
     update(enemies, players) {
-        // [NEW] 마지막 피격 이후 3초 지나면 HP바 다시 숨김 (단, 선택 중이면 유지)
+        // [NEW] 留덉?留??쇨꺽 ?댄썑 3珥?吏?섎㈃ HP諛??ㅼ떆 ?④? (?? ?좏깮 以묒씠硫??좎?)
         const isSelected = (typeof game !== 'undefined' && game.selectedBuilding === this);
         if (isSelected) {
             this.hideHp = false;
@@ -191,15 +205,15 @@ class Building extends Entity {
 
         if (this.type === 'bunker') {
             this._syncBunkerGarrisonCap();
-            // [NEW] 도시맵에서 파괴된 건물은 재점령 불가
+            // [NEW] ?꾩떆留듭뿉???뚭눼??嫄대Ъ? ?ъ젏??遺덇?
             if (this.isDestroyed) {
                 this.captureProgress = 0;
-                return;  // 더 이상 로직 처리 안함
+                return;  // ???댁긽 濡쒖쭅 泥섎━ ?덊븿
             }
 
             const prevTeam = this.team;
             let pCount = 0, eCount = 0;
-            // [FIX] cannotCapture 또는 카메라맨은 점령에서 제외
+            // [FIX] cannotCapture ?먮뒗 移대찓?쇰㎤? ?먮졊?먯꽌 ?쒖쇅
             players.forEach(u => { if (u && !u.dead && Math.abs(u.x - this.x) < 200 && u.stats && !u.stats.type.includes('air') && !u.stats.cannotCapture && !u.isCameraman) pCount++; });
             enemies.forEach(u => { if (u && !u.dead && Math.abs(u.x - this.x) < 200 && u.stats && !u.stats.type.includes('air')) eCount++; });
 
@@ -235,22 +249,22 @@ class Building extends Entity {
             }
         }
 
-        // [NEW] 거점(벙커) garrison: 집모양 벙커 2기 / 일반 벙커 7기
+        // [NEW] 嫄곗젏(踰숈빱) garrison: 吏묐え??踰숈빱 2湲?/ ?쇰컲 踰숈빱 7湲?
         if (this.requiresGarrison) {
-            // 배열 초기화 확인
+            // 諛곗뿴 珥덇린???뺤씤
             if (!this.garrisonUnits) this.garrisonUnits = [];
             const nowFrame = (typeof game !== 'undefined' && Number.isFinite(game.frame))
                 ? game.frame
                 : 0;
 
             if (this.team === 'neutral' || this.isDestroyed) {
-                // 중립이거나 파괴된 건물이면 주둔 유닛 없음
+                // 以묐┰?닿굅???뚭눼??嫄대Ъ?대㈃ 二쇰몦 ?좊떅 ?놁쓬
                 if (this.garrisonUnits.length > 0) {
                     this.ejectAllGarrison();
                 }
                 this.garrisonUnit = null;
             } else if (this.garrisonUnits.length < this.maxGarrison) {
-                // 최대 주둔 수에 도달하지 않았으면 추가 주둔 시도
+                // 理쒕? 二쇰몦 ?섏뿉 ?꾨떖?섏? ?딆븯?쇰㈃ 異붽? 二쇰몦 ?쒕룄
                 const allies = (this.team === 'player') ? players : enemies;
                 const candidates = [];
 
@@ -268,7 +282,7 @@ class Building extends Entity {
                     }
                 }
 
-                // 가능한 만큼 주둔
+                // 媛?ν븳 留뚰겮 二쇰몦
                 for (const candidate of candidates) {
                     if (this.garrisonUnits.length >= this.maxGarrison) break;
 
@@ -280,7 +294,7 @@ class Building extends Entity {
                     }
                 }
 
-                // [LEGACY] 하위 호환: 첫 번째 유닛을 garrisonUnit에도 저장
+                // [LEGACY] ?섏쐞 ?명솚: 泥?踰덉㎏ ?좊떅??garrisonUnit?먮룄 ???
                 this.garrisonUnit = this.garrisonUnits.length > 0 ? this.garrisonUnits[0] : null;
             }
         }
@@ -296,7 +310,7 @@ class Building extends Entity {
             let target = null;
             let minDist = this.range;
 
-            // [CHANGE] antiAir면(=터렛/대공시설) 공중 타겟 우선 탐색
+            // [CHANGE] antiAir硫?=?곕젢/?怨듭떆?? 怨듭쨷 ?寃??곗꽑 ?먯깋
             if (this.antiAir) {
                 const airTarget = targets.find(t => !t.dead && t.stats && !t.stats.invulnerable && Math.abs(t.x - this.x) < this.range && t.stats.type === 'air');
                 if (airTarget) target = airTarget;
@@ -314,7 +328,7 @@ class Building extends Entity {
                 }
             }
 
-            // [NEW] 벙커 내부 공병 미사일 1발 허용
+            // [NEW] 踰숈빱 ?대? 怨듬퀝 誘몄궗??1諛??덉슜
             if (this.type === 'bunker' && target && this.garrisonUnits && this.garrisonUnits.length > 0) {
                 if (game.frame - this.lastShot > this.fireRate) {
                     const targetType = target.stats ? target.stats.type : null;
@@ -351,7 +365,7 @@ class Building extends Entity {
                             if (isAirTarget) lockEngineerMissile(target);
                             const missileDmg = shooter.stats?.missileDamage || 80;
                             game.projectiles.push(new Projectile(this.x, this.y - this.height / 2, target, missileDmg, this.team, 'engineer_missile', { source: this }));
-                            shooter.missileReady = false; // 1발 제한
+                            shooter.missileReady = false; // 1諛??쒗븳
                             this.lastShot = game.frame;
                             return;
                         }
@@ -377,7 +391,7 @@ class Building extends Entity {
                 game.projectiles.push(new Projectile(this.x, spawnY, target, dmg, this.team, this.projectileType, { source: this }));
                 this.lastShot = game.frame;
 
-                // 건물 발사 사운드 (flak)
+                // 嫄대Ъ 諛쒖궗 ?ъ슫??(flak)
                 if (typeof AudioSystem !== 'undefined' && Math.random() < 0.25) {
                     AudioSystem.playGun('flak', this.x);
                 }
@@ -390,7 +404,7 @@ class Building extends Entity {
         }
     }
 
-    // [NEW] 모든 주둔 유닛 배출
+    // [NEW] 紐⑤뱺 二쇰몦 ?좊떅 諛곗텧
     ejectAllGarrison() {
         if (!this.garrisonUnits || this.garrisonUnits.length === 0) return;
 
@@ -402,7 +416,7 @@ class Building extends Entity {
             const unit = this.garrisonUnits[i];
             if (!unit || unit.dead) continue;
 
-            // [FIX] 유닛의 팀을 기준으로 올바른 배열에 추가
+            // [FIX] ?좊떅?????湲곗??쇰줈 ?щ컮瑜?諛곗뿴??異붽?
             const allies = (unit.team === 'player') ? game.players : game.enemies;
 
             const offsetDir = (i % 2 === 0) ? 1 : -1;
@@ -415,7 +429,7 @@ class Building extends Entity {
             }
             this._markEjectedUnit(unit);
 
-            // 유닛 배열에 다시 추가
+            // ?좊떅 諛곗뿴???ㅼ떆 異붽?
             if (!allies.includes(unit)) {
                 allies.push(unit);
             }
@@ -425,25 +439,25 @@ class Building extends Entity {
         this.garrisonUnit = null;
     }
 
-    // [NEW] 특정 유닛 타입 1기만 배출
+    // [NEW] ?뱀젙 ?좊떅 ???1湲곕쭔 諛곗텧
     ejectOneByType(unitType) {
         if (!this.garrisonUnits || this.garrisonUnits.length === 0) return;
 
         const groundY = (typeof game !== 'undefined' && game.groundY) ? game.groundY : this.y;
 
-        // 해당 타입의 유닛 찾기
+        // ?대떦 ??낆쓽 ?좊떅 李얘린
         const idx = this.garrisonUnits.findIndex(u => u && !u.dead && u.stats?.id === unitType);
         if (idx === -1) return;
 
         const unit = this.garrisonUnits[idx];
 
-        // [FIX] 유닛의 팀을 기준으로 올바른 배열에 추가
+        // [FIX] ?좊떅?????湲곗??쇰줈 ?щ컮瑜?諛곗뿴??異붽?
         const allies = (unit.team === 'player') ? game.players : game.enemies;
 
-        // 배열에서 제거
+        // 諛곗뿴?먯꽌 ?쒓굅
         this.garrisonUnits.splice(idx, 1);
 
-        // 건물 바깥 안전거리로 배출
+        // 嫄대Ъ 諛붽묑 ?덉쟾嫄곕━濡?諛곗텧
         unit.x = this.x + this.width / 2 + 56;
         if (typeof game !== 'undefined' && game && typeof game.getGroundLaneY === 'function' && game.isGroundLaneUnit && game.isGroundLaneUnit(unit)) {
             unit.y = game.getGroundLaneY(unit);
@@ -452,12 +466,12 @@ class Building extends Entity {
         }
         this._markEjectedUnit(unit);
 
-        // 유닛 배열에 다시 추가
+        // ?좊떅 諛곗뿴???ㅼ떆 異붽?
         if (!allies.includes(unit)) {
             allies.push(unit);
         }
 
-        // 하위 호환용 업데이트
+        // ?섏쐞 ?명솚???낅뜲?댄듃
         this.garrisonUnit = this.garrisonUnits.length > 0 ? this.garrisonUnits[0] : null;
     }
 
@@ -477,7 +491,7 @@ class Building extends Entity {
 
         // [REMOVED] Bunker Spawn UI
         if (this.type.includes('hq')) {
-            // [NEW] 진짜 총사령부(후방) 전용 디자인: hq_player / hq_enemy (대칭)
+            // [NEW] 吏꾩쭨 珥앹궗?밸?(?꾨갑) ?꾩슜 ?붿옄?? hq_player / hq_enemy (?移?
             if (this.type === 'hq_player' || this.type === 'hq_enemy') {
                 const time = game.frame;
                 const isEnemy = (this.team === 'enemy');
@@ -486,25 +500,25 @@ class Building extends Entity {
                     base: '#3E4C59',
                     dark: '#232F3E',
                     light: '#52606D',
-                    accent: isEnemy ? '#ef4444' : '#3498DB',
+                    accent: resolveTeamColor(this.team),
                     metal: '#95A5A6',
                     glass: '#85C1E9',
-                    flag: isEnemy ? '#dc2626' : '#0052D4',
+                    flag: resolveTeamColor(this.team, 'dark'),
                     turret: '#2C3E50'
                 };
 
                 const w = this.width;
                 const h = this.height;
 
-                // 로컬 기준점(지면): (0,0)
+                // 濡쒖뺄 湲곗???吏硫?: (0,0)
                 const cx = 0;
                 const cy = 0;
 
-                // [NEW] 적군 총사령부는 좌우 반전(대칭)
+                // [NEW] ?곴뎔 珥앹궗?밸???醫뚯슦 諛섏쟾(?移?
                 ctx.save();
                 if (isEnemy) ctx.scale(-1, 1);
 
-                // 작은 깃발
+                // ?묒? 源껊컻
                 const drawSmallFlag = (x, y) => {
                     const poleHeight = 40;
                     const flagWidth = 30;
@@ -530,7 +544,7 @@ class Building extends Entity {
                     ctx.fill();
                 };
 
-                // 현대식 방어 포탑(시각)
+                // ?꾨???諛⑹뼱 ?ы깙(?쒓컖)
                 const drawModernTurret = (x, y) => {
                     ctx.save();
                     ctx.translate(x, y);
@@ -553,7 +567,7 @@ class Building extends Entity {
                     ctx.restore();
                 };
 
-                // 미사일 배터리(시각)
+                // 誘몄궗??諛고꽣由??쒓컖)
                 const drawMissileBattery = (x, y) => {
                     ctx.fillStyle = COLORS.metal;
                     ctx.fillRect(x - 15, y - 20, 30, 20);
@@ -573,12 +587,12 @@ class Building extends Entity {
                     ctx.fill();
                 };
 
-                // -------- 본체 배치 (플랫폼 + 메인 타워(좌) + 방어동(우)) --------
-                // 바닥 플랫폼
+                // -------- 蹂몄껜 諛곗튂 (?뚮옯??+ 硫붿씤 ???醫? + 諛⑹뼱????) --------
+                // 諛붾떏 ?뚮옯??
                 ctx.fillStyle = '#2C3E50';
                 ctx.fillRect(cx - w * 1.0, cy, w * 2.0, 18);
 
-                // 메인 타워(좌측)
+                // 硫붿씤 ???醫뚯륫)
                 const mainX = cx - w * 0.75;
                 const mainW = w * 0.70;
                 const mainH = h * 1.25;
@@ -588,7 +602,7 @@ class Building extends Entity {
                 ctx.fillRect(mainX, cy - mainH, 5, mainH);
                 ctx.fillRect(mainX, cy - mainH, mainW, 5);
 
-                // 통유리 창
+                // ?듭쑀由?李?
                 ctx.fillStyle = COLORS.glass;
                 ctx.fillRect(mainX + 10, cy - mainH + 20, mainW - 20, 30);
                 ctx.strokeStyle = 'rgba(255,255,255,0.3)';
@@ -597,17 +611,17 @@ class Building extends Entity {
                 ctx.lineTo(mainX + mainW - 10, cy - mainH + 20);
                 ctx.stroke();
 
-                // 작은 문
+                // ?묒? 臾?
                 ctx.fillStyle = '#111';
                 ctx.fillRect(mainX + mainW * 0.42, cy - 30, 20, 30);
                 ctx.fillStyle = '#555';
                 ctx.fillRect(mainX + mainW * 0.42 - 2, cy - 32, 24, 2);
 
-                // 연결부
+                // ?곌껐遺
                 ctx.fillStyle = COLORS.dark;
                 ctx.fillRect(mainX + mainW, cy - 80, 20, 80);
 
-                // 방어동(우측 사다리꼴)
+                // 諛⑹뼱???곗륫 ?щ떎由ш섦)
                 const defX = cx + w * 0.05;
                 const defW = w * 0.90;
                 const defH = h * 0.75;
@@ -625,28 +639,28 @@ class Building extends Entity {
                 ctx.lineTo(defX + defW - 10, cy - defH / 2);
                 ctx.stroke();
 
-                // 옥상: 깃발 + 센서
+                // ?μ긽: 源껊컻 + ?쇱꽌
                 drawSmallFlag(mainX + mainW / 2, cy - mainH);
                 ctx.fillStyle = '#333';
                 ctx.fillRect(mainX + 20, cy - mainH - 10, 10, 10);
                 ctx.fillStyle = COLORS.accent;
                 ctx.fillRect(mainX + 26, cy - mainH - 8, 2, 2);
 
-                // 옥상: 대공포탑 2개(시각)
+                // ?μ긽: ?怨듯룷??2媛??쒓컖)
                 drawModernTurret(defX + defW * 0.35, cy - defH);
                 drawModernTurret(defX + defW * 0.70, cy - defH);
 
-                // 중간 데크: 미사일 포대
+                // 以묎컙 ?고겕: 誘몄궗???щ?
                 drawMissileBattery(mainX + mainW + 10, cy - 80);
 
-                // 방어동 경고등
+                // 諛⑹뼱??寃쎄퀬??
                 const blink = Math.sin(time * 0.1) > 0;
                 ctx.fillStyle = blink ? '#E74C3C' : '#550000';
                 ctx.beginPath();
                 ctx.arc(defX + defW - 10, cy - 20, 3, 0, Math.PI * 2);
                 ctx.fill();
 
-                // 입구 조명
+                // ?낃뎄 議곕챸
                 ctx.fillStyle = 'rgba(255, 255, 0, 0.1)';
                 ctx.beginPath();
                 ctx.moveTo(mainX + mainW * 0.5, cy - 30);
@@ -654,7 +668,7 @@ class Building extends Entity {
                 ctx.lineTo(mainX + mainW * 0.62, cy);
                 ctx.fill();
 
-                // [NEW] 미러 해제
+                // [NEW] 誘몃윭 ?댁젣
                 ctx.restore();
 
                 ctx.restore();
@@ -664,7 +678,7 @@ class Building extends Entity {
 
             ctx.fillStyle = this.team === 'player' ? '#1e3a8a' : '#7f1d1d';
             ctx.fillRect(-this.width / 2, -this.height, this.width, this.height);
-            ctx.fillStyle = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            ctx.fillStyle = resolveTeamColor(this.team);
             ctx.fillRect(-this.width / 2 + 10, -this.height + 20, this.width - 20, 20);
             ctx.strokeStyle = '#64748b'; ctx.beginPath(); ctx.moveTo(0, -this.height); ctx.lineTo(0, -this.height - 40); ctx.stroke();
             if (game.frame % 60 < 30) { ctx.fillStyle = 'red'; ctx.beginPath(); ctx.arc(0, -this.height - 40, 2, 0, Math.PI * 2); ctx.fill(); }
@@ -857,13 +871,13 @@ class Building extends Entity {
                 warning: '#f0ad4e'
             };
 
-            // [FIX] 폴리곤 원본 실제 크기 기준 + 추가 0.5 축소
+            // [FIX] ?대━怨??먮낯 ?ㅼ젣 ?ш린 湲곗? + 異붽? 0.5 異뺤냼
             const BASE_W = 560;
             const BASE_H = 320;
             let scale = Math.min((this.width || 120) / BASE_W, (this.height || 90) / BASE_H);
             scale *= 1.35;
 
-            // [NEW] 회전 레이더 색상: 아군=파랑, 적군=빨강
+            // [NEW] ?뚯쟾 ?덉씠???됱긽: ?꾧뎔=?뚮옉, ?곴뎔=鍮④컯
             const radarColor = isEnemy ? '#ff4b4b' : '#4facfe';
             const blinkColor = radarColor;
             ctx.save();
@@ -885,7 +899,7 @@ class Building extends Entity {
                 }
             };
 
-            // 1. 메인 구조물 (벙커 본체)
+            // 1. 硫붿씤 援ъ“臾?(踰숈빱 蹂몄껜)
             const mainBody = [
                 { x: -300, y: 0 },
                 { x: 200, y: 0 },
@@ -895,7 +909,7 @@ class Building extends Entity {
             ];
             drawPolygon(mainBody, colors.concrete, colors.concreteDark);
 
-            // 1-1. 장갑판 디테일 (사선 패턴)
+            // 1-1. ?κ컩???뷀뀒??(?ъ꽑 ?⑦꽩)
             ctx.strokeStyle = colors.concreteLight;
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -904,7 +918,7 @@ class Building extends Entity {
             ctx.moveTo(20, 0); ctx.lineTo(-70, -220);
             ctx.stroke();
 
-            // 2. 전면 추가 장갑 (Reactive Armor)
+            // 2. ?꾨㈃ 異붽? ?κ컩 (Reactive Armor)
             const frontArmor = [
                 { x: 200, y: 0 },
                 { x: 260, y: 0 },
@@ -913,7 +927,7 @@ class Building extends Entity {
             ];
             drawPolygon(frontArmor, colors.concreteDark, '#111');
 
-            // 3. 상단 지휘 통제실 (Command Center)
+            // 3. ?곷떒 吏???듭젣??(Command Center)
             const commandCenter = [
                 { x: -200, y: -250 },
                 { x: 0, y: -250 },
@@ -922,11 +936,11 @@ class Building extends Entity {
             ];
             drawPolygon(commandCenter, colors.concreteLight, colors.concreteDark);
 
-            // 창문
+            // 李쎈Ц
             ctx.fillStyle = `rgba(79, 172, 254, ${0.5 + Math.sin(time * 3) * 0.2})`;
             ctx.fillRect(-160, -290, 120, 15);
 
-            // 4. 레이더/안테나 (센서만 유지)
+            // 4. ?덉씠???덊뀒??(?쇱꽌留??좎?)
             const radarX = -100;
             const radarY = -320;
             const radarAngle = time * 2;
@@ -941,13 +955,13 @@ class Building extends Entity {
             ctx.fill();
             ctx.restore();
 
-            // 센서 돔
+            // ?쇱꽌 ??
             ctx.fillStyle = colors.concreteDark;
             ctx.beginPath();
             ctx.arc(radarX, radarY - 10, 15, Math.PI, 0);
             ctx.fill();
 
-            // 통신 안테나
+            // ?듭떊 ?덊뀒??
             ctx.strokeStyle = '#888';
             ctx.lineWidth = 2;
             ctx.beginPath();
@@ -955,7 +969,7 @@ class Building extends Entity {
             ctx.lineTo(radarX, radarY - 60);
             ctx.stroke();
 
-            // 안테나 끝 깜빡임
+            // ?덊뀒????源쒕묀??
             const blink = Math.sin(time * 10) > 0;
             if (blink) {
                 ctx.fillStyle = blinkColor;
@@ -967,12 +981,12 @@ class Building extends Entity {
             ctx.restore();
         }
         else if (this.type === 'watchtower') {
-            // ?? 감시탑(Watchtower) - "낮은 기둥 감시탑" 디자인
+            // ?? 媛먯떆??Watchtower) - "??? 湲곕뫁 媛먯떆?? ?붿옄??
             const isEnemy = (this.team === 'enemy');
             ctx.save();
             if (isEnemy) ctx.scale(-1, 1);
 
-            // 원본 도형(90x220)을 현재 width/height에 맞게 스케일
+            // ?먮낯 ?꾪삎(90x220)???꾩옱 width/height??留욊쾶 ?ㅼ???
             const sx = this.width / 90;
             const sy = this.height / 220;
             ctx.scale(sx, sy);
@@ -980,32 +994,32 @@ class Building extends Entity {
             const cx = 0;
             const groundY = 0;
 
-            // 1. 기둥
+            // 1. 湲곕뫁
             ctx.fillStyle = '#555';
             ctx.fillRect(cx - 25, groundY - 150, 50, 150);
 
-            // 2. 받침대
+            // 2. 諛쏆묠?
             ctx.fillStyle = '#444';
             ctx.fillRect(cx - 45, groundY - 150, 90, 10);
 
-            // 3. 기관총
+            // 3. 湲곌?珥?
             ctx.fillStyle = '#111';
             ctx.fillRect(cx + 25, groundY - 185, 35, 6);
             ctx.fillRect(cx + 55, groundY - 187, 8, 10);
 
-            // 4. 벙커 본체
+            // 4. 踰숈빱 蹂몄껜
             ctx.fillStyle = '#666';
             ctx.fillRect(cx - 40, groundY - 210, 80, 60);
 
-            // 5. 오른쪽 방어벽
+            // 5. ?ㅻⅨ履?諛⑹뼱踰?
             ctx.fillStyle = '#333';
             ctx.fillRect(cx + 20, groundY - 220, 20, 70);
 
-            // 6. 관측 틈
+            // 6. 愿痢???
             ctx.fillStyle = '#111';
             ctx.fillRect(cx + 20, groundY - 195, 20, 5);
 
-            // 7. 지붕
+            // 7. 吏遺?
             ctx.fillStyle = '#444';
             ctx.fillRect(cx - 45, groundY - 220, 90, 10);
 
@@ -1076,10 +1090,10 @@ class Building extends Entity {
                     ctx.fillStyle = '#000';
                     ctx.fillRect(-40, -70, 80, 6);
                     if (this.captureProgress > 0) {
-                        ctx.fillStyle = '#3b82f6';
+                        ctx.fillStyle = resolveTeamColor('player');
                         ctx.fillRect(-40, -70, 80 * (this.captureProgress / 100), 6);
                     } else if (this.captureProgress < 0) {
-                        ctx.fillStyle = '#ef4444';
+                        ctx.fillStyle = resolveTeamColor('enemy');
                         ctx.fillRect(40 + (80 * (this.captureProgress / 100)), -70, -80 * (this.captureProgress / 100), 6);
                     }
                 }
@@ -1087,11 +1101,11 @@ class Building extends Entity {
                 const hpRatio = Math.max(0, Math.min(1, this.hp / this.maxHp));
                 ctx.fillStyle = '#000';
                 ctx.fillRect(-40, -70, 80, 6);
-                ctx.fillStyle = hpRatio > 0.3 ? '#22c55e' : '#ef4444';
+                ctx.fillStyle = hpRatio > 0.3 ? '#22c55e' : resolveTeamColor('enemy');
                 ctx.fillRect(-40, -70, 80 * hpRatio, 6);
             }
 
-            ctx.fillStyle = this.team === 'neutral' ? '#64748b' : (this.team === 'player' ? '#3b82f6' : '#ef4444');
+            ctx.fillStyle = resolveTeamOrNeutralColor(this.team);
             ctx.beginPath();
             ctx.moveTo(-45, -60);
             ctx.lineTo(0, -80);
@@ -1103,7 +1117,7 @@ class Building extends Entity {
             const garrisonCount = this.garrisonUnits ? this.garrisonUnits.length : 0;
             const isSelected = (typeof game !== 'undefined' && game.selectedBuilding === this);
             if (garrisonCount > 0 || isSelected) {
-                const teamColor = this.team === 'neutral' ? '#64748b' : (this.team === 'player' ? '#3b82f6' : '#ef4444');
+                const teamColor = resolveTeamOrNeutralColor(this.team);
 
                 ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
                 ctx.fillRect(-30, -95, 60, 18);
@@ -1127,25 +1141,25 @@ class Building extends Entity {
         }
         else if (this.type === 'turret') {
             ctx.fillStyle = '#334155'; ctx.fillRect(-20, -40, 40, 40);
-            ctx.fillStyle = this.team === 'player' ? '#60a5fa' : '#f87171';
+            ctx.fillStyle = resolveTeamColor(this.team, 'light');
             ctx.beginPath(); ctx.arc(0, -45, 20, 0, Math.PI * 2); ctx.fill();
             ctx.strokeStyle = '#cbd5e1'; ctx.lineWidth = 4;
             ctx.beginPath(); ctx.moveTo(0, -45); ctx.lineTo(this.team === 'player' ? 30 : -30, -55); ctx.stroke();
         }
         // ============================================
-        // [NEW] 플레이어 건설 건물 렌더링
+        // [NEW] ?뚮젅?댁뼱 嫄댁꽕 嫄대Ъ ?뚮뜑留?
         // ============================================
         else if (this.type === 'barracks') {
-            // 보병막사 - 군사 막사 스타일
+            // 蹂대퀝留됱궗 - 援곗궗 留됱궗 ?ㅽ???
             const w = this.width;
             const h = this.height;
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = resolveTeamColor(this.team);
 
-            // 메인 건물
+            // 硫붿씤 嫄대Ъ
             ctx.fillStyle = '#4b5563';
             ctx.fillRect(-w / 2, -h, w, h);
 
-            // 지붕
+            // 吏遺?
             ctx.fillStyle = '#374151';
             ctx.beginPath();
             ctx.moveTo(-w / 2 - 5, -h);
@@ -1154,36 +1168,36 @@ class Building extends Entity {
             ctx.closePath();
             ctx.fill();
 
-            // 문
+            // 臾?
             ctx.fillStyle = '#1f2937';
             ctx.fillRect(-15, -40, 30, 40);
 
-            // 창문들
+            // 李쎈Ц??
             ctx.fillStyle = '#9ca3af';
             ctx.fillRect(-w / 2 + 10, -h + 15, 20, 15);
             ctx.fillRect(w / 2 - 30, -h + 15, 20, 15);
 
-            // 팀 색상 마크
+            // ? ?됱긽 留덊겕
             ctx.fillStyle = teamColor;
             ctx.fillRect(-w / 2, -h, 5, h);
             ctx.fillRect(w / 2 - 5, -h, 5, h);
         }
-        // [3.8] watchtower_new 렌더링 제거됨 - 이제 watchtower 타입 사용
+        // [3.8] watchtower_new ?뚮뜑留??쒓굅??- ?댁젣 watchtower ????ъ슜
         else if (this.type === 'tank_depot') {
-            // 전차기지 - 대형 창고/차고 스타일
+            // ?꾩감湲곗? - ???李쎄퀬/李④퀬 ?ㅽ???
             const w = this.width;
             const h = this.height;
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = resolveTeamColor(this.team);
 
-            // 메인 건물 (대형)
+            // 硫붿씤 嫄대Ъ (???
             ctx.fillStyle = '#374151';
             ctx.fillRect(-w / 2, -h, w, h);
 
-            // 창고 문 (큰 셔터)
+            // 李쎄퀬 臾?(???뷀꽣)
             ctx.fillStyle = '#1f2937';
             ctx.fillRect(-w / 2 + 20, -h / 2, w - 40, h / 2);
 
-            // 셔터 라인
+            // ?뷀꽣 ?쇱씤
             ctx.strokeStyle = '#4b5563';
             ctx.lineWidth = 2;
             for (let i = 1; i < 5; i++) {
@@ -1193,25 +1207,25 @@ class Building extends Entity {
                 ctx.stroke();
             }
 
-            // 지붕
+            // 吏遺?
             ctx.fillStyle = '#4b5563';
             ctx.fillRect(-w / 2 - 5, -h - 10, w + 10, 15);
 
-            // 굴뚝
+            // 援대슍
             ctx.fillStyle = '#6b7280';
             ctx.fillRect(w / 2 - 30, -h - 30, 15, 25);
 
-            // 팀 색상 표시
+            // ? ?됱긽 ?쒖떆
             ctx.fillStyle = teamColor;
             ctx.fillRect(-w / 2, -h, w, 5);
 
-            // 탱크 아이콘 (문 위)
+            // ?깊겕 ?꾩씠肄?(臾???
             ctx.fillStyle = teamColor;
             ctx.fillRect(-20, -h + 20, 40, 8);
             ctx.fillRect(-10, -h + 15, 30, 5);
         }
         ctx.restore();
-        // [FIX] bunker 타입은 draw 내부에서 점령/체력 바를 직접 그리므로 drawHp 호출 안함
+        // [FIX] bunker ??낆? draw ?대??먯꽌 ?먮졊/泥대젰 諛붾? 吏곸젒 洹몃━誘濡?drawHp ?몄텧 ?덊븿
         if (this.type !== 'bunker') {
             this.drawHp(ctx);
         }

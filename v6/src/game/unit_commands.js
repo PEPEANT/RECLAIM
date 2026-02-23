@@ -23,6 +23,7 @@
         'fighter', 'bomber', 'recon'
     ]);
     const DIRECT_CONTROL_BLOCKED_IDS = new Set(['icbm', 'icbm_enemy', 'cameraman', 'worker']);
+    const DIRECT_CONTROL_TRANSPORT_IDS = new Set(['blackhawk', 'uh60', 'chinook']);
 
     function ensureDirectControlState() {
         if (!game.directControl || typeof game.directControl !== 'object') {
@@ -68,6 +69,7 @@
         if (unit.team !== 'player') return false;
         const id = String(unit.stats.id || '');
         if (DIRECT_CONTROL_BLOCKED_IDS.has(id)) return false;
+        if (DIRECT_CONTROL_TRANSPORT_IDS.has(id)) return false;
         if (unit.isCameraman || unit.stats.isCameraman || unit.stats.civilian) return false;
 
         if (DIRECT_CONTROL_ELIGIBLE_IDS.has(id)) return true;

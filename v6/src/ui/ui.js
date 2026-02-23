@@ -222,11 +222,6 @@ const ui = {
             qBadge.innerText = '0';
             btn.appendChild(qBadge);
 
-            const colorBar = document.createElement('div');
-            colorBar.className = 'absolute bottom-0 w-full h-1 z-10';
-            colorBar.style.backgroundColor = u.color;
-            btn.appendChild(colorBar);
-
             // 캐시에 저장 (매 프레임 검색 방지)
             this.elementCache[key] = { btn, nameSpan, countSpan, cdDiv, qBadge };
             this.lastValues[key] = { stock: -1, cdRatio: -1, queue: -1, active: null };

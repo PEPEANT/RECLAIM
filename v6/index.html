@@ -340,23 +340,14 @@
         </div>
 
         <div id="hud-top-actions" class="hidden" aria-label="Top Actions">
-            <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_move" aria-label="All Move">
-                <i class="fa-solid fa-forward"></i>
-            </button>
             <button id="hud-all-retreat-btn" class="hud-top-btn hidden" data-hud-top-action="all_retreat" aria-label="All Retreat">
-                <i class="fa-solid fa-rotate-left"></i>
+                <i class="fa-solid fa-arrow-left"></i>
             </button>
             <button id="hud-all-defense-btn" class="hud-top-btn hidden" data-hud-top-action="all_defense" aria-label="All Defense">
                 <i class="fa-solid fa-shield-halved"></i>
             </button>
-            <button id="hud-option-btn" class="hud-top-btn hidden" data-hud-top-action="options" aria-label="Options">
-                <i class="fa-solid fa-gear"></i>
-            </button>
-            <button id="hud-camera-btn" class="hud-top-btn hidden" data-hud-top-action="camera" aria-label="Camera Lock">
-                <i class="fa-solid fa-video"></i>
-            </button>
-            <button id="hud-cancel-btn" class="hud-top-btn hidden" data-hud-top-action="cancel" aria-label="Cancel Selection">
-                <i class="fa-solid fa-xmark"></i>
+            <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_move" aria-label="All Move">
+                <i class="fa-solid fa-arrow-right"></i>
             </button>
         </div>
 
@@ -548,33 +539,81 @@
             </div>
         </div>
         <!-- Battle-only flow: non-combat UI removed -->
+        <div id="team-color-screen"
+            class="hidden absolute inset-0 z-[55] bg-slate-950/95 flex flex-col items-center justify-center pointer-events-auto p-4">
+            <div class="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-5 md:p-6">
+                <h2 class="text-xl md:text-2xl font-bold text-white tracking-wide">진영 선택</h2>
+                <p class="mt-2 text-sm text-slate-400">
+                    내 진영을 선택하면 적 진영은 자동으로 반대로 설정됩니다.
+                </p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+                    <button id="faction-btn-usa"
+                        class="text-left bg-slate-800/70 border border-slate-700 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                        <div class="w-full h-28 rounded-md overflow-hidden border border-slate-600 mb-3 bg-slate-900">
+                            <img src="png/gonfalon/Us.png" alt="US flag" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-base font-bold text-white">US 미군</span>
+                            <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#3b82f6"></span>
+                        </div>
+                        <p class="mt-2 text-xs text-slate-400">아군: US(파랑) / 적군: RS(초록)</p>
+                    </button>
+                    <button id="faction-btn-russia"
+                        class="text-left bg-slate-800/70 border border-slate-700 rounded-lg p-4 hover:border-lime-400 transition-colors">
+                        <div class="w-full h-28 rounded-md overflow-hidden border border-slate-600 mb-3 bg-slate-900">
+                            <img src="png/gonfalon/Rs.png" alt="Russia flag" class="w-full h-full object-cover">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-base font-bold text-white">RS 러시아</span>
+                            <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#6b8e23"></span>
+                        </div>
+                        <p class="mt-2 text-xs text-slate-400">아군: RS(초록) / 적군: US(파랑)</p>
+                    </button>
+                </div>
+
+                <div class="mt-5 bg-slate-800/70 border border-slate-700 rounded-lg p-3">
+                    <div id="faction-selected-label" class="text-sm font-bold text-slate-100"></div>
+                    <div class="mt-2 flex items-center gap-3 text-xs text-slate-300">
+                        <span class="inline-flex items-center gap-2">
+                            아군
+                            <span id="faction-player-preview" class="inline-block w-4 h-4 rounded border border-slate-500"></span>
+                        </span>
+                        <span class="inline-flex items-center gap-2">
+                            적군
+                            <span id="faction-enemy-preview" class="inline-block w-4 h-4 rounded border border-slate-500"></span>
+                        </span>
+                    </div>
+                </div>
+
+                <div class="flex justify-end gap-2 mt-5">
+                    <button id="faction-confirm-btn"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-400 text-sm font-bold">
+                        진영 확정
+                    </button>
+                </div>
+            </div>
+        </div>
         <!-- Map select screen -->
         <div id="map-select-screen"
             class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
 
-            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest border-b-2 border-blue-500 pb-2"
-                data-lang="map_select">SELECT BATTLE</h2>
+            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest">작전 지역 선택</h2>
 
             <div class="grid grid-cols-1 gap-3 md:gap-6 w-full max-w-md px-2 md:px-4">
-                <button onclick="game.startGame('skirmish')" class="map-card group" data-map="skirmish">
-                    <div class="h-32 bg-sky-300 relative overflow-hidden rounded-t-lg">
-                        <div class="absolute bottom-0 w-full h-1/3 bg-green-500"></div>
-                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/60 group-hover:text-white">
-                            SKIRMISH
+                <button onclick="game.startGame('skirmish_kabul')" class="map-card group" data-map="skirmish_kabul">
+                    <div class="h-32 relative overflow-hidden rounded-t-lg">
+                        <img src="png/map/kavul.png" alt="Kabul map preview" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-900/20 to-transparent"></div>
+                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/80 group-hover:text-white drop-shadow">
+                            카불
                         </div>
                     </div>
                     <div
                         class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
-                        <h3 class="font-bold text-white mb-1">SKIRMISH</h3>
-                        <p class="text-xs text-gray-400 leading-snug">
-                            바로 전투에 돌입합니다.
-                        </p>
+                        <h3 class="font-bold text-white">카불</h3>
                     </div>
                 </button>
-            </div>
-
-            <div class="mt-8 text-gray-500 text-xs text-center flex flex-col items-center gap-4">
-                <div>SYSTEM STATUS: ONLINE</div>
             </div>
         </div>
     </div>
@@ -862,23 +901,27 @@
     </div>
 
     <script src="src/data/data.js?v=20260223d3"></script>
+    <script src="src/core/team_colors.js?v=20260224tc3"></script>
     <script src="src/render/unit-params.js?v=20260223up2"></script>
     <!-- [ADD] IngameRenderer for unit wreckage rendering -->
     <script src="unit-editor/js/ingame-renderer.js"></script>
     <script src="src/entities/unit-render-utils.js?v=20260223ur4"></script>
-    <script src="src/entities/classes.js?v=20260223air24"></script>
+    <script src="src/entities/classes.js?v=20260224air26"></script>
     <script src="src/combat/projectile-designs.js?v=20260223pd2"></script>
     <!-- VFX (explosions / particles) -->
     <script src="src/vfx/explosion.js?v=20260223ex1"></script>
-    <script src="src/entities/buildings.js?v=20260223b2"></script>
+    <script src="src/entities/buildings.js?v=20260224b4"></script>
     <script src="src/combat/projectiles.js?v=20260223p3"></script>
     <script src="src/ui/chat/chat_panel.js?v=20260223cp4"></script>
-    <script src="src/ui/unit_profile_icons.js?v=20260223upi1"></script>
+    <script src="src/ui/unit_profile_icons.js?v=20260224upi2"></script>
     <script src="src/ui/ui.js?v=20260223u14"></script>
     <script src="src/maps/core/registry.js"></script>
     <script src="src/maps/core/adapter.js"></script>
     <script src="src/maps/maps/skirmish/definition.js"></script>
-    <script src="src/maps/maps.js?v=20260223m8"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_kabul/definition.js?v=20260224mk2"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_kabul/render_base.js?v=20260224mk2"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_kabul/render_decor.js?v=20260224mk2"></script>
+    <script src="src/maps/maps.js?v=20260224m9"></script>
     <script src="src/ai/ai_core.js"></script>
     <script src="src/ai/ai_config.js"></script>
     <script src="src/ai/spawn/spawn_caps.js"></script>
@@ -897,7 +940,7 @@
     <script src="src/game/corpse.js"></script>
     <script src="src/render/unit-v2/registry.js"></script>
     <script src="src/render/unit-v2/common/scale.js"></script>
-    <script src="src/render/unit-v2/common/palettes.js"></script>
+    <script src="src/render/unit-v2/common/palettes.js?v=20260224p2"></script>
     <script src="src/render/unit-v2/common/math.js"></script>
     <script src="src/render/unit-v2/units/humvee/state.js"></script>
     <script src="src/render/unit-v2/units/humvee/weapons.js"></script>
@@ -972,6 +1015,19 @@
     <script src="src/render/unit-v2/units/fighter/render_parts.js"></script>
     <script src="src/render/unit-v2/units/fighter/fx.js"></script>
     <script src="src/render/unit-v2/units/fighter/index.js"></script>
+    <!-- Bomber V2 Renderer -->
+    <script src="src/render/unit-v2/units/bomber/state.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/render_body.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/render_parts.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/fx.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/index.js?v=20260224bm1"></script>
+    <!-- Chinook V2 Renderer -->
+    <script src="src/render/unit-v2/units/chinook/state.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/weapons.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/render_body.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/render_parts.js?v=20260224ch2"></script>
+    <script src="src/render/unit-v2/units/chinook/fx.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/index.js?v=20260224ch1"></script>
     <!-- Blackhawk V2 Renderer -->
     <script src="src/render/unit-v2/units/blackhawk/state.js?v=20260221uh60a5"></script>
     <script src="src/render/unit-v2/units/blackhawk/weapons.js?v=20260221uh60a5"></script>
@@ -981,12 +1037,12 @@
     <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260221uh60a5"></script>
     <script src="src/render/unit-v2/index.js"></script>
     <script src="src/game/battle_economy.js"></script>
-    <script src="src/game/game.js?v=20260223g33"></script>
+    <script src="src/game/game.js?v=20260224g36"></script>
     <script src="src/units/drone/drone-manager.js?v=20260223dm1"></script>
     <script src="src/units/drone/drone-commands.js?v=20260223dc1"></script>
     <script src="src/units/drone/drone-control.js"></script>
     <script src="src/game/runtime_loop.js?v=20260223r6"></script>
-    <script src="src/game/app_persistence.js?v=20260222ap7"></script>
+    <script src="src/game/app_persistence.js?v=20260224ap8"></script>
     <script src="src/game/app_runtime.js"></script>
     <script src="src/game/input.js?v=20260223dc15"></script>
     <script src="src/game/camera_controls.js"></script>
@@ -995,7 +1051,7 @@
     <script src="src/game/news.js"></script>
     <!-- Patch Modules (load order fixed) -->
     <!-- /Patch Modules -->
-    <script src="src/ui/hud.js?v=20260223h18"></script>
+    <script src="src/ui/hud.js?v=20260224h20"></script>
     <script src="src/game/unit_commands.js?v=20260223uc12"></script>
     <script src="src/render/news/news_intro.js"></script>
     <script src="src/render/news/news_overlay.js"></script>
@@ -1007,7 +1063,7 @@
         (() => {
             // Temporary hot mode: launch battle immediately on app boot.
             // Set to false to restore cinematic -> map-select flow.
-            const DIRECT_BOOT_TO_BATTLE = true;
+            const DIRECT_BOOT_TO_BATTLE = false;
             let bootStarted = false;
             let cinematicLoaderStarted = false;
             let gatePrepared = false;
@@ -1035,7 +1091,7 @@
                     if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') return false;
                     if (!game.canvas || !game.ctx) return false;
                     try {
-                        game.startGame('skirmish');
+                        game.startGame('skirmish_kabul');
                         return true;
                     } catch (err) {
                         console.error('[Boot] direct battle start failed:', err);
@@ -1094,10 +1150,105 @@
                 loadNext(0);
             };
 
-            const runBoot = () => {
+            const ensureFactionSelection = (() => {
+                let done = false;
+                let pending = null;
+
+                return () => {
+                    if (done) return Promise.resolve(true);
+                    if (pending) return pending;
+
+                    const api = window.TeamColors;
+                    if (!api || typeof api.ensure !== 'function') {
+                        done = true;
+                        return Promise.resolve(true);
+                    }
+
+                    api.ensure();
+                    if (typeof api.hasSelection === 'function' && api.hasSelection()) {
+                        done = true;
+                        return Promise.resolve(true);
+                    }
+
+                    pending = new Promise((resolve) => {
+                        const screen = document.getElementById('team-color-screen');
+                        const usaBtn = document.getElementById('faction-btn-usa');
+                        const russiaBtn = document.getElementById('faction-btn-russia');
+                        const confirmBtn = document.getElementById('faction-confirm-btn');
+                        const labelEl = document.getElementById('faction-selected-label');
+                        const playerPreview = document.getElementById('faction-player-preview');
+                        const enemyPreview = document.getElementById('faction-enemy-preview');
+
+                        if (!screen || !confirmBtn || !usaBtn || !russiaBtn) {
+                            if (typeof api.setFaction === 'function') {
+                                api.setFaction('usa', true);
+                            }
+                            done = true;
+                            pending = null;
+                            resolve(true);
+                            return;
+                        }
+
+                        const factions = (typeof api.getFactions === 'function') ? api.getFactions() : [];
+                        const fMap = {};
+                        factions.forEach((f) => {
+                            if (f && f.id) fMap[f.id] = f;
+                        });
+                        const baseState = (typeof api.getState === 'function') ? api.getState() : null;
+                        let selectedFaction = (baseState && baseState.faction && fMap[baseState.faction]) ? baseState.faction : 'usa';
+
+                        const render = () => {
+                            const f = fMap[selectedFaction] || fMap.usa || { player: '#3b82f6', enemy: '#6b8e23', name: '미군' };
+                            if (typeof api.setFaction === 'function') api.setFaction(selectedFaction, false);
+
+                            if (labelEl) {
+                                const enemyName = selectedFaction === 'usa' ? 'RS 러시아' : 'US 미군';
+                                labelEl.textContent = `선택: ${f.name} (적군: ${enemyName})`;
+                            }
+                            if (playerPreview) playerPreview.style.background = f.player;
+                            if (enemyPreview) enemyPreview.style.background = f.enemy;
+
+                            usaBtn.style.borderColor = (selectedFaction === 'usa') ? '#60a5fa' : '#334155';
+                            russiaBtn.style.borderColor = (selectedFaction === 'russia') ? '#a3e635' : '#334155';
+                        };
+
+                        usaBtn.onclick = () => {
+                            selectedFaction = 'usa';
+                            render();
+                        };
+                        russiaBtn.onclick = () => {
+                            selectedFaction = 'russia';
+                            render();
+                        };
+
+                        confirmBtn.onclick = () => {
+                            if (typeof api.setFaction === 'function') {
+                                api.setFaction(selectedFaction, true);
+                            }
+                            screen.classList.add('hidden');
+                            done = true;
+                            pending = null;
+                            resolve(true);
+                        };
+
+                        render();
+                        screen.classList.remove('hidden');
+                    });
+
+                    return pending;
+                };
+            })();
+
+            const runBoot = async () => {
                 if (bootStarted) return;
                 bootStarted = true;
                 console.log('[Boot] cinematic bootstrap start');
+
+                try {
+                    await ensureFactionSelection();
+                } catch (err) {
+                    console.warn('[Boot] faction selection failed:', err);
+                }
 
                 const loadingScreen = document.getElementById('loading-screen');
                 if (loadingScreen) loadingScreen.classList.add('hidden');

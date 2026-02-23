@@ -1,7 +1,7 @@
 ﻿(function (global) {
     'use strict';
 
-    const DEFAULT_MAP_ID = 'skirmish';
+    const DEFAULT_MAP_ID = 'skirmish_kabul';
     const VALID_DIFFICULTY = new Set(['recruit', 'veteran', 'elite']);
 
     function toInt(value, fallback = 0) {

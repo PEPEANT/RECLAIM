@@ -1,5 +1,15 @@
 ﻿// [FILE] classes.js: Entity/Unit/Building ?? ?? ?? ??? ?? ??.
 // [RULE] 인게임 안내/상태/채팅 메시지는 UI 토스트 금지. ChatPanel.push()로만 출력.
+function getTeamColor(team, variant = 'primary') {
+    if (typeof TeamColors !== 'undefined' && TeamColors && typeof TeamColors.get === 'function') {
+        return TeamColors.get(team, variant);
+    }
+    if (team === 'player') return (variant === 'dark' || variant === 'hp') ? '#2563eb' : '#3b82f6';
+    if (team === 'enemy') return (variant === 'dark' || variant === 'hp') ? '#4d6b16' : '#6b8e23';
+    if (team === 'neutral') return '#94a3b8';
+    return '#eab308';
+}
+
 class Entity {
     constructor(x, y, team, hp, width, height) {
         this.x = x; this.y = y; this.team = team;
@@ -17,7 +27,7 @@ class Entity {
         const y = this.y - this.height - 8 - extra + (this.hpBarOffsetY || 0);
         ctx.fillStyle = '#1e293b'; ctx.fillRect(this.x - w / 2, y, w, h);
         const pct = Math.max(0, this.hp / this.maxHp);
-        ctx.fillStyle = this.team === 'player' ? '#2563eb' : (this.team === 'enemy' ? '#dc2626' : (this.team === 'neutral' ? '#94a3b8' : '#eab308'));
+        ctx.fillStyle = getTeamColor(this.team, 'hp');
         ctx.fillRect(this.x - w / 2, y, w * pct, h);
 
         if (alwaysShow) {
@@ -108,6 +118,8 @@ class Unit extends Entity {
         }
         this.disableFeetSnap = false;
         this.skipDeathSound = false;
+        this.crashState = null;
+        this._forceDirectDeath = false;
         this.recoil = 0;
         this.missileFlash = 0;
         // Combat hold: armored/air can fire from fixed position for a period.
@@ -283,11 +295,11 @@ class Unit extends Entity {
 
         // Range profile targets: keep combat readable on large maps without unit-level hardcoding.
         const targetMinById = {
-            infantry: 280,
-            engineer: 320,
-            drone_operator: 320,
-            special_ops: 420,
-            sniper: 1400,
+            infantry: 340,
+            engineer: 390,
+            drone_operator: 360,
+            special_ops: 520,
+            sniper: 1500,
             humvee: 650,
             apc: 520,
             mbt: 1100,
@@ -303,7 +315,7 @@ class Unit extends Entity {
         if (id === 'spg') tunedBase = Math.round(base * 1.20);
 
         let globalMult = 1.24;
-        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.30);
+        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.38);
         if (s.type === 'mech' || s.category === 'armored') globalMult = Math.max(globalMult, 1.26);
         if (s.type === 'air' || s.category === 'air') globalMult = Math.max(globalMult, 1.28);
         if (id === 'bomber') globalMult = 1.28;
@@ -313,6 +325,19 @@ class Unit extends Entity {
         const targetMin = Number(targetMinById[id]);
         if (Number.isFinite(targetMin) && targetMin > 0) {
             scaled = Math.max(scaled, targetMin);
+        }
+
+        // Infantry stance bonus: holding position while firing grants extra effective range.
+        if (s.category === 'infantry' && this.commandMode !== 'move' && this.commandMode !== 'retreat') {
+            const infState = this._renderV2State && this._renderV2State.infantry;
+            if (infState) {
+                const stance = String(infState.stance || '').trim().toLowerCase();
+                const stationaryFrames = Number(infState.stationaryFrames) || 0;
+                if (stationaryFrames >= 24) {
+                    if (stance === 'prone') scaled = Math.round(scaled * 1.30);
+                    else if (stance === 'crouching') scaled = Math.round(scaled * 1.18);
+                }
+            }
         }
 
         return Math.max(0, scaled + bonus);
@@ -673,6 +698,17 @@ class Unit extends Entity {
         }
 
         if (this.hp <= 0) {
+            const deathUnitId = String(this.stats?.id || '').trim().toLowerCase();
+            const deathCategory = String(this.stats?.category || '').trim().toLowerCase();
+            const deathType = String(this.stats?.type || '').trim().toLowerCase();
+            const isDroneDeath = deathUnitId.includes('drone');
+            const isAirDeath = (deathType === 'air' && !isDroneDeath);
+            const isAirCrashCandidate = (deathType === 'air' && (deathUnitId === 'fighter' || isDroneDeath));
+            const forceDirectDeath = (this._forceDirectDeath === true);
+            if (!forceDirectDeath && isAirCrashCandidate) {
+                if (this._beginCrashDescent(cleanHitVx, cleanHitVy)) return;
+            }
+
             if (this.stats && this.stats.civilian) {
                 const isNukeHit = cleanAttackType === 'nuke';
                 if (!isNukeHit && typeof AudioSystem !== 'undefined' && AudioSystem.playPanicScream) {
@@ -786,15 +822,11 @@ class Unit extends Entity {
             }
 
             // [P1] 유닛 종류별 사망 VFX
-            const deathUnitId = String(this.stats?.id || '').trim().toLowerCase();
-            const deathCategory = String(this.stats?.category || '').trim().toLowerCase();
-            const deathType = String(this.stats?.type || '').trim().toLowerCase();
-            const isDroneDeath = deathUnitId.includes('drone');
             const isArmoredDeath = (
                 deathCategory === 'armored'
                 || ['mbt', 'apc', 'aa_tank', 'humvee', 'spg', 'tank', 'ifv', 'sam', 'mlrs'].includes(deathUnitId)
             );
-            const isAirDeath = (deathType === 'air' && !isDroneDeath);
+            const isCrashImpact = cleanAttackType === 'crash_impact';
 
             if (typeof VFX !== 'undefined') {
                 // 험비/기갑: 사망 시 지상 폭발 + 잔해
@@ -813,20 +845,32 @@ class Unit extends Entity {
                         game.createParticles(this.x, this.y - 10, 8, '#333');
                     }
                 }
-                // 항공기: 사망 시 공중 폭발
+                // 항공기: 기본 공중 폭발, 추락사는 지상 폭발
                 else if (isAirDeath) {
-                    VFX.spawn(game, 'aircraft', this.x, this.y, { anchorGround: false });
+                    const impactY = (isCrashImpact && typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
+                        ? Number(game.groundY)
+                        : this.y;
+                    VFX.spawn(game, 'aircraft', this.x, impactY, { anchorGround: !!isCrashImpact });
+                }
+                // 드론: 추락사는 소형 지상 폭발, 일반 피격사는 공중 소형 폭발
+                else if (isDroneDeath) {
+                    const impactY = (isCrashImpact && typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
+                        ? Number(game.groundY)
+                        : this.y;
+                    VFX.spawn(game, isCrashImpact ? 'hit' : 'hit_air', this.x, impactY, { anchorGround: !!isCrashImpact });
                 }
             }
 
             if (typeof AudioSystem !== 'undefined' && !this.skipDeathSound) {
                 if (isAirDeath) {
-                    AudioSystem.playBoom('death_exp', this.x);
+                    AudioSystem.playBoom(isCrashImpact ? 'death_exp2' : 'death_exp', this.x);
                 } else if (isArmoredDeath) {
                     const armoredDeathSfx = (deathUnitId === 'humvee' || deathUnitId === 'apc')
                         ? 'death_exp2'
                         : 'death_exp3';
                     AudioSystem.playBoom(armoredDeathSfx, this.x);
+                } else if (isDroneDeath) {
+                    AudioSystem.playBoom(isCrashImpact ? 'drone' : 'other', this.x);
                 }
             }
             this.skipDeathSound = false;
@@ -855,6 +899,100 @@ class Unit extends Entity {
         }
     }
 
+    _canUseCrashDescent() {
+        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
+        if (!this.stats || this.stats.type !== 'air') return false;
+        if (id === 'fighter') return true;
+        return id.includes('drone');
+    }
+
+    _beginCrashDescent(hitVx = null, hitVy = null) {
+        if (this.dead || this.crashState || this._forceDirectDeath) return false;
+        if (!this._canUseCrashDescent()) return false;
+
+        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
+        const kind = (id === 'fighter') ? 'fighter' : 'drone';
+        const speed = Math.max(0.6, Number(this.stats?.speed) || 0.6);
+        const facing = Number.isFinite(Number(this.facing)) ? Number(this.facing) : ((this.team === 'player') ? 1 : -1);
+        const dir = (facing >= 0) ? 1 : -1;
+        const inertiaVx = Number.isFinite(Number(hitVx)) ? Number(hitVx) * 0.07 : 0;
+        const inertiaVy = Number.isFinite(Number(hitVy)) ? Math.abs(Number(hitVy)) * 0.05 : 0;
+        const baseVx = dir * Math.max(0.95, speed * (kind === 'fighter' ? 0.46 : 0.4));
+
+        this.crashState = {
+            kind,
+            vx: baseVx + inertiaVx,
+            vy: Math.max(0.8, inertiaVy + (kind === 'fighter' ? 0.9 : 0.75)),
+            gravity: (kind === 'fighter') ? 0.2 : 0.26,
+            spin: (Math.random() * 0.06 + 0.03) * dir,
+            sparkTick: 0
+        };
+
+        this.hp = Math.max(1, Number(this.hp) || 1);
+        this.commandMode = 'stop';
+        this.targetX = null;
+        this.commandTargetX = null;
+        this.returnToBase = false;
+        this.attackTarget = null;
+        this.lockedTarget = null;
+        this.dropState = null;
+        this.dropTargetX = null;
+        this.dropTimer = 0;
+        this.holdFrames = 0;
+        this.postLaunchHoverFrames = 0;
+        this.recallRequested = false;
+        this.recallPhase = null;
+
+        if (typeof game !== 'undefined' && game && typeof game.createParticles === 'function') {
+            const burst = (kind === 'fighter') ? 4 : 2;
+            game.createParticles(this.x, this.y, burst, '#6b7280');
+        }
+        return true;
+    }
+
+    _triggerCrashImpactDeath() {
+        if (this.dead) return;
+        this.crashState = null;
+        const lethal = Math.max((Number(this.hp) || 0) + 5, (Number(this.maxHp) || 1) + 9999);
+        this._forceDirectDeath = true;
+        try {
+            this.takeDamage(lethal, 'crash_impact', this.x, this.y, 0, 0, null);
+        } finally {
+            this._forceDirectDeath = false;
+            this.crashState = null;
+        }
+    }
+
+    _updateCrashDescent() {
+        if (!this.crashState || this.dead) return false;
+        const state = this.crashState;
+        const gy = (typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
+            ? Number(game.groundY)
+            : (Number(this.y) || 0) + 32;
+
+        this.x += Number(state.vx) || 0;
+        this.y += Number(state.vy) || 0;
+        state.vy = (Number(state.vy) || 0) + (Number(state.gravity) || 0.2);
+        state.vx *= 0.992;
+        this.rotorAngle += Number(state.spin) || 0;
+
+        const mapWidth = Number((typeof CONFIG !== 'undefined' && CONFIG) ? CONFIG.mapWidth : NaN);
+        if (Number.isFinite(mapWidth) && mapWidth > 20) {
+            this.x = Math.max(10, Math.min(mapWidth - 10, this.x));
+        }
+
+        state.sparkTick = (Number(state.sparkTick) || 0) + 1;
+        if (typeof game !== 'undefined' && game && typeof game.createParticles === 'function' && state.sparkTick % 7 === 0) {
+            game.createParticles(this.x, this.y, state.kind === 'fighter' ? 2 : 1, '#4b5563');
+        }
+
+        if (this.y >= gy - 4) {
+            this.y = gy - 4;
+            this._triggerCrashImpactDeath();
+        }
+        return true;
+    }
+
     isAirTransport() {
         const id = this.stats && this.stats.id;
         return id === 'blackhawk' || id === 'chinook';
@@ -869,14 +1007,32 @@ class Unit extends Entity {
         return (this.transportDropsLeft || 0) > 0;
     }
 
+    getPreferredAirCruiseY() {
+        const fallback = Number.isFinite(Number(this.cruiseY)) ? Number(this.cruiseY) : Number(this.y);
+        if (!this.isAirTransport()) return Number.isFinite(fallback) ? fallback : Number(this.y);
+        const gy = (typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
+            ? Number(game.groundY)
+            : NaN;
+        if (!Number.isFinite(gy)) return Number.isFinite(fallback) ? fallback : Number(this.y);
+        const id = String(this.stats && this.stats.id || '').trim().toLowerCase();
+        if (id === 'blackhawk' || id === 'chinook' || id === 'uh60') return gy - 450;
+        return gy - 430;
+    }
+
     requestAirDrop(targetX) {
         if (!this.isAirTransport()) return false;
         if (!this.canTransportDrop()) return false;
         if (!Number.isFinite(targetX)) return false;
         if (this.dropState) return false;
 
-        this.cruiseY = Number.isFinite(this.y) ? this.y : (this.cruiseY || this.y);
-        this.dropTargetX = targetX;
+        const mapWidth = Number((typeof CONFIG !== 'undefined' && CONFIG) ? CONFIG.mapWidth : NaN);
+        let clampedTargetX = Number(targetX);
+        if (Number.isFinite(mapWidth) && mapWidth > 80) {
+            clampedTargetX = Math.max(24, Math.min(mapWidth - 24, clampedTargetX));
+        }
+
+        this.cruiseY = this.getPreferredAirCruiseY();
+        this.dropTargetX = clampedTargetX;
         this.dropState = 'approach';
         this.dropTimer = 0;
         this._dropSpawned = false;
@@ -912,7 +1068,43 @@ class Unit extends Entity {
 
     _spawnTransportUnits() {
         if (typeof game === 'undefined' || typeof game.spawnUnitDirect !== 'function') return 0;
-        const baseY = (typeof game !== 'undefined' && Number.isFinite(game.groundY)) ? game.groundY : this.y;
+        let baseY = Number(this.y);
+        if (typeof game.getGroundLaneBaseY === 'function') {
+            const laneBase = Number(game.getGroundLaneBaseY());
+            if (Number.isFinite(laneBase)) baseY = laneBase;
+        } else if (Number.isFinite(Number(game.groundY))) {
+            baseY = Number(game.groundY);
+            if (typeof game.clampGroundLaneY === 'function') {
+                baseY = Number(game.clampGroundLaneY(baseY));
+            }
+        }
+        if (!Number.isFinite(baseY)) baseY = Number(this.y);
+
+        const normalizeSpawnedUnit = (u) => {
+            if (!u) return;
+            if (typeof game.getGroundLaneY === 'function') {
+                const laneY = Number(game.getGroundLaneY(u));
+                if (Number.isFinite(laneY)) {
+                    u.y = laneY;
+                    u.targetY = laneY;
+                    if (typeof u.applyGroundLanePostUpdate === 'function') {
+                        u.applyGroundLanePostUpdate({ immediate: true, noSeparation: true });
+                    }
+                    return;
+                }
+            }
+            if (typeof game.clampGroundLaneY === 'function') {
+                const laneY = Number(game.clampGroundLaneY(baseY));
+                if (Number.isFinite(laneY)) {
+                    u.y = laneY;
+                    u.targetY = laneY;
+                    if (typeof u.applyGroundLanePostUpdate === 'function') {
+                        u.applyGroundLanePostUpdate({ immediate: true, noSeparation: true });
+                    }
+                }
+            }
+        };
+
         let spawned = 0;
         const manifest = Array.isArray(this.transportDropManifest) ? this.transportDropManifest : null;
         if (manifest && manifest.length > 0) {
@@ -924,7 +1116,10 @@ class Unit extends Entity {
                 for (let i = 0; i < count; i++) {
                     const ox = Math.random() * 40 - 20;
                     const u = game.spawnUnitDirect(type, this.x + ox, baseY, this.team);
-                    if (u) spawned++;
+                    if (u) {
+                        normalizeSpawnedUnit(u);
+                        spawned++;
+                    }
                 }
             }
             return spawned;
@@ -936,7 +1131,10 @@ class Unit extends Entity {
         for (let i = 0; i < count; i++) {
             const ox = Math.random() * 40 - 20;
             const u = game.spawnUnitDirect(type, this.x + ox, baseY, this.team);
-            if (u) spawned++;
+            if (u) {
+                normalizeSpawnedUnit(u);
+                spawned++;
+            }
         }
         return spawned;
     }
@@ -963,8 +1161,12 @@ class Unit extends Entity {
         }
 
         const speed = this.stats.speed || 2.5;
-        const cruiseY = Number.isFinite(this.cruiseY) ? this.cruiseY : this.y;
-        const landY = (typeof game !== 'undefined' && Number.isFinite(game.groundY)) ? (game.groundY - 80) : this.y;
+        const cruiseY = this.getPreferredAirCruiseY();
+        this.cruiseY = cruiseY;
+        const gy = (typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
+            ? Number(game.groundY)
+            : Number(this.y);
+        const landY = gy - 80;
 
         if (this.dropState === 'approach') {
             const dx = this.dropTargetX - this.x;
@@ -975,12 +1177,13 @@ class Unit extends Entity {
                 this.x += Math.sign(dx) * speed;
             }
             this.facing = dx >= 0 ? 1 : -1;
-            this.y = cruiseY;
+            const dy = cruiseY - this.y;
+            this.y += Math.max(-2.2, Math.min(2.2, dy));
             return true;
         }
 
         if (this.dropState === 'landing') {
-            this.y += 2.2;
+            this.y += 2.6;
             if (this.y >= landY) {
                 this.y = landY;
                 this.dropState = 'dropping';
@@ -994,6 +1197,7 @@ class Unit extends Entity {
             this.dropTimer += 1;
             const dropDelay = 18;
             const dropHold = 36;
+            this.y = landY;
             if (!this._dropSpawned && this.dropTimer >= dropDelay) {
                 const dropped = this._spawnTransportUnits();
                 if (dropped > 0) {
@@ -1012,9 +1216,10 @@ class Unit extends Entity {
         }
 
         if (this.dropState === 'takeoff') {
-            this.y -= 2.2;
+            this.y -= 2.6;
             if (this.y <= cruiseY) {
                 this.y = cruiseY;
+                this.targetY = null;
                 this.dropState = null;
                 this.dropTargetX = null;
                 this._dropSpawned = false;
@@ -1472,6 +1677,10 @@ class Unit extends Entity {
             if (this.isBagpiperUnit()) this._stopBagpipeLoopAudio();
             return;
         }
+        if (this.crashState) {
+            this._updateCrashDescent();
+            return;
+        }
         if (this.recoil && this.recoil > 0) {
             this.recoil = Math.max(0, this.recoil - 0.6);
         }
@@ -1704,15 +1913,45 @@ class Unit extends Entity {
             const dir = this.team === 'player' ? 1 : -1;
             this.x += this.stats.speed * dir;
             this.updateFacing();
-            if (game.frame - this.lastBomb > 40 && this.x > 0 && this.x < CONFIG.mapWidth) {
+
+            const frameNow = Number(game.frame) || 0;
+            const inMap = (this.x > 0 && this.x < CONFIG.mapWidth);
+
+            const runCooldown = Math.max(120, Math.floor(Number(this.stats.bombStrikeCooldown) || 360));
+            const burstCount = Math.max(3, Math.floor(Number(this.stats.carpetBurstCount) || 7));
+            const burstInterval = Math.max(2, Math.floor(Number(this.stats.carpetBurstInterval) || 5));
+            const triggerRange = Math.max(40, Number(this.stats.carpetTriggerRange) || 120);
+            const spreadX = Math.max(0, Number(this.stats.carpetSpreadX) || 24);
+
+            if (!Number.isFinite(this._lastCarpetRunFrame)) this._lastCarpetRunFrame = -999999;
+            if (!Number.isFinite(this._carpetBombsLeft)) this._carpetBombsLeft = 0;
+            if (!Number.isFinite(this._nextCarpetDropFrame)) this._nextCarpetDropFrame = frameNow;
+
+            if (this._carpetBombsLeft <= 0 && inMap && (frameNow - this._lastCarpetRunFrame) >= runCooldown) {
                 const targets = (this.team === 'enemy' && typeof game !== 'undefined' && Array.isArray(game.civilians))
                     ? [...enemies, ...game.civilians, ...buildings]
                     : [...enemies, ...buildings];
-                const hasTarget = targets.some(t => t && !t.dead && t.team !== 'neutral' && !(t.stats && t.stats.invulnerable) && Math.abs(t.x - this.x) < 50);
+                const hasTarget = targets.some(t =>
+                    t && !t.dead
+                    && t.team !== 'neutral'
+                    && !(t.stats && t.stats.invulnerable)
+                    && Math.abs(t.x - this.x) < triggerRange
+                );
                 if (hasTarget) {
-                    game.projectiles.push(new Projectile(this.x, this.y, null, this.stats.damage, this.team, 'bomb', { source: this }));
-                    this.lastBomb = game.frame;
+                    this._carpetBombsLeft = burstCount;
+                    this._nextCarpetDropFrame = frameNow;
+                    this._lastCarpetRunFrame = frameNow;
                 }
+            }
+
+            if (this._carpetBombsLeft > 0 && inMap && frameNow >= this._nextCarpetDropFrame) {
+                const scatter = (Math.random() * 2 - 1) * spreadX;
+                const offsetAlongPath = -dir * (6 + (burstCount - this._carpetBombsLeft) * 1.4);
+                const dropX = this.x + scatter + offsetAlongPath;
+                game.projectiles.push(new Projectile(dropX, this.y, null, this.stats.damage, this.team, 'bomb', { source: this }));
+                this.lastBomb = frameNow;
+                this._carpetBombsLeft -= 1;
+                this._nextCarpetDropFrame = frameNow + burstInterval;
             }
             return;
         }
@@ -2859,7 +3098,7 @@ class Unit extends Entity {
                 a.playsInline = true;
                 this._mgAudio = a;
             }
-            const vol = AudioSystem.volume.sfx * AudioSystem.volume.master * 0.5 * audibility;
+            const vol = AudioSystem.volume.sfx * AudioSystem.volume.master * 0.72 * audibility;
             this._mgAudio.volume = vol;
             if (this._mgAudio.paused) {
                 const p = this._mgAudio.play();
@@ -4134,9 +4373,11 @@ class Unit extends Entity {
             || id === 'rpg'
             || id === 'drone_operator'
             || id === 'fighter'
+            || id === 'bomber'
             || id === 'apache'
             || id === 'blackhawk'
-            || id === 'uh60')
+            || id === 'uh60'
+            || id === 'chinook')
             && typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
             let renderedWithV2 = false;
             try {
@@ -4160,13 +4401,13 @@ class Unit extends Entity {
         if (colorExceptions.includes(this.stats.id)) {
             ctx.fillStyle = this.stats.color;
         } else {
-            ctx.fillStyle = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            ctx.fillStyle = getTeamColor(this.team);
         }
 
         // [湲곗〈 ?좊떅 洹몃━湲?肄붾뱶 ?좎?, 釉붾옓?명겕/移섎늻?щ쭔 ?섏젙]
         // [NEW] Worker 유닛 렌더링
         if (id === 'worker') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
 
             // 몸통
             ctx.fillStyle = teamColor;
@@ -4495,7 +4736,7 @@ class Unit extends Entity {
         }
         else if (id === 'infantry') { ctx.fillRect(-6, -20, 12, 20); ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#1e293b'; ctx.fillRect(2, -18, 10, 3); }
         else if (id === 'sniper') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             ctx.fillStyle = teamColor; ctx.fillRect(-6, -20, 12, 20);
             ctx.fillStyle = '#475569'; ctx.fillRect(-8, -19, 16, 12);
             ctx.fillStyle = teamColor; ctx.beginPath(); ctx.arc(0, -24, 5, 0, Math.PI * 2); ctx.fill();
@@ -4505,7 +4746,7 @@ class Unit extends Entity {
             ctx.fillStyle = '#64748b'; ctx.fillRect(16, -21, 2, 2);
         }
         else if (id === 'special_ops') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             ctx.fillStyle = '#334155'; ctx.fillRect(-10, -19, 6, 13);
             ctx.fillStyle = teamColor; ctx.fillRect(-6, -20, 12, 20);
             ctx.fillStyle = '#475569'; ctx.fillRect(-8, -19, 16, 12);
@@ -4517,7 +4758,7 @@ class Unit extends Entity {
         }
         // [UPDATED] 공병 - 두 가지 모드 (carrying/firing)
         else if (id === 'engineer' || id === 'rpg') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const isFiring = this.engineerMode === 'firing';
 
             if (isFiring) {
@@ -4605,7 +4846,7 @@ class Unit extends Entity {
             }
         }
         else if (id === 'humvee') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyMain = '#64748b';
             const bodyDark = '#475569';
             const tireColor = '#0f172a';
@@ -4731,7 +4972,7 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'mbt') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyMain = '#64748b';
             const bodyDark = '#475569';
             const bodyLight = '#94a3b8';
@@ -4842,7 +5083,7 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'spg') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyMain = '#64748b';
             const bodyDark = '#475569';
             const tireColor = '#0f172a';
@@ -5088,7 +5329,7 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'apache') {
-            const teamColor = (this.team === 'player') ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const missileFlash = (this.missileFlash || 0);
 
             ctx.save();
@@ -5153,7 +5394,7 @@ class Unit extends Entity {
 
         // [UPDATED] 수송헬기 UH-60 - 새로운 디자인
         else if (id === 'blackhawk' || id === 'uh60') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
 
             // 스케일 축소 (과대 사이즈 조정)
             ctx.save();
@@ -5231,7 +5472,7 @@ class Unit extends Entity {
         }
         // [UPDATED] APC - 새로운 디자인
         else if (id === 'apc') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyMain = '#64748b';
             const bodyDark = '#475569';
             const tireColor = '#0f172a';
@@ -5326,7 +5567,7 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'aa_tank') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyMain = '#64748b';
             const bodyDark = '#475569';
             const bodyLight = '#94a3b8';
@@ -5410,7 +5651,7 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'fighter') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyMain = '#64748b';
             const bodyDark = '#475569';
             const bodyLight = '#94a3b8';
@@ -5494,7 +5735,7 @@ class Unit extends Entity {
         }
         // [R 4.2 FIX] 자폭드론 - 쿼드(네모) 디자인 (약한 폭발)
         else if (id === 'drone_suicide') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             // 스케일 다운
             ctx.save();
             const baseScale = 0.52;
@@ -5523,7 +5764,7 @@ class Unit extends Entity {
         }
         // [R 4.2 FIX] 대전차드론 - 고정익(흰색) 디자인 (전술급 큰 폭발)
         else if (id === 'drone_at') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             // 스케일 다운
             ctx.save();
             const baseScale = 0.48;
@@ -5564,7 +5805,7 @@ class Unit extends Entity {
         }
         // [R 4.2] 드론병 - laptop/rifle 모드
         else if (id === 'drone_operator') {
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const opState = this.opState || 'seek_cover';
 
             // 백팩 (공통)
@@ -5603,13 +5844,13 @@ class Unit extends Entity {
                 ctx.fillStyle = teamColor; ctx.fillRect(0, -16, 8, 3);
             }
         }
-        else if (id === 'tactical_drone') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-5, 6); ctx.lineTo(-2, 0); ctx.lineTo(-5, -6); ctx.fill(); }
+        else if (id === 'tactical_drone') { const bc = getTeamColor(this.team); ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(10, 0); ctx.lineTo(-5, 6); ctx.lineTo(-2, 0); ctx.lineTo(-5, -6); ctx.fill(); }
         else if (id === 'emp') { ctx.strokeStyle = '#3b82f6'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.stroke(); ctx.fillStyle = '#3b82f6'; ctx.beginPath(); ctx.moveTo(-5, -8); ctx.lineTo(8, -2); ctx.lineTo(-2, 2); ctx.lineTo(6, 10); ctx.lineTo(-8, 4); ctx.lineTo(2, 0); ctx.fill(); }
         else if (id === 'nuke') { ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.arc(0, 0, 15, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#000'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 0, Math.PI / 3); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 2 * Math.PI / 3, Math.PI); ctx.lineTo(0, 0); ctx.moveTo(0, 0); ctx.arc(0, 0, 12, 4 * Math.PI / 3, 5 * Math.PI / 3); ctx.lineTo(0, 0); ctx.fill(); ctx.fillStyle = '#facc15'; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); }
         else if (id === 'tactical_missile') { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(-12, -3, 24, 6); ctx.fillStyle = '#ef4444'; ctx.beginPath(); ctx.moveTo(12, -3); ctx.lineTo(18, 0); ctx.lineTo(12, 3); ctx.fill(); ctx.fillStyle = '#f59e0b'; ctx.beginPath(); ctx.arc(-12, 0, 4, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = '#475569'; ctx.beginPath(); ctx.moveTo(-8, -3); ctx.lineTo(-12, -8); ctx.lineTo(-12, -3); ctx.fill(); ctx.beginPath(); ctx.moveTo(-8, 3); ctx.lineTo(-12, 8); ctx.lineTo(-12, 3); ctx.fill(); }
-        else if (id === 'stealth_drone') { const bc = this.team === 'player' ? '#3b82f6' : '#ef4444'; ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, 9); ctx.lineTo(-4, 0); ctx.lineTo(-10, -9); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(1, 0, 3.5, 2.2, 0, 0, Math.PI * 2); ctx.fill(); if (this.team === 'player' && this.targetX !== null && this.targetX !== undefined && !this.exploded) { const gx = (game && game.groundY) ? game.groundY : this.y; const tx = this.targetX; const ty = gx - 8; const dd = Math.hypot(this.x - tx, this.y - ty); if (dd > 70) { ctx.save(); ctx.translate(-this.x + tx, -this.y + ty); ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2; const s = 7; ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke(); ctx.restore(); } } }
+        else if (id === 'stealth_drone') { const bc = getTeamColor(this.team); ctx.fillStyle = bc; ctx.beginPath(); ctx.moveTo(14, 0); ctx.lineTo(-10, 9); ctx.lineTo(-4, 0); ctx.lineTo(-10, -9); ctx.closePath(); ctx.fill(); ctx.fillStyle = '#0f172a'; ctx.beginPath(); ctx.ellipse(1, 0, 3.5, 2.2, 0, 0, Math.PI * 2); ctx.fill(); if (this.team === 'player' && this.targetX !== null && this.targetX !== undefined && !this.exploded) { const gx = (game && game.groundY) ? game.groundY : this.y; const tx = this.targetX; const ty = gx - 8; const dd = Math.hypot(this.x - tx, this.y - ty); if (dd > 70) { ctx.save(); ctx.translate(-this.x + tx, -this.y + ty); ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 2; const s = 7; ctx.beginPath(); ctx.moveTo(-s, 0); ctx.lineTo(s, 0); ctx.moveTo(0, -s); ctx.lineTo(0, s); ctx.stroke(); ctx.restore(); } } }
         else if (id === 'bomber') {
-            const teamColor = (this.team === 'player') ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
 
             ctx.fillStyle = '#334155'; // Dark Grey Body
             // Main Fuselage
@@ -5650,7 +5891,7 @@ class Unit extends Entity {
         else if (id === 'recon') {
             ctx.save();
             ctx.scale(0.5, 0.5);
-            const teamColor = this.team === 'player' ? '#3b82f6' : '#ef4444';
+            const teamColor = getTeamColor(this.team);
             const bodyColor = '#cbd5e1';
             const darkColor = '#475569';
 
@@ -5960,6 +6201,67 @@ class Wreckage {
             // Fallback: 간단한 잔해 표현
             this._drawFallback(ctx);
         }
+
+        if (this._isArmoredWreck()) {
+            this._drawArmoredWreckOverlay(ctx);
+        }
+
+        ctx.restore();
+    }
+
+    _isArmoredWreck() {
+        const id = String(this.unitId || '').trim().toLowerCase();
+        return ['mbt', 'apc', 'aa_tank', 'humvee', 'spg', 'tank', 'ifv', 'sam', 'mlrs'].includes(id);
+    }
+
+    _drawArmoredWreckOverlay(ctx) {
+        const id = String(this.unitId || '').trim().toLowerCase();
+        const emberAlpha = Math.max(0, Math.min(1, this.life));
+        const scorch = 'rgba(0, 0, 0, 0.42)';
+        const metal = '#1f2937';
+        const metalLight = '#334155';
+        const glowing = `rgba(239, 68, 68, ${0.08 + (0.12 * emberAlpha)})`;
+
+        ctx.save();
+
+        // Ground scorch under all armored wrecks.
+        ctx.fillStyle = scorch;
+        ctx.beginPath();
+        ctx.ellipse(0, -2, 30, 10, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Hot shard glow (subtle flicker).
+        if ((this.age % 14) < 6) {
+            ctx.fillStyle = glowing;
+            ctx.beginPath();
+            ctx.ellipse(4, -8, 9, 4, 0, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        if (id === 'mbt' || id === 'tank') {
+            ctx.fillStyle = metal;
+            ctx.fillRect(-12, -20, 24, 6); // detached turret slab
+            ctx.fillStyle = metalLight;
+            ctx.fillRect(10, -19, 10, 3);  // snapped barrel piece
+        } else if (id === 'spg' || id === 'mlrs') {
+            ctx.fillStyle = metal;
+            ctx.fillRect(-18, -18, 28, 5); // launcher break
+            ctx.fillRect(12, -14, 8, 3);
+        } else if (id === 'aa_tank' || id === 'ifv' || id === 'sam') {
+            ctx.fillStyle = metal;
+            ctx.fillRect(-14, -16, 18, 5); // radar/weapon debris
+            ctx.fillStyle = metalLight;
+            ctx.fillRect(6, -14, 10, 3);
+        } else if (id === 'apc' || id === 'humvee') {
+            ctx.fillStyle = metal;
+            ctx.fillRect(-10, -14, 16, 4); // door/hood scrap
+            ctx.fillRect(8, -10, 7, 3);    // axle scrap
+        }
+
+        // Broken track/wheel hints.
+        ctx.fillStyle = '#0b1220';
+        ctx.fillRect(-24, -4, 10, 2);
+        ctx.fillRect(14, -4, 9, 2);
 
         ctx.restore();
     }

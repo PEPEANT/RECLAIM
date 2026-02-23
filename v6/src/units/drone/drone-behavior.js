@@ -380,6 +380,7 @@ const DroneBehavior = {
 
         if (drone.lockedTarget) {
             drone.commandState = 'locked';
+            drone.noTargetFrames = 0;
             // While cruising/climbing, allow dynamic retarget to higher-priority targets.
             const dynamicRetargetEnabled = drone.dynamicRetargetEnabled !== false;
             const dynamicRetargetMarginRaw = Number(drone.dynamicRetargetMargin);
@@ -410,6 +411,23 @@ const DroneBehavior = {
             const tx = drone.lockedTarget.x;
             const tH = drone.lockedTarget.height || 20;
             const ty = drone.lockedTarget.y - tH / 2;
+            if (String(drone.stats?.id || '').trim() === 'drone_suicide' && (drone.lockedPursuitFrames || 0) > 240) {
+                const dxRetry = Math.abs(tx - drone.x);
+                if (dxRetry > 320) {
+                    const retryTarget = this.findNearestEnemy(drone, enemies, buildings);
+                    if (!retryTarget || retryTarget === drone.lockedTarget) {
+                        drone.lockedTarget = null;
+                        drone.attackTarget = null;
+                        drone.attackPhase = null;
+                        drone.lockedPursuitFrames = 0;
+                        return;
+                    }
+                    drone.lockedTarget = retryTarget;
+                    drone.attackTarget = retryTarget;
+                    drone.attackPhase = 'climb';
+                    drone.lockedPursuitFrames = 0;
+                }
+            }
             const attackCruiseY = Number.isFinite(drone.attackCruiseY)
                 ? drone.attackCruiseY
                 : ((groundY !== null) ? (groundY - 430) : (drone.y - 140));
@@ -495,6 +513,7 @@ const DroneBehavior = {
             return;
         } else {
             drone.lockedPursuitFrames = 0;
+            drone.noTargetFrames = (Number(drone.noTargetFrames) || 0) + 1;
             // ?ë™ ì¶”ì ??ì¼œì§„ ?œë¡ ë§?? ê·œ ?€ê²Ÿì„ ?ë“?œë‹¤.
             if (drone.autoSeekTarget === true) {
                 const newTarget = this.findNearestEnemy(drone, enemies, buildings);
@@ -502,6 +521,7 @@ const DroneBehavior = {
                     drone.lockedTarget = newTarget;
                     drone.commandState = 'locked';
                     drone.lockedPursuitFrames = 0;
+                    drone.noTargetFrames = 0;
                     drone.attackPhase = null;
                     return;
                 }
@@ -520,6 +540,10 @@ const DroneBehavior = {
                 } else if (drone.y > groundY) {
                     drone.y = groundY;
                 }
+            }
+            if (String(drone.stats?.id || '').trim() === 'drone_suicide' && drone.noTargetFrames > 120) {
+                const sweepDir = (drone.team === 'player') ? 1 : -1;
+                drone.x += Math.max(1.1, baseSpeed * 1.25) * sweepDir;
             }
             if (this.trySuicideImpactDetonation(drone, enemies)) return;
             return;
@@ -548,9 +572,6 @@ const DroneBehavior = {
             const tStats = target.stats || {};
             if (tStats.stealth === true || tStats.invulnerable === true) continue;
 
-            const tType = String(tStats.type || target.type || '').toLowerCase();
-            const isAir = tType === 'air';
-            if (!isAir && !this.isArmoredTarget(target, false)) continue;
 
             const tx = Number(target.x);
             const tyRaw = Number(target.y);
@@ -599,14 +620,19 @@ const DroneBehavior = {
     findNearestEnemy(drone, enemies, buildings) {
         const x = drone.x;
         const team = drone.team;
+        const droneId = String(drone && drone.stats && drone.stats.id || '').trim().toLowerCase();
+        const isAtDrone = droneId === 'drone_at';
+        const isSuicideDrone = droneId === 'drone_suicide';
         const seekRangeRaw = Number(drone.stats?.seekRange);
-        const seekRange = Number.isFinite(seekRangeRaw) ? Math.max(300, seekRangeRaw) : 2200;
+        const defaultSeekRange = isSuicideDrone ? 1300 : 2200;
+        const seekRange = Number.isFinite(seekRangeRaw) ? Math.max(300, seekRangeRaw) : defaultSeekRange;
         const maxSeekSq = seekRange * seekRange;
         let bestArmored = null;
         let bestArmoredSq = Infinity;
         let bestInfantry = null;
         let bestInfantrySq = Infinity;
-
+        let bestBuilding = null;
+        let bestBuildingSq = Infinity;
 
         const considerTarget = (target, asBuilding = false) => {
             if (!target || target.dead) return;
@@ -618,7 +644,16 @@ const DroneBehavior = {
             if (!Number.isFinite(dx)) return;
             const dSq = dx * dx;
             if (dSq > maxSeekSq) return;
-            if (this.isArmoredTarget(target, asBuilding)) {
+
+            if (asBuilding) {
+                if (dSq < bestBuildingSq) {
+                    bestBuildingSq = dSq;
+                    bestBuilding = target;
+                }
+                return;
+            }
+
+            if (this.isArmoredTarget(target, false)) {
                 if (dSq < bestArmoredSq) {
                     bestArmoredSq = dSq;
                     bestArmored = target;
@@ -637,7 +672,23 @@ const DroneBehavior = {
                 considerTarget(buildings[i], true);
             }
         }
-        return bestArmored || bestInfantry || null;
+
+        // AT µå·Ð: Àå°©/°Ç¹° ¿ì¼±
+        if (isAtDrone) {
+            return bestArmored || bestBuilding || bestInfantry || null;
+        }
+
+        // ÀÚÆøµå·Ð: º¸º´/¿¬¼ºÇ¥Àû ¿ì¼±. ¸Õ °Ç¹° ÃßÀûÀ¸·Î »ó°ø ¹èÈ¸ÇÏ´Â Çö»ó ¹æÁö.
+        if (isSuicideDrone) {
+            const nearBuildingLimitSq = Math.pow(Math.min(seekRange, 700), 2);
+            if (bestInfantry) return bestInfantry;
+            if (bestArmored) return bestArmored;
+            if (bestBuilding && bestBuildingSq <= nearBuildingLimitSq) return bestBuilding;
+            return null;
+        }
+
+        return bestArmored || bestInfantry || bestBuilding || null;
     }
 };
+
 

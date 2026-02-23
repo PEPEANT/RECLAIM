@@ -20,7 +20,19 @@ function hasPositiveValue(obj) {
     return false;
 }
 
+function getGameTeamColor(team, variant = 'primary') {
+    const key = String(team || '').trim().toLowerCase();
+    if (typeof TeamColors !== 'undefined' && TeamColors && typeof TeamColors.get === 'function') {
+        if (key === 'neutral') return (variant === 'minimap') ? '#eab308' : '#64748b';
+        return TeamColors.get(key, variant === 'light' ? 'light' : 'primary');
+    }
+    if (key === 'player') return (variant === 'light') ? '#60a5fa' : '#3b82f6';
+    if (key === 'enemy') return (variant === 'light') ? '#8cab43' : '#6b8e23';
+    return (variant === 'minimap') ? '#eab308' : '#64748b';
+}
+
 const MAP_SELECT_BGM_FILE = 'bgm/ost/dunebuggydubai01.mp3';
+const DEFAULT_BATTLE_MAP_ID = 'skirmish_kabul';
 
 // 퀘스트 미션 로직은 별도 모듈로 분리됨.
 
@@ -64,8 +76,8 @@ const game = {
         includeForwardDefense: false,
         iogAlwaysOpen: false,
     },
-    mapOrder: ['skirmish'],
-    clearedMaps: ['skirmish'],
+    mapOrder: [DEFAULT_BATTLE_MAP_ID],
+    clearedMaps: [DEFAULT_BATTLE_MAP_ID],
     firstRunDone: true,
     _uiRecoverySuspendUntil: 0,
     _uiBlankTicks: 0,
@@ -178,6 +190,9 @@ const game = {
     cooldowns: {}, playerStock: {}, enemyStock: {}, enemyCooldowns: {},
     playerVeteransById: {}, playerVeteranStock: {}, playerVeteranOrder: [],
     skillCharges: { emp: 1, nuke: 1, tactical: 1 },
+    enemyIcbmNextAllowedFrame: 0,
+    enemyLastIcbmFrame: -999999,
+    enemyLastEmpLaunchFrame: -999999,
     empTimer: 0, targetingType: null, killCount: 0,
     playerBuildings: [], enemyBuildings: [],
     selectedBuilding: null,
@@ -432,6 +447,13 @@ const game = {
         return key === 'nuke' || key === 'tactical_missile' || key === 'emp';
     },
 
+    getEnemyIcbmSpacingFrames(payloadKey = 'tactical_missile') {
+        const key = String(payloadKey || '').trim().toLowerCase();
+        if (key === 'nuke') return 60 * 44;
+        if (key === 'emp') return 60 * 22;
+        return 60 * 30;
+    },
+
     getIcbmLauncherIdByTeam(team = 'player') {
         return (team === 'enemy') ? 'icbm_enemy' : 'icbm';
     },
@@ -493,6 +515,12 @@ const game = {
         if (!launcher) return false;
         if (typeof launcher.requestIcbmLaunch !== 'function') return false;
 
+        if (team === 'enemy' && !opts.ignoreEnemyGlobalSpacing) {
+            const nowFrame = Number(this.frame) || 0;
+            const nextAllowed = Number(this.enemyIcbmNextAllowedFrame) || 0;
+            if (nowFrame < nextAllowed) return false;
+        }
+
         const tx = Math.max(40, Math.min(CONFIG.mapWidth - 40, Number(targetX) || 0));
         const tyRaw = Number.isFinite(Number(targetY)) ? Number(targetY) : this.groundY;
         const ty = (typeof this.clampGroundLaneY === 'function')
@@ -510,6 +538,15 @@ const game = {
 
         const accepted = launcher.requestIcbmLaunch(payloadKey, tx, ty);
         if (!accepted) return false;
+
+        if (team === 'enemy' && !opts.ignoreEnemyGlobalSpacing) {
+            const nowFrame = Number(this.frame) || 0;
+            const spacing = this.getEnemyIcbmSpacingFrames(payloadKey);
+            this.enemyIcbmNextAllowedFrame = Math.max(
+                Number(this.enemyIcbmNextAllowedFrame) || 0,
+                nowFrame + spacing
+            );
+        }
 
         if (team === 'player' && !opts.bypassCharge) {
             // Battle-only policy: ICBM payload skills keep a fixed baseline charge.
@@ -532,6 +569,16 @@ const game = {
     onIcbmLaunchFired(launcher, payloadKey, targetX, targetY) {
         if (!launcher || launcher.dead || !this.isIcbmSkillKey(payloadKey)) return null;
         const team = launcher.team || 'player';
+        if (team === 'enemy') {
+            const nowFrame = Number(this.frame) || 0;
+            this.enemyLastIcbmFrame = nowFrame;
+            if (payloadKey === 'emp') this.enemyLastEmpLaunchFrame = nowFrame;
+            const spacing = this.getEnemyIcbmSpacingFrames(payloadKey);
+            this.enemyIcbmNextAllowedFrame = Math.max(
+                Number(this.enemyIcbmNextAllowedFrame) || 0,
+                nowFrame + spacing
+            );
+        }
 
         let startX = launcher.x;
         let startY = launcher.y - 80;
@@ -919,12 +966,14 @@ const game = {
         console.error('[Boot] src/maps/maps.js not loaded. Using fallback Maps shim.');
         window.Maps = {
             types: {
-                skirmish: { name: 'Skirmish', sky: '#87CEEB', skyMid: '#b0d4e8', ground: '#4ade80', groundDark: '#16a34a' }
+                skirmish: { name: 'Skirmish', sky: '#87CEEB', skyMid: '#b0d4e8', ground: '#4ade80', groundDark: '#16a34a' },
+                skirmish_kabul: { name: 'Kabul', sky: '#6E8594', skyMid: '#9e9789', ground: '#3b3d3f', groundDark: '#2a2b2d' }
             },
             rules: {
-                skirmish: { playerHQ: true, enemyHQ: true, playerDefense: false, enemyDefense: false, bunkers: false, mapExpand: false, winCondition: 'annihilation' }
+                skirmish: { playerHQ: true, enemyHQ: true, playerDefense: false, enemyDefense: false, bunkers: false, mapExpand: false, winCondition: 'annihilation' },
+                skirmish_kabul: { playerHQ: false, enemyHQ: false, playerDefense: false, enemyDefense: false, bunkers: false, mapExpand: false, winCondition: 'annihilation' }
             },
-            currentMap: 'skirmish',
+            currentMap: DEFAULT_BATTLE_MAP_ID,
             __fallback: true,
             _rand(seed) {
                 let h = 2166136261;
@@ -936,7 +985,8 @@ const game = {
                 return (h >>> 0) / 4294967295;
             },
             getRule(key) {
-                const mapRules = this.rules.skirmish;
+                const mapId = String(this.currentMap || DEFAULT_BATTLE_MAP_ID).trim() || DEFAULT_BATTLE_MAP_ID;
+                const mapRules = (this.rules && this.rules[mapId]) ? this.rules[mapId] : this.rules.skirmish;
                 if (mapRules && key in mapRules) return mapRules[key];
                 const defaults = {
                     playerHQ: true,
@@ -952,7 +1002,8 @@ const game = {
             },
             drawBase(ctx, width, height, groundY) {
                 if (!ctx) return;
-                const t = this.types.skirmish;
+                const mapId = String(this.currentMap || DEFAULT_BATTLE_MAP_ID).trim() || DEFAULT_BATTLE_MAP_ID;
+                const t = (this.types && this.types[mapId]) ? this.types[mapId] : this.types.skirmish;
                 ctx.fillStyle = t.sky || '#87CEEB';
                 ctx.fillRect(0, 0, width, Math.max(0, groundY));
                 ctx.fillStyle = t.ground || '#4ade80';
@@ -986,18 +1037,35 @@ const game = {
         };
 
         ensureTheme('skirmish', { name: 'Skirmish', sky: '#87CEEB', skyMid: '#b0d4e8', ground: '#4ade80', groundDark: '#16a34a' });
+        ensureTheme(DEFAULT_BATTLE_MAP_ID, { name: 'Kabul', sky: '#6E8594', skyMid: '#9e9789', ground: '#3b3d3f', groundDark: '#2a2b2d' });
 
-        const ensureRules = (id) => {
+        const ensureRules = (id, defaults) => {
             if (!Maps.rules[id] || typeof Maps.rules[id] !== 'object') Maps.rules[id] = {};
-            Maps.rules[id].playerHQ = true;
-            Maps.rules[id].enemyHQ = true;
-            Maps.rules[id].playerDefense = false;
-            Maps.rules[id].enemyDefense = false;
-            Maps.rules[id].bunkers = false;
-            Maps.rules[id].mapExpand = false;
+            Maps.rules[id].playerHQ = !!defaults.playerHQ;
+            Maps.rules[id].enemyHQ = !!defaults.enemyHQ;
+            Maps.rules[id].playerDefense = !!defaults.playerDefense;
+            Maps.rules[id].enemyDefense = !!defaults.enemyDefense;
+            Maps.rules[id].bunkers = !!defaults.bunkers;
+            Maps.rules[id].mapExpand = !!defaults.mapExpand;
             if (!Maps.rules[id].winCondition) Maps.rules[id].winCondition = 'annihilation';
         };
-        ensureRules('skirmish');
+        ensureRules('skirmish', {
+            playerHQ: true,
+            enemyHQ: true,
+            playerDefense: false,
+            enemyDefense: false,
+            bunkers: false,
+            mapExpand: false
+        });
+        ensureRules(DEFAULT_BATTLE_MAP_ID, {
+            playerHQ: false,
+            enemyHQ: false,
+            playerDefense: false,
+            enemyDefense: false,
+            bunkers: false,
+            mapExpand: false
+        });
+        if (!Maps.currentMap) Maps.currentMap = DEFAULT_BATTLE_MAP_ID;
     },
 
     init() {
@@ -1611,14 +1679,14 @@ const game = {
     },
 
     isMapUnlocked(mapId) {
-        return String(mapId || '').trim() === 'skirmish';
+        return String(mapId || '').trim() === DEFAULT_BATTLE_MAP_ID;
     },
 
     updateMapSelectLocks() {
         const cards = document.querySelectorAll('.map-card[data-map]');
         cards.forEach((card) => {
             const mapId = String(card?.dataset?.map || '').trim();
-            const unlocked = mapId === 'skirmish';
+            const unlocked = mapId === DEFAULT_BATTLE_MAP_ID;
             card.classList.toggle('locked', !unlocked);
             if ('disabled' in card) card.disabled = !unlocked;
             card.setAttribute('aria-disabled', unlocked ? 'false' : 'true');
@@ -1635,8 +1703,8 @@ const game = {
 
     markMapCleared(mapId) {
         const id = String(mapId || '').trim();
-        if (id !== 'skirmish') return;
-        this.clearedMaps = ['skirmish'];
+        if (id !== DEFAULT_BATTLE_MAP_ID) return;
+        this.clearedMaps = [DEFAULT_BATTLE_MAP_ID];
         this.firstRunDone = true;
         if (typeof app !== 'undefined' && app && typeof app.markDirty === 'function') {
             app.markDirty();
@@ -1645,9 +1713,9 @@ const game = {
     },
 
     resetProgress() {
-        this.clearedMaps = ['skirmish'];
+        this.clearedMaps = [DEFAULT_BATTLE_MAP_ID];
         this.firstRunDone = true;
-        this.currentMapId = 'skirmish';
+        this.currentMapId = DEFAULT_BATTLE_MAP_ID;
         this.devUnlockAllMaps = true;
         this._tempAdminUnlockUid = '';
         this.updateMapSelectLocks();
@@ -1662,9 +1730,6 @@ const game = {
         const hideIds = [
             'hud-ctrl-wrapper',
             'hud-top-actions',
-            'hud-camera-btn',
-            'hud-option-btn',
-            'hud-cancel-btn',
             'unit-panel-container',
             'hud-footer',
             'unit-cmd-wrapper',
@@ -1906,7 +1971,6 @@ const game = {
         this.enforceCriticalMapThemes();
         this._uiRecoverySuspendUntil = Date.now() + 12000;
 
-        const nextMap = 'skirmish';
         const mapApi = (typeof Maps !== 'undefined' && Maps)
             ? Maps
             : ((typeof window !== 'undefined' && window.Maps) ? window.Maps : null);
@@ -1917,9 +1981,14 @@ const game = {
             }
             return;
         }
+        const requestedMap = String(mapType || this.currentMapId || DEFAULT_BATTLE_MAP_ID).trim();
+        const nextMap = (requestedMap && mapApi.types && mapApi.types[requestedMap])
+            ? requestedMap
+            : DEFAULT_BATTLE_MAP_ID;
 
         document.getElementById('map-select-screen')?.classList.add('hidden');
-        mapApi.currentMap = nextMap;
+        if (typeof mapApi.setMap === 'function') mapApi.setMap(nextMap);
+        else mapApi.currentMap = nextMap;
 
         if (!this.settings || typeof this.settings !== 'object') {
             this.settings = { includeForwardDefense: false };
@@ -2166,6 +2235,9 @@ const game = {
         this.supply = CONFIG.startSupply; this.enemySupply = CONFIG.startSupply;
         this.empTimer = 0;
         this.skillCharges = { emp: 1, nuke: 1, tactical: 1 };
+        this.enemyIcbmNextAllowedFrame = 0;
+        this.enemyLastIcbmFrame = -999999;
+        this.enemyLastEmpLaunchFrame = -999999;
         this.killCount = 0;
         this.isGameOver = false;
         this.enemyEverSeen = false;
@@ -2212,7 +2284,7 @@ const game = {
         this.resize();
 
         // [Safety] Ensure Map is selected
-        if (typeof Maps !== 'undefined' && !Maps.currentMap) Maps.currentMap = 'skirmish';
+        if (typeof Maps !== 'undefined' && !Maps.currentMap) Maps.currentMap = DEFAULT_BATTLE_MAP_ID;
 
         this.initGameObjects();
         this.applyBattleUnitsToStock();
@@ -2224,10 +2296,7 @@ const game = {
         // [CHANGE] Hide old floating UI, use fixed HUD instead
         document.getElementById('hud-ctrl-wrapper')?.classList.add('hidden');
         [
-            'hud-top-actions',
-            'hud-camera-btn',
-            'hud-option-btn',
-            'hud-cancel-btn'
+            'hud-top-actions'
         ].forEach((id) => document.getElementById(id)?.classList.remove('hidden'));
         document.getElementById('unit-cmd-wrapper')?.classList.add('hidden');
         // [FIX] endGame에서 숨긴 UI 복구
@@ -2286,7 +2355,7 @@ const game = {
 
         // [R 4.2] ChatPanel 초기화 및 표시
         if (typeof ChatPanel !== 'undefined') {
-            const keepIogOpen = !!(this.settings && this.settings.iogAlwaysOpen === true);
+            const keepIogOpen = true;
             ChatPanel.init({ open: keepIogOpen });
             ChatPanel.clear();
             ChatPanel.show();
@@ -3997,14 +4066,14 @@ const game = {
         ctx.beginPath(); ctx.moveTo(0, groundY); ctx.lineTo(cvs.width, groundY); ctx.stroke();
 
         this.buildings.forEach(b => {
-            ctx.fillStyle = b.team === 'player' ? '#3b82f6' : (b.team === 'enemy' ? '#ef4444' : '#eab308');
+            ctx.fillStyle = getGameTeamColor(b.team, 'minimap');
             const w = Math.max(2, b.width * scale);
             const h = Math.max(2, b.height * scale);
             ctx.fillRect(b.x * scale - w / 2, groundY - h, w, h);
         });
 
-        ctx.fillStyle = '#60a5fa'; this.players.forEach(u => ctx.fillRect(u.x * scale, groundY - 2, 2, 2));
-        ctx.fillStyle = '#f87171'; this.enemies.forEach(u => ctx.fillRect(u.x * scale, groundY - 2, 2, 2));
+        ctx.fillStyle = getGameTeamColor('player', 'light'); this.players.forEach(u => ctx.fillRect(u.x * scale, groundY - 2, 2, 2));
+        ctx.fillStyle = getGameTeamColor('enemy', 'light'); this.enemies.forEach(u => ctx.fillRect(u.x * scale, groundY - 2, 2, 2));
 
         const cw = (Camera.viewW(this) / CONFIG.mapWidth) * cvs.width;
         const cx = (this.cameraX / CONFIG.mapWidth) * cvs.width;

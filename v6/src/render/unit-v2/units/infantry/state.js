@@ -33,9 +33,10 @@
 
     // ~60fps 기준. 필요한 경우 이 초 단위 값만 조절하면 됨.
     var STANCE_TIMING_SEC = {
-        crouchMinHold: 1.0,      // 앉은 자세 최소 유지 시간
-        crouchToPronePrep: 0.8,  // 앉은 후 누울 수 있기까지 준비 시간
-        proneMinHold: 1.4        // 누운 자세 최소 유지 시간
+        crouchMinHold: 2.1,          // 앉은 자세 최소 유지 시간
+        crouchToPronePrep: 0.45,     // 앉은 후 누울 수 있기까지 준비 시간
+        proneMinHold: 3.2,           // 누운 자세 최소 유지 시간
+        stationaryPronePromote: 0.8  // 제자리 사격 n초 이상 시 누워쏴 우선 전환
     };
 
     function secToFrames(sec) {
@@ -47,6 +48,7 @@
     var CROUCH_MIN_HOLD_FRAMES = secToFrames(STANCE_TIMING_SEC.crouchMinHold);
     var CROUCH_TO_PRONE_PREP_FRAMES = secToFrames(STANCE_TIMING_SEC.crouchToPronePrep);
     var PRONE_MIN_HOLD_FRAMES = secToFrames(STANCE_TIMING_SEC.proneMinHold);
+    var STATIONARY_PRONE_PROMOTE_FRAMES = secToFrames(STANCE_TIMING_SEC.stationaryPronePromote);
 
     function clamp(v, min, max) {
         if (!Number.isFinite(v)) return min;
@@ -160,6 +162,8 @@
         var effRange = getEffectiveRange(unit);
         var targetDist = target ? Math.abs((Number(target.x) || 0) - (Number(unit.x) || 0)) : Infinity;
         var inRange = !!target && targetDist <= (effRange + 14);
+        var stationaryFrames = Number(state && state.stationaryFrames) || 0;
+        var longStationaryFire = stationaryFrames >= STATIONARY_PRONE_PROMOTE_FRAMES;
         var moving = Math.abs(vx) > 0.08 || Number(state.moveBlend || 0) > 0.16 || unit.commandMode === 'move';
         var underFire = Number.isFinite(Number(unit.lastDamagedFrame)) && (frameNow - Number(unit.lastDamagedFrame) <= 90);
         var lowHp = (hp <= 40) || (hpRatio <= 0.45);
@@ -189,14 +193,15 @@
         var desired = 'crouching';
 
         // Rear infantry can keep standing if front line already exists.
-        if (formation.hasFrontOverlap && !underFire && !lowHp) desired = 'standing';
+        if (formation.hasFrontOverlap && !underFire && !lowHp && !longStationaryFire) desired = 'standing';
 
         // Front infantry lowers stance so rear infantry can shoot over.
-        if (formation.hasRearOverlap) desired = 'crouching';
+        if (formation.hasRearOverlap || longStationaryFire) desired = 'crouching';
 
         var pressured = underFire || formation.sameTargetCount >= 3;
         if (!closeRangeFight && (criticalHp || (lowHp && pressured && longRangeFight))) desired = 'prone';
         else if (!closeRangeFight && longRangeFight && formation.hasRearOverlap && pressured) desired = 'prone';
+        else if (!closeRangeFight && inRange && longStationaryFire) desired = 'prone';
 
         if (formation.hasRearOverlap && desired === 'standing') desired = 'crouching';
 

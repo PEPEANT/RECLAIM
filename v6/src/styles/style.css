@@ -1907,9 +1907,9 @@ input[type=range]::-webkit-slider-runnable-track {
     max-height: 40px !important;
     border-radius: 999px;
     overflow: hidden;
-    background: rgba(15, 23, 42, 0.86);
-    border-color: rgba(96, 165, 250, 0.72);
-    box-shadow: 0 0 10px rgba(59, 130, 246, 0.34);
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
 }
 
 #chat-panel.is-collapsed #chat-body {
@@ -1947,8 +1947,8 @@ input[type=range]::-webkit-slider-runnable-track {
     justify-content: center;
     border: 0;
     border-radius: 999px;
-    background: rgba(30, 41, 59, 0.92);
-    color: #e2e8f0;
+    background: transparent;
+    color: #94a3b8;
     font-size: 13px;
 }
 
@@ -2069,7 +2069,8 @@ input[type=range]::-webkit-slider-runnable-track {
     right: max(10px, calc(env(safe-area-inset-right, 0px) + 10px));
     z-index: 99999;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
+    flex-wrap: nowrap;
     gap: 6px;
     pointer-events: auto;
 }
@@ -2085,35 +2086,23 @@ input[type=range]::-webkit-slider-runnable-track {
     display: flex;
     align-items: center;
     justify-content: center;
-    border: 1px solid rgba(59, 130, 246, 0.55);
+    border: 1px solid rgba(148, 163, 184, 0.62);
     border-radius: 10px;
-    background: rgba(2, 6, 23, 0.6);
+    background: rgba(15, 23, 42, 0.76);
     color: #e5e7eb;
     cursor: pointer;
     user-select: none;
 }
 
 #hud-top-actions .hud-top-btn:hover {
-    background: rgba(2, 6, 23, 0.8);
-    border-color: rgba(147, 197, 253, 0.9);
+    background: rgba(30, 41, 59, 0.92);
+    border-color: rgba(203, 213, 225, 0.9);
 }
 
 #hud-top-actions #hud-camera-btn.active {
     background: rgba(12, 74, 110, 0.85);
     border-color: rgba(56, 189, 248, 0.95);
     color: #e0f2fe;
-}
-
-#hud-top-actions #hud-all-retreat-btn {
-    border-color: rgba(249, 115, 22, 0.72);
-}
-
-#hud-top-actions #hud-all-move-btn {
-    border-color: rgba(239, 68, 68, 0.74);
-}
-
-#hud-top-actions #hud-all-defense-btn {
-    border-color: rgba(34, 197, 94, 0.74);
 }
 
 .hidden {
@@ -3505,19 +3494,16 @@ input[type=range]::-webkit-slider-runnable-track {
     background: rgba(15, 23, 42, 0.5);
 }
 
-#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-skill {
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-skill,
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-interact {
     border-color: rgba(96, 165, 250, 0.6);
     background: linear-gradient(180deg, rgba(30, 64, 175, 0.36) 0%, rgba(30, 41, 59, 0.92) 100%);
 }
 
-#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-skill.active {
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-skill.active,
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-interact.active {
     border-color: rgba(59, 130, 246, 0.95);
     box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.35), 0 6px 16px rgba(37, 99, 235, 0.35);
-}
-
-#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-interact {
-    border-color: rgba(250, 204, 21, 0.62);
-    background: linear-gradient(180deg, rgba(120, 53, 15, 0.36) 0%, rgba(30, 41, 59, 0.92) 100%);
 }
 
 .hud-cmd-btn {
@@ -4585,4 +4571,89 @@ input[type=range]::-webkit-slider-runnable-track {
     background: transparent !important;
     box-shadow: none !important;
     backdrop-filter: none !important;
+}
+
+/* Command area: remove dark backplates/skill gradients */
+#hud-command-grid .hud-cmd-group {
+    padding: 0 !important;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+#hud-command-grid .hud-cmd-group-move {
+    margin-left: 0 !important;
+}
+
+#hud-command-grid .hud-cmd-group-action {
+    border: none !important;
+    background: transparent !important;
+}
+
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-skill,
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-interact {
+    border-color: rgba(100, 116, 139, 0.62) !important;
+    background: rgba(30, 41, 59, 0.86) !important;
+}
+
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-skill.active,
+#hud-command-grid .hud-cmd-group-action .hud-cmd-btn.hud-cmd-interact.active {
+    border-color: rgba(203, 213, 225, 0.86) !important;
+    box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.24) !important;
+}
+
+/* Category emphasis: active tab must read clearly */
+#unit-panel-container .btn-category {
+    font-size: 0.8rem !important;
+    color: #94a3b8 !important;
+}
+
+#unit-panel-container .btn-category.active,
+#hud-production-area #unit-panel-container .btn-category.active {
+    font-size: 0.94rem !important;
+    font-weight: 900 !important;
+    color: #ffffff !important;
+    border-bottom-color: #ffffff !important;
+    background: rgba(148, 163, 184, 0.22) !important;
+    text-shadow: 0 0 6px rgba(255, 255, 255, 0.38) !important;
+}
+
+/* Mobile options modal: force full-screen fit */
+@media (pointer: coarse) and (max-width: 960px) {
+    #option-modal.active {
+        display: flex !important;
+        align-items: stretch !important;
+        justify-content: stretch !important;
+        padding: 0 !important;
+    }
+
+    #option-modal.active .option-panel {
+        width: 100vw !important;
+        max-width: none !important;
+        height: 100dvh !important;
+        max-height: none !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border-left: 0 !important;
+        border-right: 0 !important;
+        border-bottom: 0 !important;
+        transform: none !important;
+        overflow: hidden !important;
+        padding:
+            calc(14px + env(safe-area-inset-top, 0px))
+            10px
+            calc(10px + env(safe-area-inset-bottom, 0px))
+            10px !important;
+    }
+
+    #option-modal.active .opt-shell {
+        height: 100% !important;
+        min-height: 0 !important;
+    }
+
+    #option-modal.active .opt-content {
+        height: 100% !important;
+        min-height: 0 !important;
+        overflow: auto !important;
+    }
 }

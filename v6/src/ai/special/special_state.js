@@ -12,8 +12,9 @@
 
 
     _initSpecialState() {
-        const tacticalCharges = (this.difficulty === 'elite') ? 10 : (this.difficulty === 'veteran' ? 8 : 6);
+        const tacticalCharges = (this.difficulty === 'elite') ? 6 : (this.difficulty === 'veteran' ? 5 : 4);
         const tacticalGrace = (this.difficulty === 'elite') ? (60 * 40) : (60 * 55);
+        const empForceInterval = (this.difficulty === 'elite') ? (60 * 90) : (60 * 110);
 
         this.special = {
             charges: { nuke: 3, emp: 3, tactical: tacticalCharges },
@@ -33,7 +34,9 @@
             pendingLaunch: [],            // 발사 예약 큐
             // [NEW] 공습경보 시스템
             pendingNukeWarning: null,     // { at: frame, x, y } - 핵 경고 후 발사 예약
-            pendingTacticalWarning: null  // { at: frame, x, y } - 전술미사일 경고 후 발사 예약
+            pendingTacticalWarning: null, // { at: frame, x, y } - 전술미사일 경고 후 발사 예약
+            lastEmpFrame: -999999,
+            empForceInterval
         };
     },
     });
