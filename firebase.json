@@ -1,6 +1,6 @@
 {
   "hosting": {
-    "public": "v6",
+    "public": "RECLAIM_WAR",
     "ignore": [
       "firebase.json",
       "**/.*",
