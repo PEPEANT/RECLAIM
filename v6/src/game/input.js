@@ -37,6 +37,7 @@
                     'hud-left',
                     'hud-right',
                     'hud-production-area',
+                    'hud-top-actions',
                     'hud-camera-btn',
                     'hud-option-btn',
                     'hud-minimap-container',
@@ -45,7 +46,8 @@
                     'map-modal',
                     'scope-modal',
                     'mission-objective-modal',
-                    'mobile-direct-ui'
+                    'mobile-direct-ui',
+                    'mobile-direct-toggle-btn'
                 ];
                 for (let i = 0; i < hudInteractiveIds.length; i++) {
                     const el = document.getElementById(hudInteractiveIds[i]);
@@ -54,7 +56,12 @@
 
                 // Fallback for legacy/non-split footer layouts
                 const footerRect = hudFooter.getBoundingClientRect();
-                const footerLooksLikeBottomBar = footerRect.height > 0 && footerRect.top > 0;
+                const viewportH = Math.max(1, window.innerHeight || 1);
+                const footerLooksLikeBottomBar = (
+                    footerRect.height > 0
+                    && footerRect.top >= (viewportH * 0.5)
+                    && footerRect.height <= (viewportH * 0.45)
+                );
                 if (footerLooksLikeBottomBar && clientY >= footerRect.top) return true;
                 return false;
             };
@@ -84,14 +91,23 @@
                 KeyA: 'a',
                 KeyS: 's',
                 KeyD: 'd',
+                KeyR: 'r',
+                KeyF: 'f',
                 ArrowLeft: 'arrowLeft',
-                ArrowRight: 'arrowRight'
+                ArrowRight: 'arrowRight',
+                ArrowUp: 'arrowUp',
+                ArrowDown: 'arrowDown'
             };
 
             // ======== ????븐뻤????⑤슢堉???========
             // ??⑤㈇??癲????嶺뚮Ĳ?됪뤃??(PC ???關履숂뭐??/ ?꿔꺂??袁ㅻ븶???????????
             let cameraDrag = false;
             let cameraLastX = 0;
+            let pcLeftPointerDown = false;
+            let pcLeftPanActive = false;
+            let pcLeftDownClientX = 0;
+            let pcLeftDownClientY = 0;
+            const PC_PAN_DEADZONE_PX = 8;
 
             // ????ｋ???熬곣뫖利당뵓????嶺뚮Ĳ?됪뤃??(PC ????裕?濡ろ떟???/ ?꿔꺂??袁ㅻ븶???????????
             this.selectDragActive = false;
@@ -100,19 +116,33 @@
             this.selectEndX = 0;
             this.selectEndY = 0;
 
-            // ?꿔꺂??袁ㅻ븶????????썹땟??????븐뻤??
+            // Mobile gesture state:
+            // - 1 finger tap: single select/command
+            // - 1 finger drag: camera pan
+            // - 2 finger drag/pinch: camera pan + zoom
             let isMobileSelecting = false;
-            let isMobileCameraMove = false;
+            let isMobileCameraMove = false; // two-finger gesture active
+            let isMobileSinglePan = false;  // one-finger camera pan active
+
             let pinchActive = false;
             let pinchStartDist = 0;
             let pinchStartZoom = Camera.zoom;
             let pinchAnchorClientX = 0;
             let pinchAnchorClientY = 0;
+            let pinchLastDist = 0;
+            let pinchLastMidViewX = 0;
 
-            // [MOBILE TAP FIX] ????嶺뚮Ĳ?됪뤃???????? ???됰Ŧ??????裕∽┼??뀖?節뤵럸? ????썹땟????"???" ???뚯???????Β????嶺뚮㉡???
+            let mobilePrimaryTouchId = null;
+            let mobileLongPressTimer = 0;
+            let mobileLongPressTriggered = false;
+            let mobileTapSuppressed = false;
+            let mobileTouchStartAt = 0;
+
             let tapStartClientX = 0, tapStartClientY = 0;
             let tapLastClientX = 0, tapLastClientY = 0;
-            const TAP_THRESHOLD_PX = 14; // 12~18 ?????????? 14 ???ㅻ쿋驪??
+            const TAP_THRESHOLD_PX = 14;
+            const MOBILE_PAN_DEADZONE_PX = 12;
+            const MOBILE_LONGPRESS_MS = 220;
 
             // [MODIFIED] ?꿸쑨?????????ｋ??(????????ㅿ폎???꿸쑨?????鍮??꿸쑨?????????
             const selectBuildingAt = (wx, wy) => {
@@ -178,11 +208,15 @@
 
             const isUnitHitAt = (u, wx, wy) => {
                 if (!u || u.dead) return false;
+                const renderY = (typeof u.getRenderY === 'function')
+                    ? Number(u.getRenderY())
+                    : Number(u.y);
+                const unitY = Number.isFinite(renderY) ? renderY : Number(u.y || 0);
                 const halfW = Number(u.width || 0) / 2;
                 const left = u.x - halfW;
                 const right = u.x + halfW;
-                const top = u.y - Number(u.height || 0);
-                const bottom = u.y;
+                const top = unitY - Number(u.height || 0);
+                const bottom = unitY;
                 return wx >= left && wx <= right && wy >= top && wy <= bottom;
             };
 
@@ -263,7 +297,26 @@
 
             const mobileDirectUi = (() => {
                 const root = document.getElementById('mobile-direct-ui');
-                const footer = document.getElementById('hud-footer');
+                const toggleBtn = document.getElementById('mobile-direct-toggle-btn');
+                const toggleLabel = document.getElementById('mobile-direct-toggle-label');
+                const statusEl = document.getElementById('mobile-direct-status');
+                const attackBtn = document.getElementById('mobile-dc-attack');
+                const stickZone = document.getElementById('mobile-dc-stick-zone');
+                const stickKnob = document.getElementById('mobile-dc-stick-knob');
+                const skillMap = [
+                    { id: 'mobile-dc-skill1', hudId: 'hud-cmd-skill1' },
+                    { id: 'mobile-dc-skill2', hudId: 'hud-cmd-skill2' },
+                    { id: 'mobile-dc-skill3', hudId: 'hud-cmd-skill3' }
+                ];
+
+                const state = {
+                    fireTimer: 0,
+                    lastActive: false,
+                    stickPointerId: null
+                };
+                const STICK_MAX_RADIUS = 34;
+                const STICK_DEADZONE = 8;
+                const STICK_AXIS_THRESHOLD = 0.32;
 
                 const isMobileViewport = () => {
                     const coarse = (typeof window.matchMedia === 'function')
@@ -273,19 +326,218 @@
                     return window.innerWidth <= 1024;
                 };
 
+                const setMoveKey = (key, pressed) => {
+                    if (typeof game.setDirectControlKeyState !== 'function') return;
+                    game.setDirectControlKeyState(key, !!pressed);
+                };
+
+                const releaseMoveKeys = () => {
+                    setMoveKey('w', false);
+                    setMoveKey('a', false);
+                    setMoveKey('s', false);
+                    setMoveKey('d', false);
+                };
+
+                const setStickVisual = (x, y, active) => {
+                    if (stickKnob) {
+                        const tx = Math.round(Number(x) || 0);
+                        const ty = Math.round(Number(y) || 0);
+                        stickKnob.style.transform = `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px))`;
+                    }
+                    if (stickZone) {
+                        stickZone.classList.toggle('active', !!active);
+                    }
+                };
+
+                const resetStickVisual = () => {
+                    setStickVisual(0, 0, false);
+                };
+
+                const applyStickMoveFromClient = (clientX, clientY) => {
+                    if (!stickZone) return;
+                    const rect = stickZone.getBoundingClientRect();
+                    const centerX = rect.left + rect.width / 2;
+                    const centerY = rect.top + rect.height / 2;
+                    const dx = clientX - centerX;
+                    const dy = clientY - centerY;
+                    const dist = Math.hypot(dx, dy);
+
+                    if (dist < STICK_DEADZONE) {
+                        releaseMoveKeys();
+                        resetStickVisual();
+                        return;
+                    }
+
+                    const clamp = dist > STICK_MAX_RADIUS ? (STICK_MAX_RADIUS / dist) : 1;
+                    const clampedX = dx * clamp;
+                    const clampedY = dy * clamp;
+                    setStickVisual(clampedX, clampedY, true);
+
+                    const nx = dx / dist;
+                    const ny = dy / dist;
+                    setMoveKey('a', nx <= -STICK_AXIS_THRESHOLD);
+                    setMoveKey('d', nx >= STICK_AXIS_THRESHOLD);
+                    setMoveKey('w', ny <= -STICK_AXIS_THRESHOLD);
+                    setMoveKey('s', ny >= STICK_AXIS_THRESHOLD);
+                };
+
+                const endStickControl = (e = null) => {
+                    if (state.stickPointerId === null) {
+                        releaseMoveKeys();
+                        resetStickVisual();
+                        return;
+                    }
+                    if (e && typeof e.pointerId === 'number' && e.pointerId !== state.stickPointerId) return;
+                    if (stickZone && typeof stickZone.hasPointerCapture === 'function' && state.stickPointerId !== null) {
+                        try {
+                            if (stickZone.hasPointerCapture(state.stickPointerId)) {
+                                stickZone.releasePointerCapture(state.stickPointerId);
+                            }
+                        } catch (_) { }
+                    }
+                    state.stickPointerId = null;
+                    releaseMoveKeys();
+                    resetStickVisual();
+                };
+
+                const updateStatus = (active) => {
+                    if (!statusEl) return;
+                    if (!active) {
+                        statusEl.textContent = '조종 대기';
+                        return;
+                    }
+                    const info = (typeof game.getDirectControlWeaponToggleInfo === 'function')
+                        ? game.getDirectControlWeaponToggleInfo()
+                        : null;
+                    const currentLabel = String((info && info.currentLabel) || '').trim();
+                    statusEl.textContent = currentLabel ? `무기: ${currentLabel}` : '무기: 주무장';
+                };
+
+                const stopAttackHold = () => {
+                    if (state.fireTimer) {
+                        window.clearInterval(state.fireTimer);
+                        state.fireTimer = 0;
+                    }
+                    if (attackBtn) attackBtn.classList.remove('active');
+                };
+
+                const startAttackHold = () => {
+                    stopAttackHold();
+                    if (attackBtn) attackBtn.classList.add('active');
+                    if (typeof game.directControlFireCurrentWeapon === 'function') {
+                        game.directControlFireCurrentWeapon();
+                        state.fireTimer = window.setInterval(() => {
+                            if (typeof game.isDirectControlActive === 'function' && !game.isDirectControlActive()) {
+                                stopAttackHold();
+                                return;
+                            }
+                            game.directControlFireCurrentWeapon();
+                        }, 170);
+                    }
+                };
+
+                if (attackBtn) {
+                    const onAttackStart = (e) => {
+                        if (!isMobileViewport()) return;
+                        if (typeof game.isDirectControlActive !== 'function' || !game.isDirectControlActive()) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        startAttackHold();
+                    };
+                    const onAttackEnd = (e) => {
+                        if (e) {
+                            e.preventDefault();
+                            e.stopPropagation();
+                        }
+                        stopAttackHold();
+                    };
+                    attackBtn.addEventListener('pointerdown', onAttackStart, { passive: false });
+                    attackBtn.addEventListener('pointerup', onAttackEnd, { passive: false });
+                    attackBtn.addEventListener('pointercancel', onAttackEnd, { passive: false });
+                    attackBtn.addEventListener('pointerleave', onAttackEnd, { passive: false });
+                }
+
+                if (stickZone) {
+                    const onStickDown = (e) => {
+                        if (!isMobileViewport()) return;
+                        if (typeof game.isDirectControlActive !== 'function' || !game.isDirectControlActive()) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        state.stickPointerId = e.pointerId;
+                        if (typeof stickZone.setPointerCapture === 'function') {
+                            try { stickZone.setPointerCapture(e.pointerId); } catch (_) { }
+                        }
+                        applyStickMoveFromClient(e.clientX, e.clientY);
+                    };
+                    const onStickMove = (e) => {
+                        if (state.stickPointerId === null) return;
+                        if (typeof e.pointerId === 'number' && e.pointerId !== state.stickPointerId) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        applyStickMoveFromClient(e.clientX, e.clientY);
+                    };
+                    const onStickEnd = (e) => {
+                        if (state.stickPointerId === null) return;
+                        if (typeof e.pointerId === 'number' && e.pointerId !== state.stickPointerId) return;
+                        e.preventDefault();
+                        e.stopPropagation();
+                        endStickControl(e);
+                    };
+                    stickZone.addEventListener('pointerdown', onStickDown, { passive: false });
+                    stickZone.addEventListener('pointermove', onStickMove, { passive: false });
+                    stickZone.addEventListener('pointerup', onStickEnd, { passive: false });
+                    stickZone.addEventListener('pointercancel', onStickEnd, { passive: false });
+                    stickZone.addEventListener('pointerleave', onStickEnd, { passive: false });
+                }
+
+                skillMap.forEach(({ id, hudId }) => {
+                    const btn = document.getElementById(id);
+                    if (!btn) return;
+                    btn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (!isMobileViewport()) return;
+                        if (typeof game.isDirectControlActive !== 'function' || !game.isDirectControlActive()) return;
+                        const hudBtn = document.getElementById(hudId);
+                        if (hudBtn && !hudBtn.disabled) {
+                            hudBtn.click();
+                        }
+                    });
+                });
+
                 const refresh = () => {
-                    const active = isMobileViewport()
+                    const mobile = isMobileViewport();
+                    const active = mobile
                         && !!game.running
                         && !game.isGameOver
                         && (typeof game.isDirectControlActive === 'function')
                         && game.isDirectControlActive();
-
                     if (root) {
-                        // Fire is now HUD-skill-only during direct control.
-                        root.classList.add('hidden');
-                        root.setAttribute('aria-hidden', 'true');
+                        root.classList.toggle('hidden', !active);
+                        root.setAttribute('aria-hidden', active ? 'false' : 'true');
                     }
-                    if (footer) footer.classList.remove('hud-mobile-direct-active');
+                    if (toggleBtn) {
+                        toggleBtn.classList.add('hidden');
+                        toggleBtn.classList.remove('active');
+                        toggleBtn.setAttribute('aria-hidden', 'true');
+                    }
+                    if (toggleLabel) {
+                        toggleLabel.textContent = '';
+                    }
+
+                    updateStatus(active);
+
+                    if (!active) {
+                        endStickControl();
+                        stopAttackHold();
+                    }
+
+                    if (state.lastActive !== active) {
+                        state.lastActive = active;
+                        if (typeof game.updateHUDSelection === 'function') {
+                            game.updateHUDSelection();
+                        }
+                    }
                 };
 
                 const onViewportChange = () => { refresh(); };
@@ -298,7 +550,11 @@
 
                 return {
                     refresh,
-                    release: () => { }
+                    release: () => {
+                        endStickControl();
+                        stopAttackHold();
+                        refresh();
+                    }
                 };
             })();
             this.mobileDirectUi = mobileDirectUi;
@@ -333,6 +589,9 @@
                             ? this.getDirectControlUnit()
                             : null;
                         const directId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
+                        if (directControlUnit && !this.buildMode.active && !this.targetingType) {
+                            updateManualTankAim(directControlUnit, worldX, worldY);
+                        }
                         // Direct-control drone operator: right click enemy to lockdown first.
                         if (directId === 'drone_operator' && !e.shiftKey) {
                             if (this.tryDroneLockdown && this.tryDroneLockdown(worldX, worldY)) {
@@ -359,21 +618,25 @@
 
                         clearManualTankMgHold();
 
+                        const moveTargetY = (typeof this.clampGroundLaneY === 'function')
+                            ? this.clampGroundLaneY(worldY)
+                            : worldY;
+
                         this.selectedUnits.forEach(u => {
                             if (!u || u.dead) return;
                             u.commandMode = 'move';
                             u.commandTargetX = worldX; // ???熬곣뫖利??レ벁?????醫딆┣???(facing??
                             u.targetX = worldX;
-                            u.targetY = null;
+                            u.targetY = (u.stats && u.stats.type === 'air') ? null : moveTargetY;
                             u.lockedTarget = null;
                             u.attackTarget = null;
                             if (u.stats && !u.stats.operator && (u.stats.category === 'drone' || (u.stats.id && u.stats.id.includes('drone')))) {
-                                u.swarmTarget = { x: worldX, y: worldY };
+                                u.swarmTarget = { x: worldX, y: moveTargetY };
                             }
                         });
 
                         // particles + move marker
-                        this.createParticles(worldX, this.groundY - 10, 10, '#22c55e');
+                        this.createParticles(worldX, moveTargetY - 10, 10, '#22c55e');
                         this.moveEffects = this.moveEffects || [];
                         this.moveEffects.push({ x: p.x, y: p.y, radius: 22, life: 1.0 });
 
@@ -398,7 +661,10 @@
                     const directControlUnit = (typeof this.getDirectControlUnit === 'function')
                         ? this.getDirectControlUnit()
                         : null;
-                    if (directControlUnit && directControlUnit.stats) {
+                    const clickedPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, null);
+                    const clickedSelectableBuilding = hasSelectableBuildingAt(worldX, worldY);
+                    const shouldPrioritizeSelection = clickedPlayerUnit || clickedSelectableBuilding;
+                    if (directControlUnit && directControlUnit.stats && !shouldPrioritizeSelection) {
                         const directId = String(directControlUnit.stats.id || '');
                         if (directId === 'mbt' && !e.shiftKey) {
                             updateManualTankAim(directControlUnit, worldX, worldY);
@@ -454,11 +720,14 @@
                         }
                     }
 
-                    this.selectDragActive = true;
+                    pcLeftPointerDown = true;
+                    pcLeftPanActive = false;
+                    pcLeftDownClientX = e.clientX;
+                    pcLeftDownClientY = e.clientY;
+                    cameraLastX = p.x;
+                    this.selectDragActive = false;
                     this.selectStartX = worldX;
                     this.selectStartY = p.y;
-                    this.selectEndX = this.selectStartX;
-                    this.selectEndY = this.selectStartY;
                 }
             });
 
@@ -484,16 +753,24 @@
                     updateManualTankAim(directControlUnit, worldX, worldY);
                 }
 
-                if (cameraDrag && !this.selectDragActive) {
+                if (cameraDrag) {
                     this.cameraX -= (p.x - cameraLastX);
                     this.cameraX = Camera.clampCameraX(this, this.cameraX);
                     cameraLastX = p.x;
                 }
 
-                // ????ｋ???熬곣뫖利당뵓????醫딆┣???(????裕?濡ろ떟???
-                if (this.selectDragActive) {
-                    this.selectEndX = p.x + this.cameraX;
-                    this.selectEndY = p.y;
+                if (pcLeftPointerDown) {
+                    if (!pcLeftPanActive) {
+                        const moved = Math.hypot(e.clientX - pcLeftDownClientX, e.clientY - pcLeftDownClientY);
+                        if (moved >= PC_PAN_DEADZONE_PX) {
+                            pcLeftPanActive = true;
+                        }
+                    }
+                    if (pcLeftPanActive) {
+                        this.cameraX -= (p.x - cameraLastX);
+                        this.cameraX = Camera.clampCameraX(this, this.cameraX);
+                        cameraLastX = p.x;
+                    }
                 }
             });
 
@@ -501,37 +778,32 @@
                 if (e.button === 2) {
                     cameraDrag = false;
                     clearManualTankMgHold();
-                } else if (e.button === 0 && this.selectDragActive) {
+                } else if (e.button === 0 && pcLeftPointerDown) {
+                    const wasPan = pcLeftPanActive;
+                    pcLeftPointerDown = false;
+                    pcLeftPanActive = false;
                     this.selectDragActive = false;
-                    // ????ｋ???熬곣뫖利당뵓????곸?? ????????嶺뚮ㅏ諭븀빊?????뮻?????????Β???꿔꺂??節뉖き??
-                    const dx = Math.abs(this.selectEndX - this.selectStartX);
-                    const dy = Math.abs(this.selectEndY - this.selectStartY);
-                    if (dx < 10 && dy < 10) {
-                        // ????뮻?????? ???뚯??????????汝??吏?癒곕㎦?
-                        const clickX = this.selectStartX;
-                        const clickY = this.selectStartY;
-                        if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
-                        if (selectHQAt(clickX, clickY)) return;
-                        const unitClicked = this.checkUnitClick && this.checkUnitClick(clickX, clickY);
-                        if (unitClicked) { this.selectedBuilding = null; return; }
-                        if (this.checkBuildingClick) this.checkBuildingClick(clickX, clickY);
-                        if (this.clearAllSelection) this.clearAllSelection();
-                        this.selectedBuilding = null;
-                    } else {
-                        // ??嶺뚮Ĳ?됪뤃??????ｋ?? ?熬곣뫖利당뵓????????ル뒇嶺?????ｋ??
-                        if (this.selectUnitsInRect) this.selectUnitsInRect();
-                        this._tutorialLastDragSelectAt = Date.now();
-                        this._tutorialLastDragSelectCount = (this.selectedUnits && typeof this.selectedUnits.size === 'number')
-                            ? this.selectedUnits.size
-                            : 0;
-                        this.selectedBuilding = null;
-                    }
+                    if (wasPan) return;
+
+                    const clickX = this.selectStartX;
+                    const clickY = this.selectStartY;
+                    if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
+                    if (selectHQAt(clickX, clickY)) return;
+                    const unitClicked = this.checkUnitClick && this.checkUnitClick(clickX, clickY);
+                    if (unitClicked) { this.selectedBuilding = null; return; }
+                    if (this.checkBuildingClick) this.checkBuildingClick(clickX, clickY);
+                    if (this.clearAllSelection) this.clearAllSelection();
+                    this.selectedBuilding = null;
                 }
             });
 
             // ???關履숂뭐???꿔꺂???????꿔꺂?볟젆怨곷븶???+ ??嶺뚮Ĳ????꿔꺂??琉몃쨨???+ ?꿸쑨?????鍮???????
             window.addEventListener('blur', () => {
                 cameraDrag = false;
+                pcLeftPointerDown = false;
+                pcLeftPanActive = false;
+                this._cameraPanLeftKey = false;
+                this._cameraPanRightKey = false;
                 clearManualTankMgHold();
                 if (typeof this.clearDirectControlKeys === 'function') {
                     this.clearDirectControlKeys();
@@ -567,36 +839,78 @@
                 if (Camera.zoom !== prevZoom) this.updateZoomUI();
             }, { passive: false });
 
-            // ======== ?꿔꺂??袁ㅻ븶???????????????嚥??========
+            // ======== Mobile Touch Gesture Handling ========
+            const clearMobileLongPressTimer = () => {
+                if (mobileLongPressTimer) {
+                    window.clearTimeout(mobileLongPressTimer);
+                    mobileLongPressTimer = 0;
+                }
+            };
+
+            const runTapSelectionAtClient = (clientX, clientY) => {
+                const pTap = getScaledPos(clientX, clientY);
+                const clickX = pTap.x + this.cameraX;
+                const clickY = pTap.y;
+
+                if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return true;
+                if (selectHQAt(clickX, clickY)) return true;
+
+                const unitClicked = this.checkUnitClick
+                    && this.checkUnitClick(clickX, clickY, { keepSelectedOnRepeatTap: true });
+                if (unitClicked) {
+                    this.selectedBuilding = null;
+                    return true;
+                }
+
+                if (this.checkBuildingClick) this.checkBuildingClick(clickX, clickY);
+                if (this.clearAllSelection) this.clearAllSelection();
+                this.selectedBuilding = null;
+                return true;
+            };
+
             this.canvas.addEventListener('touchstart', e => {
                 e.preventDefault();
 
-                // [NEW] Block if any touch is inside HUD area
+                // Block if any touch starts inside HUD area.
                 for (let i = 0; i < e.touches.length; i++) {
                     if (isInsideHUD(e.touches[i].clientX, e.touches[i].clientY)) return;
                 }
 
                 if (e.touches.length === 1) {
-                    // ????뮻????????? ????ル뒇嶺?????ｋ???꿔꺂??袁ㅻ븶???(??⑤㈇??癲??????????궰???)
-                    isMobileSelecting = true;
+                    const t = e.touches[0];
+                    if (!isInsideCanvasClient(t.clientX, t.clientY)) return;
+
+                    clearMobileLongPressTimer();
                     isMobileCameraMove = false;
+                    isMobileSinglePan = false;
+                    isMobileSelecting = false;
+                    this.selectDragActive = false;
                     pinchActive = false;
+                    pinchLastDist = 0;
+                    mobileLongPressTriggered = false;
+                    mobileTapSuppressed = false;
+                    mobilePrimaryTouchId = t.identifier;
+                    mobileTouchStartAt = (typeof performance !== 'undefined' && performance.now)
+                        ? performance.now()
+                        : Date.now();
 
-                    const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
-                    if (!isInsideCanvasClient(e.touches[0].clientX, e.touches[0].clientY)) return;
+                    tapStartClientX = tapLastClientX = t.clientX;
+                    tapStartClientY = tapLastClientY = t.clientY;
 
-                    // [NEW] ?꿸쑨?????鍮??꿔꺂??袁ㅻ븶???嚥싳쉶瑗??꾧틡???レ탳???熬곣뫖利????꿔꺂??節뉖き??
+                    const p = getScaledPos(t.clientX, t.clientY);
+                    const touchWorldX = p.x + this.cameraX;
+                    const touchWorldY = p.y;
+
                     if (this.buildMode.active) {
                         this.updateBuildPreview(p.x + this.cameraX, p.y);
                         this.handleBuildPlacement(p.x + this.cameraX);
-                        isMobileSelecting = false;
+                        mobileTapSuppressed = true;
                         return;
                     }
 
-                    // ???嚥▲굧????嚥싳쉶瑗??꾧틡???レ탳?????嚥▲굧?????꿔꺂??節뉖き??
                     if (this.targetingType) {
                         this.handleTargeting(p.x + this.cameraX, p.y);
-                        isMobileSelecting = false;
+                        mobileTapSuppressed = true;
                         return;
                     }
 
@@ -604,157 +918,211 @@
                         ? this.getDirectControlUnit()
                         : null;
                     const directControlId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
-                    if (directControlUnit && directControlId === 'drone_operator') {
-                        // Keep touch tap path alive so lockdown assignment can trigger on touchend.
-                        updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
-                    } else if (typeof this.isDirectControlActive === 'function' && this.isDirectControlActive()) {
-                        updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
-                        isMobileSelecting = false;
-                        this.selectDragActive = false;
+                    const directControlActive = !!(
+                        typeof this.isDirectControlActive === 'function'
+                        && this.isDirectControlActive()
+                    );
+
+                    if (directControlActive) {
+                        const tappedPlayerUnit = hasOtherPlayerUnitAt(touchWorldX, touchWorldY, null);
+                        const tappedSelectableBuilding = hasSelectableBuildingAt(touchWorldX, touchWorldY);
+                        if (tappedPlayerUnit || tappedSelectableBuilding) {
+                            // Keep tap-selection path so touching a unit instantly switches control.
+                            mobileTapSuppressed = false;
+                            return;
+                        }
+                        updateDirectControlAimFromClient(t.clientX, t.clientY);
+                        // Drone operator keeps tap-to-fire / lockdown on touchend.
+                        if (directControlId !== 'drone_operator') {
+                            mobileTapSuppressed = true;
+                        }
                         return;
                     }
 
-                    // ????ｋ???熬곣뫖利당뵓????嶺뚮??ｆ뤃?
-                    this.selectDragActive = true;
-                    this.selectStartX = p.x + this.cameraX;
-                    this.selectStartY = p.y;
-                    this.selectEndX = this.selectStartX;
-                    this.selectEndY = this.selectStartY;
+                    return;
+                }
 
-                    // [MOBILE TAP FIX] ??????????? ????裕∽┼????뚯????덈춣?
-                    tapStartClientX = tapLastClientX = e.touches[0].clientX;
-                    tapStartClientY = tapLastClientY = e.touches[0].clientY;
+                if (e.touches.length >= 2) {
+                    clearMobileLongPressTimer();
+                    mobilePrimaryTouchId = null;
+                    mobileTapSuppressed = true;
 
-                } else if (e.touches.length >= 2) {
-                    // ??????? ??⑤㈇??癲????????꿔꺂??袁ㅻ븶???
-                    isMobileCameraMove = true;
                     isMobileSelecting = false;
                     this.selectDragActive = false;
+                    isMobileSinglePan = false;
+                    isMobileCameraMove = true;
 
                     const t1 = e.touches[0];
                     const t2 = e.touches[1];
+                    const mid = getTouchMid(t1, t2);
+
                     pinchActive = true;
                     pinchStartDist = getTouchDist(t1, t2);
+                    pinchLastDist = pinchStartDist;
                     pinchStartZoom = Camera.zoom;
-                    const mid = getTouchMid(t1, t2);
                     pinchAnchorClientX = mid.x;
                     pinchAnchorClientY = mid.y;
 
-                    const p = getScaledPos(t1.clientX, t1.clientY);
-                    cameraLastX = p.x;
+                    const pMid = getScaledPos(mid.x, mid.y);
+                    pinchLastMidViewX = pMid.x;
+                    cameraLastX = pMid.x;
                 }
             }, { passive: false });
 
             window.addEventListener('touchmove', e => {
-                if (e.touches.length === 1
-                    && typeof this.isDirectControlActive === 'function'
-                    && this.isDirectControlActive()) {
-                    e.preventDefault();
-                    updateDirectControlAimFromClient(e.touches[0].clientX, e.touches[0].clientY);
-                    return;
-                }
+                if (e.touches.length === 1) {
+                    const t = e.touches[0];
+                    tapLastClientX = t.clientX;
+                    tapLastClientY = t.clientY;
 
-                // mobile select drag
-                if (isMobileSelecting && this.selectDragActive) {
-                    e.preventDefault();
-                    const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
-                    this.selectEndX = p.x + this.cameraX;
-                    this.selectEndY = p.y;
-
-                    // [MOBILE TAP FIX] ?꿔꺂????????? ????裕∽┼???醫딆┣???
-                    tapLastClientX = e.touches[0].clientX;
-                    tapLastClientY = e.touches[0].clientY;
-
-                    return; // ??⑤㈇??癲???汝??吏?癒곕㎦??癲ル슢???????궰???
-                }
-
-                // ?????????⑤㈇??癲???????
-                if (isMobileCameraMove && e.touches.length >= 2) {
-                    if (pinchActive) {
+                    // Direct-control aim touch follow.
+                    if (!isMobileSelecting
+                        && typeof this.isDirectControlActive === 'function'
+                        && this.isDirectControlActive()) {
                         e.preventDefault();
-                        const t1 = e.touches[0];
-                        const t2 = e.touches[1];
-                        const dist = getTouchDist(t1, t2);
-                        if (pinchStartDist > 0) {
-                            const newZoom = pinchStartZoom * (dist / pinchStartDist);
-                            const prevZoom = Camera.zoom;
-                            Camera.applyZoomWithAnchor(this, newZoom, pinchAnchorClientX, pinchAnchorClientY);
-                            if (Camera.zoom !== prevZoom) this.updateZoomUI();
-                        }
+                        updateDirectControlAimFromClient(t.clientX, t.clientY);
                         return;
                     }
 
-                    const p = getScaledPos(e.touches[0].clientX, e.touches[0].clientY);
-                    this.cameraX -= (p.x - cameraLastX);
+                    // If we just ended a two-finger gesture and one finger remains,
+                    // continue with one-finger camera pan.
+                    if (isMobileCameraMove) {
+                        const p = getScaledPos(t.clientX, t.clientY);
+                        isMobileCameraMove = false;
+                        isMobileSinglePan = true;
+                        mobileTapSuppressed = true;
+                        cameraLastX = p.x;
+                        return;
+                    }
+
+                    const movedPx = Math.hypot(t.clientX - tapStartClientX, t.clientY - tapStartClientY);
+                    if (!isMobileSinglePan && !mobileLongPressTriggered && movedPx >= MOBILE_PAN_DEADZONE_PX) {
+                        clearMobileLongPressTimer();
+                        isMobileSinglePan = true;
+                        mobileTapSuppressed = true;
+                        const p = getScaledPos(t.clientX, t.clientY);
+                        cameraLastX = p.x;
+                    }
+
+                    if (isMobileSinglePan) {
+                        e.preventDefault();
+                        const p = getScaledPos(t.clientX, t.clientY);
+                        this.cameraX -= (p.x - cameraLastX);
+                        this.cameraX = Camera.clampCameraX(this, this.cameraX);
+                        cameraLastX = p.x;
+                    }
+                    return;
+                }
+
+                if (e.touches.length >= 2) {
+                    clearMobileLongPressTimer();
+                    mobileTapSuppressed = true;
+                    mobilePrimaryTouchId = null;
+                    isMobileCameraMove = true;
+                    isMobileSinglePan = false;
+                    isMobileSelecting = false;
+                    this.selectDragActive = false;
+
+                    e.preventDefault();
+                    const t1 = e.touches[0];
+                    const t2 = e.touches[1];
+                    const dist = getTouchDist(t1, t2);
+                    const mid = getTouchMid(t1, t2);
+
+                    // Incremental pinch zoom (stable) around current midpoint.
+                    if (pinchActive && pinchLastDist > 0) {
+                        const scale = dist / pinchLastDist;
+                        if (Number.isFinite(scale) && scale > 0) {
+                            const prevZoom = Camera.zoom;
+                            Camera.applyZoomWithAnchor(this, Camera.zoom * scale, mid.x, mid.y);
+                            if (Camera.zoom !== prevZoom) this.updateZoomUI();
+                        }
+                    } else if (pinchStartDist > 0) {
+                        const prevZoom = Camera.zoom;
+                        const newZoom = pinchStartZoom * (dist / pinchStartDist);
+                        Camera.applyZoomWithAnchor(this, newZoom, pinchAnchorClientX, pinchAnchorClientY);
+                        if (Camera.zoom !== prevZoom) this.updateZoomUI();
+                    }
+                    pinchActive = true;
+                    pinchLastDist = dist;
+
+                    // Two-finger pan by midpoint delta (X-axis map pan).
+                    const pMid = getScaledPos(mid.x, mid.y);
+                    this.cameraX -= (pMid.x - pinchLastMidViewX);
                     this.cameraX = Camera.clampCameraX(this, this.cameraX);
-                    cameraLastX = p.x;
+                    pinchLastMidViewX = pMid.x;
+                    return;
                 }
             }, { passive: false });
 
             window.addEventListener('touchend', e => {
-                if (isMobileSelecting && this.selectDragActive) {
-                    this.selectDragActive = false;
-                    isMobileSelecting = false;
+                clearMobileLongPressTimer();
 
-                    // [MOBILE TAP FIX] ???됰Ŧ??????裕∽┼?dx,dy)???????????????꿔꺂??袁ㅻ븶????濚밸Ŧ援잒キ???꿸쑨???????????嶺뚮Ĳ?됪뤃???녾컯嶺??숅뜮????繹먮굝???
-                    // ??? ???뚯???????Β??????嶺뚮Ĳ?됪뤃???????
-                    const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
-                    const endClientX = ct ? ct.clientX : tapLastClientX;
-                    const endClientY = ct ? ct.clientY : tapLastClientY;
-                    const directControlUnit = (typeof this.getDirectControlUnit === 'function')
-                        ? this.getDirectControlUnit()
-                        : null;
-                    const directControlId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
-                    const isDirectControlOperator = !!(
-                        directControlUnit
-                        && directControlId === 'drone_operator'
-                        && typeof this.isDirectControlActive === 'function'
-                        && this.isDirectControlActive()
-                    );
-                    if (isDirectControlOperator) {
-                        const pTap = getScaledPos(endClientX, endClientY);
-                        const clickX = pTap.x + this.cameraX;
-                        const clickY = pTap.y;
-                        if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
-                        if (typeof this.directControlFireCurrentWeapon === 'function') {
-                            this.directControlFireCurrentWeapon();
-                            return;
-                        }
-                    }
+                const ct = (e.changedTouches && e.changedTouches[0]) ? e.changedTouches[0] : null;
+                const endClientX = ct ? ct.clientX : tapLastClientX;
+                const endClientY = ct ? ct.clientY : tapLastClientY;
+                const movedPx = Math.hypot(endClientX - tapStartClientX, endClientY - tapStartClientY);
 
-                    const movedPx = Math.hypot(endClientX - tapStartClientX, endClientY - tapStartClientY);
-
+                if (!isMobileSinglePan && !isMobileCameraMove && !mobileTapSuppressed) {
                     if (movedPx < TAP_THRESHOLD_PX) {
-                        // ????뮻??? "??????裕∽┼??????뚯???????Β????????꿔꺂??節뉖き?????癲ル슢怡?怨뚯꼫)
-                        const pTap = getScaledPos(endClientX, endClientY);
-                        const clickX = pTap.x + this.cameraX;
-                        const clickY = pTap.y;
-
-                        if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
-                        if (selectHQAt(clickX, clickY)) return;
-                        const unitClicked = this.checkUnitClick && this.checkUnitClick(clickX, clickY);
-                        if (unitClicked) { this.selectedBuilding = null; return; }
-                        if (this.checkBuildingClick) this.checkBuildingClick(clickX, clickY);
-                        if (this.clearAllSelection) this.clearAllSelection();
-                        this.selectedBuilding = null;
-                    } else {
-                        // ??嶺뚮Ĳ?됪뤃??????ｋ??
-                        if (this.selectUnitsInRect) this.selectUnitsInRect();
-                        this._tutorialLastDragSelectAt = Date.now();
-                        this._tutorialLastDragSelectCount = (this.selectedUnits && typeof this.selectedUnits.size === 'number')
-                            ? this.selectedUnits.size
-                            : 0;
-                        this.selectedBuilding = null;
+                        const directControlUnit = (typeof this.getDirectControlUnit === 'function')
+                            ? this.getDirectControlUnit()
+                            : null;
+                        const directControlId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
+                        const isDirectControlOperator = !!(
+                            directControlUnit
+                            && directControlId === 'drone_operator'
+                            && typeof this.isDirectControlActive === 'function'
+                            && this.isDirectControlActive()
+                        );
+                        if (isDirectControlOperator) {
+                            const pTap = getScaledPos(endClientX, endClientY);
+                            const clickX = pTap.x + this.cameraX;
+                            const clickY = pTap.y;
+                            const tappedPlayerUnit = hasOtherPlayerUnitAt(clickX, clickY, null);
+                            const tappedSelectableBuilding = hasSelectableBuildingAt(clickX, clickY);
+                            if (tappedPlayerUnit || tappedSelectableBuilding) {
+                                runTapSelectionAtClient(endClientX, endClientY);
+                            } else if (!(this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY))) {
+                                if (typeof this.directControlFireCurrentWeapon === 'function') {
+                                    this.directControlFireCurrentWeapon();
+                                }
+                            }
+                        } else {
+                            runTapSelectionAtClient(endClientX, endClientY);
+                        }
                     }
                 }
 
                 if (e.touches.length === 0) {
                     isMobileCameraMove = false;
+                    isMobileSinglePan = false;
+                    isMobileSelecting = false;
                     cameraDrag = false;
                     pinchActive = false;
+                    pinchLastDist = 0;
+                    mobilePrimaryTouchId = null;
+                    mobileLongPressTriggered = false;
+                    mobileTapSuppressed = false;
+                    this.selectDragActive = false;
                 } else if (e.touches.length < 2) {
                     pinchActive = false;
+                    pinchLastDist = 0;
+                    isMobileCameraMove = false;
                 }
+            });
+
+            window.addEventListener('touchcancel', () => {
+                clearMobileLongPressTimer();
+                isMobileCameraMove = false;
+                isMobileSinglePan = false;
+                isMobileSelecting = false;
+                pinchActive = false;
+                pinchLastDist = 0;
+                mobilePrimaryTouchId = null;
+                mobileLongPressTriggered = false;
+                mobileTapSuppressed = false;
+                this.selectDragActive = false;
             });
 
             // [NEW] ESC ????寃??꿸쑨?????鍮????嚥▲굧?????꿔꺂??袁ㅻ븶?????????
@@ -767,22 +1135,19 @@
                         e.preventDefault();
                     }
                 }
-                if (typingInField && e.key !== 'Escape') return;
 
-                if (e.code === 'KeyE') {
-                    if (typingInField) return;
-                    if (e.repeat) return;
-                    if (typeof this.toggleDirectControl === 'function') {
-                        const changed = this.toggleDirectControl();
-                        if (changed) {
-                            e.preventDefault();
-                            if (this.mobileDirectUi && typeof this.mobileDirectUi.refresh === 'function') {
-                                this.mobileDirectUi.refresh();
-                            }
-                        }
-                    }
+                if (!typingInField && e.code === 'KeyQ') {
+                    this._cameraPanLeftKey = true;
+                    e.preventDefault();
                     return;
                 }
+                if (!typingInField && e.code === 'KeyE') {
+                    this._cameraPanRightKey = true;
+                    e.preventDefault();
+                    return;
+                }
+
+                if (typingInField && e.key !== 'Escape') return;
 
                 if (e.key === 'Escape') {
                     if (typeof ui !== 'undefined'
@@ -828,6 +1193,14 @@
             });
 
             window.addEventListener('keyup', e => {
+                if (e.code === 'KeyQ') {
+                    this._cameraPanLeftKey = false;
+                    return;
+                }
+                if (e.code === 'KeyE') {
+                    this._cameraPanRightKey = false;
+                    return;
+                }
                 const directMappedKey = DIRECT_CONTROL_KEY_MAP[e.code];
                 if (directMappedKey && typeof this.setDirectControlKeyState === 'function') {
                     this.setDirectControlKeyState(directMappedKey, false);

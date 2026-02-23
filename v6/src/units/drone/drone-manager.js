@@ -112,6 +112,13 @@
 
         _canOperatorLaunchDrone(operator) {
             if (!operator || operator.dead || operator.stats?.operator !== true) return false;
+            const fixedDroneCharges = 2;
+            if (!Number.isFinite(Number(operator.maxDroneCharges)) || Number(operator.maxDroneCharges) < fixedDroneCharges) {
+                operator.maxDroneCharges = fixedDroneCharges;
+            }
+            if (!Number.isFinite(Number(operator.droneChargesLeft)) || Number(operator.droneChargesLeft) < 1) {
+                operator.droneChargesLeft = operator.maxDroneCharges;
+            }
             if ((operator.droneChargesLeft || 0) <= 0) return false;
 
             const aliveCount = (typeof this.getAliveOperatorDrones === 'function')
@@ -131,15 +138,7 @@
 
         operatorSupportsDroneKey(operator, droneKey) {
             if (!operator || operator.dead || operator.stats?.operator !== true) return false;
-            if (droneKey === 'drone_suicide') return true;
-            if (droneKey === 'drone_at') {
-                const skillItemKeys = Array.isArray(operator.veteranLoadoutSkillItemKeys)
-                    ? operator.veteranLoadoutSkillItemKeys
-                    : [];
-                if (skillItemKeys.some((key) => String(key || '').trim() === 'drone_at_item')) return true;
-                return String(operator.veteranLoadoutItemKey || '').trim() === 'drone_at_item';
-            }
-            return false;
+            return droneKey === 'drone_suicide' || droneKey === 'drone_at';
         },
 
         getSelectedOperatorsForDrone(droneKey) {

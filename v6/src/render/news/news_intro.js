@@ -1,4 +1,4 @@
-// news_intro.js - News intro animation + sound for city map
+// news_intro.js - News intro animation + sound
 (function () {
     'use strict';
 

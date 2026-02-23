@@ -86,8 +86,15 @@
 
             // 바닥 아래로 내려가지 않도록 고정
             if (typeof game !== 'undefined' && Number.isFinite(game.groundY)) {
-                if (this.y > game.groundY) {
-                    this.y = game.groundY;
+                const bounds = (typeof game.getGroundLaneBounds === 'function')
+                    ? game.getGroundLaneBounds()
+                    : null;
+                const maxGroundY = (bounds && Number.isFinite(Number(bounds.max)))
+                    ? Number(bounds.max)
+                    : Number(game.groundY);
+                const groundClampY = Number.isFinite(maxGroundY) ? maxGroundY : Number(game.groundY);
+                if (this.y > groundClampY) {
+                    this.y = groundClampY;
                     if (this.kbVy > 0) this.kbVy = 0;
                 }
             }

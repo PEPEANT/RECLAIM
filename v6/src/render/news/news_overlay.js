@@ -1,4 +1,4 @@
-// news_overlay.js - City map breaking news overlay
+// news_overlay.js - battle news overlay
 (function () {
     'use strict';
 

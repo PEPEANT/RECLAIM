@@ -1,21 +1,5 @@
 // [RULE] ?�게???�내/?�태/채팅 메시지??UI ?�스??금�?. ChatPanel.push()로만 출력.
-function markTutorialAtDroneImpact(drone, target) {
-    if (!drone) return;
-    const droneId = String(drone?.stats?.id || '').trim();
-    if (droneId !== 'drone_at' && droneId !== 'drone_suicide') return;
-    if (String(drone.team || '').trim() !== 'player') return;
-    if (drone._tutorialAtImpactMarked === true) return;
-    if (typeof game === 'undefined' || !game || typeof game !== 'object') return;
 
-    const tutorial = game._cityTutorialSkirmish;
-    if (!tutorial || tutorial.active !== true) return;
-
-    drone._tutorialAtImpactMarked = true;
-    tutorial.atDroneImpactSeen = true;
-    tutorial.atDroneImpactAt = Date.now();
-    tutorial.atDroneImpactFrame = Math.max(0, Math.floor(Number(game.frame) || 0));
-    tutorial.atDroneImpactTargetType = String(target?.stats?.id || target?.type || '').trim();
-}
 const DroneBehavior = {
     update(drone, enemies, buildings) {
         if (drone.dead) return;
@@ -492,12 +476,10 @@ const DroneBehavior = {
             const dy = ty - drone.y;
             const distSq = dx * dx + dy * dy;
             if (distSq < 2500) {
-                markTutorialAtDroneImpact(drone, drone.lockedTarget);
                 drone.explode(drone.lockedTarget);
                 return;
             }
             if ((drone.lockedPursuitFrames || 0) > 300 && Math.abs(dx) < 90 && Math.abs(dy) < 120) {
-                markTutorialAtDroneImpact(drone, drone.lockedTarget);
                 drone.explode(drone.lockedTarget);
                 return;
             }
@@ -595,7 +577,6 @@ const DroneBehavior = {
         }
 
         if (!impactTarget) return false;
-        markTutorialAtDroneImpact(drone, impactTarget);
         drone.explode(impactTarget);
         return true;
     },

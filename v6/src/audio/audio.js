@@ -281,6 +281,9 @@
     _battleMoveLoops: null,
     _battleMoveProbe: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
     _battleMoveLastDistantArmorMs: 0,
+    _battleMoveHeliHoldUntilMs: 0,
+    _battleMoveTankHoldUntilMs: 0,
+    _battleMoveHumveeHoldUntilMs: 0,
     _battleMoveHeliIdMap: { apache: true, blackhawk: true, chinook: true, uh60: true },
     _battleMoveTankIdMap: { mbt: true, apc: true, aa_tank: true, spg: true },
     _battleMoveDistantArmorIdMap: { mbt: true, apc: true, aa_tank: true, spg: true },
@@ -383,9 +386,11 @@
         if (!unit || unit.dead) return false;
         const cmd = String(unit.commandMode || '').trim().toLowerCase();
         const delta = this._trackUnitMoveDelta(unit);
-        if (Number.isFinite(delta) && delta >= 0.35) return true;
-        if (!Number.isFinite(delta)) return cmd === 'move' || cmd === 'retreat';
-        if (cmd === 'move' || cmd === 'retreat') return delta >= 0.06;
+        const vx = Math.abs(Number(unit.vx) || 0);
+        if (Number.isFinite(delta) && delta >= 0.14) return true;
+        if (!Number.isFinite(delta)) return cmd === 'move' || cmd === 'retreat' || vx >= 0.05;
+        if (cmd === 'move' || cmd === 'retreat') return delta >= 0.015 || vx >= 0.03;
+        if (vx >= 0.09) return true;
         return false;
     },
 
@@ -479,24 +484,37 @@
             }
         }
 
+        const nowMs = Date.now();
+        if (heliAud > 0.02) this._battleMoveHeliHoldUntilMs = nowMs + 600;
+        if (tankAud > 0.02) this._battleMoveTankHoldUntilMs = nowMs + 450;
+        if (humveeAud > 0.02) this._battleMoveHumveeHoldUntilMs = nowMs + 400;
+
+        const heliHeld = nowMs < (Number(this._battleMoveHeliHoldUntilMs) || 0);
+        const tankHeld = nowMs < (Number(this._battleMoveTankHoldUntilMs) || 0);
+        const humveeHeld = nowMs < (Number(this._battleMoveHumveeHoldUntilMs) || 0);
+
+        const heliEffectiveAud = Math.max(heliAud, heliHeld ? 0.20 : 0);
+        const tankEffectiveAud = Math.max(tankAud, tankHeld ? 0.22 : 0);
+        const humveeEffectiveAud = Math.max(humveeAud, humveeHeld ? 0.20 : 0);
+
         const mix = this.volume.sfx * this.volume.master;
         this._updateBattleMoveLoop(
             'helicopter',
             'bgm/mov/helicopter-moving.mp3',
-            heliAud > 0.02,
-            mix * 0.16 * heliAud
+            heliEffectiveAud > 0.02,
+            mix * 0.42 * heliEffectiveAud
         );
         this._updateBattleMoveLoop(
             'tank',
             'bgm/mov/tank_moving.mp3',
-            tankAud > 0.02,
-            mix * 0.15 * tankAud
+            tankEffectiveAud > 0.02,
+            mix * 0.46 * tankEffectiveAud
         );
         this._updateBattleMoveLoop(
             'humvee',
             'bgm/mov/tank_moving2.mp3',
-            humveeAud > 0.02,
-            mix * 0.13 * humveeAud
+            humveeEffectiveAud > 0.02,
+            mix * 0.34 * humveeEffectiveAud
         );
 
         // 화면 밖에서 들리는 적 기갑 포성(짧게 1회) 트리거.
@@ -736,8 +754,7 @@
         this.lastSFXTime[key] = now;
         const file = 'bgm/crowd-panic-scream-1-390796.mp3';
         const a = this._playOneShot(file, this.volume.sfx * this.volume.master * 0.9, 4, worldX);
-        const isCityMap = (typeof Maps !== 'undefined' && Maps && Maps.currentMap === 'city');
-        if (!a || isCityMap) return;
+        if (!a) return;
         try {
             if (a._panicCutTimer) {
                 clearTimeout(a._panicCutTimer);

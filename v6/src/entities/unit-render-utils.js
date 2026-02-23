@@ -118,9 +118,17 @@
     function computeFeetSnapDy(unit, skin) {
         if (!shouldFeetSnap(unit)) return 0;
         if (typeof game === 'undefined' || !Number.isFinite(game.groundY)) return 0;
-        const floorY = game.groundY;
         if (!Number.isFinite(unit.y)) return 0;
-        if (Math.abs(unit.y - floorY) > 120) return 0;
+        const isFreeGroundUnit = !!(
+            game
+            && typeof game.isGroundLaneUnit === 'function'
+            && game.isGroundLaneUnit(unit)
+        );
+        const floorY = isFreeGroundUnit
+            ? Number(unit.y)
+            : game.groundY;
+        if (!Number.isFinite(Number(floorY))) return 0;
+        if (!isFreeGroundUnit && Math.abs(unit.y - floorY) > 120) return 0;
         const feetY = getFeetYForRender(unit, skin);
         if (!Number.isFinite(feetY)) return 0;
         return floorY - (unit.y + feetY);
@@ -243,7 +251,11 @@
         const h = 4;
         const yOffset = -50;
         const barX = unit.x;
-        const barY = (unit.y + snapDy) + yOffset;
+        const renderY = (typeof unit.getRenderY === 'function')
+            ? Number(unit.getRenderY())
+            : Number(unit.y);
+        const unitY = Number.isFinite(renderY) ? renderY : Number(unit.y || 0);
+        const barY = (unitY + snapDy) + yOffset;
         ctx.fillStyle = '#ef4444';
         ctx.fillRect(barX - w / 2, barY, w, h);
         ctx.fillStyle = '#22c55e';

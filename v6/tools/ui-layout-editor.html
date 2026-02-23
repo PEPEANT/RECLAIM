@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>RECLAIM UI Layout Code Editor</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg-a: #0b1220;
+            --bg-b: #020617;
+            --panel-bg: rgba(15, 23, 42, 0.95);
+            --panel-line: rgba(148, 163, 184, 0.4);
+            --txt: #e2e8f0;
+            --muted: #94a3b8;
+            --accent: #22d3ee;
+            --circle-main: rgba(15, 23, 42, 0.92);
+            --circle-attack: rgba(127, 29, 29, 0.9);
+            --circle-skill: rgba(30, 64, 175, 0.9);
+            --circle-line: rgba(148, 163, 184, 0.75);
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        html,
+        body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+            overflow: hidden;
+            font-family: "Segoe UI", Arial, sans-serif;
+            color: var(--txt);
+            background: radial-gradient(circle at 18% 16%, var(--bg-a), var(--bg-b));
+        }
+
+        #stage {
+            position: fixed;
+            inset: 0;
+            overflow: hidden;
+        }
+
+        .layout-item {
+            position: fixed;
+            z-index: 20;
+            user-select: none;
+        }
+
+        .layout-item.panel {
+            border: 1px dashed rgba(56, 189, 248, 0.92);
+            border-radius: 8px;
+            min-width: 56px;
+            min-height: 30px;
+            resize: both;
+            overflow: hidden;
+            background: rgba(15, 23, 42, 0.24);
+            box-shadow: inset 0 0 0 1px rgba(56, 189, 248, 0.32);
+        }
+
+        .layout-item.panel.active {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 1px var(--accent), 0 0 10px rgba(34, 211, 238, 0.36);
+        }
+
+        .layout-item .handle {
+            height: 22px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+            padding: 0 6px;
+            border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+            background: rgba(2, 6, 23, 0.9);
+            font-size: 11px;
+            font-weight: 700;
+            cursor: move;
+            white-space: nowrap;
+        }
+
+        .layout-item .meta {
+            padding: 3px 6px;
+            font-size: 10px;
+            color: #cbd5e1;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        .layout-item.circle {
+            border-radius: 999px;
+            border: 1px solid var(--circle-line);
+            box-shadow: 0 8px 14px rgba(2, 6, 23, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: move;
+            overflow: hidden;
+            resize: none;
+            min-width: 24px;
+            min-height: 24px;
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+        }
+
+        .layout-item.circle.main {
+            background: var(--circle-main);
+            color: #dbeafe;
+        }
+
+        .layout-item.circle.attack {
+            background: var(--circle-attack);
+            color: #fee2e2;
+        }
+
+        .layout-item.circle.skill {
+            background: var(--circle-skill);
+            color: #eff6ff;
+        }
+
+        .layout-item.circle.active {
+            outline: 2px solid var(--accent);
+            outline-offset: 1px;
+        }
+
+        .layout-item.circle .circle-tag {
+            pointer-events: none;
+        }
+
+        #panel {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            width: min(300px, calc(100vw - 20px));
+            max-height: calc(100vh - 20px);
+            z-index: 9999;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 8px;
+            border: 1px solid var(--panel-line);
+            border-radius: 10px;
+            background: var(--panel-bg);
+            box-shadow: 0 12px 26px rgba(0, 0, 0, 0.46);
+        }
+
+        #panel.hidden {
+            display: none;
+        }
+
+        #panel-head {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 6px;
+        }
+
+        #panel-title {
+            font-size: 12px;
+            font-weight: 800;
+            letter-spacing: 0.02em;
+        }
+
+        .panel-row {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        button {
+            border: 1px solid rgba(148, 163, 184, 0.5);
+            border-radius: 7px;
+            background: rgba(30, 41, 59, 0.92);
+            color: var(--txt);
+            font-size: 11px;
+            font-weight: 700;
+            padding: 6px 8px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            border-color: rgba(56, 189, 248, 0.78);
+        }
+
+        button.primary {
+            border-color: rgba(56, 189, 248, 0.9);
+            background: rgba(3, 105, 161, 0.68);
+        }
+
+        #code {
+            width: 100%;
+            min-height: 240px;
+            max-height: calc(100vh - 170px);
+            resize: vertical;
+            border: 1px solid rgba(148, 163, 184, 0.48);
+            border-radius: 8px;
+            background: rgba(2, 6, 23, 0.87);
+            color: #dbeafe;
+            padding: 8px;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 10px;
+            line-height: 1.45;
+        }
+
+        #status {
+            min-height: 16px;
+            font-size: 11px;
+            color: var(--muted);
+        }
+
+        #open-panel-btn {
+            position: fixed;
+            top: 10px;
+            left: 10px;
+            z-index: 10000;
+            display: none;
+        }
+
+        #open-panel-btn.show {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="stage"></div>
+
+    <button id="open-panel-btn" type="button">Open Code</button>
+
+    <aside id="panel">
+        <div id="panel-head">
+            <div id="panel-title">UI Position Code (Copy/Paste)</div>
+            <div class="panel-row">
+                <button id="refresh-btn" class="primary" type="button">Refresh</button>
+                <button id="close-btn" type="button">Close</button>
+            </div>
+        </div>
+        <div class="panel-row">
+            <button id="copy-btn" type="button">Copy</button>
+            <button id="reset-btn" type="button">Reset</button>
+        </div>
+        <textarea id="code" readonly spellcheck="false"></textarea>
+        <div id="status">Drag controls, then press Refresh.</div>
+    </aside>
+
+    <script>
+        (() => {
+            'use strict';
+
+            const TARGETS = [
+                { id: 'hud-production-area', label: 'PROD', kind: 'panel', x: 12, y: 12, w: 520, h: 140, z: 74 },
+                { id: 'hud-right', label: 'CMD', kind: 'panel', x: 890, y: 560, w: 430, h: 154, z: 70 },
+                { id: 'hud-top-actions', label: 'TOP', kind: 'panel', x: 1080, y: 12, w: 210, h: 66, z: 82 },
+                { id: 'hud-timer-container', label: 'TIME', kind: 'panel', x: 540, y: 12, w: 260, h: 50, z: 86 },
+                { id: 'unit-info-panel', label: 'INFO', kind: 'panel', x: 16, y: 560, w: 320, h: 116, z: 68 },
+                { id: 'mobile-direct-ui', label: 'MOBILE_UI', kind: 'panel', x: 0, y: 0, w: 1280, h: 720, z: 95 },
+                { id: 'mobile-direct-toggle-btn', label: 'TOGGLE', kind: 'circle-main', x: 12, y: 350, w: 62, h: 62, z: 96 },
+
+                { id: 'mobile-dc-up', label: 'UP', kind: 'circle-main', x: 100, y: 542, w: 58, h: 58, z: 97 },
+                { id: 'mobile-dc-left', label: 'LEFT', kind: 'circle-main', x: 44, y: 602, w: 58, h: 58, z: 97 },
+                { id: 'mobile-dc-down', label: 'DOWN', kind: 'circle-main', x: 100, y: 662, w: 58, h: 58, z: 97 },
+                { id: 'mobile-dc-right', label: 'RIGHT', kind: 'circle-main', x: 156, y: 602, w: 58, h: 58, z: 97 },
+
+                { id: 'mobile-dc-attack', label: 'ATK', kind: 'circle-attack', x: 1120, y: 584, w: 84, h: 84, z: 97 },
+                { id: 'mobile-dc-skill1', label: 'S1', kind: 'circle-skill', x: 1042, y: 534, w: 60, h: 60, z: 97 },
+                { id: 'mobile-dc-skill2', label: 'S2', kind: 'circle-skill', x: 980, y: 604, w: 60, h: 60, z: 97 },
+                { id: 'mobile-dc-skill3', label: 'S3', kind: 'circle-skill', x: 1042, y: 652, w: 60, h: 60, z: 97 },
+                { id: 'mobile-direct-status', label: 'STAT', kind: 'panel', x: 930, y: 684, w: 180, h: 30, z: 97 }
+            ];
+
+            const stage = document.getElementById('stage');
+            const panelEl = document.getElementById('panel');
+            const openPanelBtn = document.getElementById('open-panel-btn');
+            const codeEl = document.getElementById('code');
+            const statusEl = document.getElementById('status');
+
+            const state = {
+                dragId: null,
+                dragDx: 0,
+                dragDy: 0,
+                blocks: new Map(),
+                selected: ''
+            };
+
+            function setStatus(message) {
+                statusEl.textContent = message || '';
+            }
+
+            function clamp(v, min, max) {
+                return Math.max(min, Math.min(max, v));
+            }
+
+            function selectItem(id) {
+                state.selected = id;
+                state.blocks.forEach((el, key) => {
+                    el.classList.toggle('active', key === id);
+                });
+            }
+
+            function updateMeta(el) {
+                const meta = el.querySelector('.meta');
+                if (!meta) return;
+                meta.textContent = `${el.offsetLeft},${el.offsetTop}  ${el.offsetWidth}x${el.offsetHeight}  z${el.dataset.z}`;
+            }
+
+            function attachDrag(el, target, dragNode) {
+                const handle = dragNode || el;
+
+                const onMove = (event) => {
+                    if (state.dragId !== target.id) return;
+                    const nx = event.clientX - state.dragDx;
+                    const ny = event.clientY - state.dragDy;
+                    const maxX = Math.max(0, window.innerWidth - el.offsetWidth);
+                    const maxY = Math.max(0, window.innerHeight - el.offsetHeight);
+                    el.style.left = `${Math.round(clamp(nx, 0, maxX))}px`;
+                    el.style.top = `${Math.round(clamp(ny, 0, maxY))}px`;
+                    updateMeta(el);
+                };
+
+                const stop = () => {
+                    state.dragId = null;
+                    window.removeEventListener('pointermove', onMove);
+                    window.removeEventListener('pointerup', stop);
+                    window.removeEventListener('pointercancel', stop);
+                };
+
+                handle.addEventListener('pointerdown', (event) => {
+                    event.preventDefault();
+                    state.dragId = target.id;
+                    state.dragDx = event.clientX - el.offsetLeft;
+                    state.dragDy = event.clientY - el.offsetTop;
+                    selectItem(target.id);
+                    window.addEventListener('pointermove', onMove);
+                    window.addEventListener('pointerup', stop);
+                    window.addEventListener('pointercancel', stop);
+                });
+            }
+
+            function createPanel(target) {
+                const root = document.createElement('div');
+                root.className = 'layout-item panel';
+                root.dataset.id = target.id;
+                root.dataset.z = String(target.z);
+                root.style.left = `${target.x}px`;
+                root.style.top = `${target.y}px`;
+                root.style.width = `${target.w}px`;
+                root.style.height = `${target.h}px`;
+                root.style.zIndex = String(target.z);
+                root.innerHTML = `<div class="handle"><span>${target.label}</span><span>${target.id}</span></div><div class="meta"></div>`;
+
+                stage.appendChild(root);
+                state.blocks.set(target.id, root);
+
+                const handle = root.querySelector('.handle');
+                attachDrag(root, target, handle);
+                root.addEventListener('pointerdown', () => selectItem(target.id));
+                const obs = new ResizeObserver(() => updateMeta(root));
+                obs.observe(root);
+                updateMeta(root);
+            }
+
+            function createCircle(target, circleType) {
+                const root = document.createElement('div');
+                root.className = `layout-item circle ${circleType}`;
+                root.dataset.id = target.id;
+                root.dataset.z = String(target.z);
+                root.style.left = `${target.x}px`;
+                root.style.top = `${target.y}px`;
+                root.style.width = `${target.w}px`;
+                root.style.height = `${target.h}px`;
+                root.style.zIndex = String(target.z);
+                root.innerHTML = `<span class="circle-tag">${target.label}</span>`;
+
+                stage.appendChild(root);
+                state.blocks.set(target.id, root);
+
+                attachDrag(root, target, root);
+                root.addEventListener('pointerdown', () => selectItem(target.id));
+            }
+
+            function createItem(target) {
+                if (target.kind === 'panel') {
+                    createPanel(target);
+                    return;
+                }
+                if (target.kind === 'circle-main') {
+                    createCircle(target, 'main');
+                    return;
+                }
+                if (target.kind === 'circle-attack') {
+                    createCircle(target, 'attack');
+                    return;
+                }
+                if (target.kind === 'circle-skill') {
+                    createCircle(target, 'skill');
+                }
+            }
+
+            function getItemRect(el) {
+                return {
+                    left: Math.round(el.offsetLeft),
+                    top: Math.round(el.offsetTop),
+                    width: Math.round(el.offsetWidth),
+                    height: Math.round(el.offsetHeight),
+                    zIndex: Number(el.dataset.z || 70)
+                };
+            }
+
+            function generateCode() {
+                const lines = [];
+                lines.push('/* Paste into src/styles/style.css (override section) */');
+                lines.push('');
+
+                TARGETS.forEach((target) => {
+                    const el = state.blocks.get(target.id);
+                    if (!el) return;
+                    const p = getItemRect(el);
+
+                    lines.push(`#${target.id} {`);
+                    lines.push('    position: fixed !important;');
+                    lines.push(`    left: ${p.left}px !important;`);
+                    lines.push(`    top: ${p.top}px !important;`);
+                    lines.push('    right: auto !important;');
+                    lines.push('    bottom: auto !important;');
+                    lines.push(`    width: ${p.width}px !important;`);
+                    lines.push(`    height: ${p.height}px !important;`);
+                    lines.push(`    z-index: ${p.zIndex} !important;`);
+                    if (target.kind !== 'panel') {
+                        lines.push('    border-radius: 999px !important;');
+                    }
+                    lines.push('}');
+                    lines.push('');
+                });
+
+                codeEl.value = lines.join('\n').trim() + '\n';
+                setStatus('Code refreshed.');
+            }
+
+            function resetLayout() {
+                while (stage.firstChild) stage.removeChild(stage.firstChild);
+                state.blocks.clear();
+                TARGETS.forEach(createItem);
+                selectItem(TARGETS[0].id);
+                generateCode();
+                setStatus('Default layout restored.');
+            }
+
+            function copyCode() {
+                codeEl.select();
+                codeEl.setSelectionRange(0, codeEl.value.length);
+                navigator.clipboard.writeText(codeEl.value).then(() => {
+                    setStatus('Copied.');
+                }).catch(() => {
+                    setStatus('Copy failed. Manual copy.');
+                });
+            }
+
+            document.getElementById('refresh-btn').addEventListener('click', generateCode);
+            document.getElementById('copy-btn').addEventListener('click', copyCode);
+            document.getElementById('reset-btn').addEventListener('click', resetLayout);
+
+            document.getElementById('close-btn').addEventListener('click', () => {
+                panelEl.classList.add('hidden');
+                openPanelBtn.classList.add('show');
+            });
+
+            openPanelBtn.addEventListener('click', () => {
+                panelEl.classList.remove('hidden');
+                openPanelBtn.classList.remove('show');
+            });
+
+            window.addEventListener('resize', () => {
+                state.blocks.forEach((el) => {
+                    const maxX = Math.max(0, window.innerWidth - el.offsetWidth);
+                    const maxY = Math.max(0, window.innerHeight - el.offsetHeight);
+                    el.style.left = `${Math.round(clamp(el.offsetLeft, 0, maxX))}px`;
+                    el.style.top = `${Math.round(clamp(el.offsetTop, 0, maxY))}px`;
+                    updateMeta(el);
+                });
+            });
+
+            resetLayout();
+        })();
+    </script>
+</body>
+</html>

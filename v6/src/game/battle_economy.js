@@ -1,9 +1,6 @@
 (function (global) {
     'use strict';
 
-    const FACTORY_REQUIRED_UNIT_KEYS = new Set(['humvee', 'apc', 'mbt', 'aa_tank', 'spg']);
-    const AIRPORT_REQUIRED_UNIT_KEYS = new Set(['fighter', 'apache', 'blackhawk', 'chinook', 'bomber']);
-
     function toNonNegativeNumber(value) {
         const n = Number(value);
         if (!Number.isFinite(n)) return 0;
@@ -14,91 +11,28 @@
         return Math.max(0, Math.floor(toNonNegativeNumber(value)));
     }
 
-    function getCityState(game) {
-        if (!game) return null;
-        if (typeof CitySimState !== 'undefined'
-            && CitySimState
-            && typeof CitySimState.ensure === 'function') {
-            return CitySimState.ensure(game);
-        }
-        return game.citySim || null;
-    }
-
-    function scanInfrastructureFromGrid(cityState) {
-        const grid = Array.isArray(cityState?.grid) ? cityState.grid : [];
-        let hasFactory = false;
-        let hasAirport = false;
-
-        for (let i = 0; i < grid.length; i += 1) {
-            const tile = String(grid[i] || '').trim().toLowerCase();
-            if (!tile) continue;
-            if (tile === 'factory') hasFactory = true;
-            if (tile === 'airport' || tile.startsWith('airport_')) hasAirport = true;
-            if (hasFactory && hasAirport) break;
-        }
-
-        return { hasFactory, hasAirport };
-    }
-
-    function isFactoryRestrictedUnit(unitKey, unitDef) {
-        if (!unitDef || unitDef.isSkill === true) return false;
-        if (FACTORY_REQUIRED_UNIT_KEYS.has(unitKey)) return true;
-        const category = String(unitDef.category || '').trim().toLowerCase();
-        const type = String(unitDef.type || '').trim().toLowerCase();
-        return category === 'armored' || type === 'mech';
-    }
-
-    function isAirportRestrictedUnit(unitKey, unitDef) {
-        if (!unitDef || unitDef.isSkill === true) return false;
-        if (AIRPORT_REQUIRED_UNIT_KEYS.has(unitKey)) return true;
-        const category = String(unitDef.category || '').trim().toLowerCase();
-        const type = String(unitDef.type || '').trim().toLowerCase();
-        return category === 'air' || type === 'air';
-    }
-
-    function syncCityToStock(game) {
+    function syncStockPolicy(game) {
         if (!game || typeof CONFIG === 'undefined' || !CONFIG || !CONFIG.units) {
-            return { hasFactory: false, hasAirport: false, forcedFactory: [], forcedAirport: [] };
+            return { initialized: false, affected: [] };
         }
+
         if (!game.playerStock || typeof game.playerStock !== 'object') {
             game.playerStock = {};
         }
 
-        const cityState = getCityState(game);
-        const { hasFactory, hasAirport } = scanInfrastructureFromGrid(cityState);
-        const forcedFactory = [];
-        const forcedAirport = [];
-
+        const affected = [];
         Object.keys(CONFIG.units).forEach((key) => {
             const unit = CONFIG.units[key];
-            if (!unit || unit.isSkill === true) return;
+            if (!unit || unit.isSkill === true || unit.disabled === true) return;
 
-            if (!hasFactory && isFactoryRestrictedUnit(key, unit)) {
-                if (toNonNegativeInt(game.playerStock[key]) > 0) {
-                    forcedFactory.push(key);
-                }
-                game.playerStock[key] = 0;
-            }
-
-            if (!hasAirport && isAirportRestrictedUnit(key, unit)) {
-                if (toNonNegativeInt(game.playerStock[key]) > 0) {
-                    forcedAirport.push(key);
-                }
-                game.playerStock[key] = 0;
+            const current = toNonNegativeInt(game.playerStock[key]);
+            if (current !== game.playerStock[key]) {
+                game.playerStock[key] = current;
+                affected.push(key);
             }
         });
 
-        // Debug trace for city-to-battle stock synchronization.
-        try {
-            console.warn('[BattleEconomy.syncCityToStock]', {
-                hasFactory,
-                hasAirport,
-                forcedFactory,
-                forcedAirport
-            });
-        } catch (_) { }
-
-        return { hasFactory, hasAirport, forcedFactory, forcedAirport };
+        return { initialized: true, affected };
     }
 
     function canSpend(game, cost, options) {
@@ -173,7 +107,7 @@
     }
 
     global.BattleEconomy = {
-        syncCityToStock,
+        syncStockPolicy,
         canSpend,
         spend,
         refund,

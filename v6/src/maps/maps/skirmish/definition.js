@@ -15,8 +15,8 @@
             groundDark: '#16a34a'
         },
         rules: {
-            playerHQ: false,
-            enemyHQ: false,
+            playerHQ: true,
+            enemyHQ: true,
             playerDefense: false,
             enemyDefense: false,
             bunkers: false,

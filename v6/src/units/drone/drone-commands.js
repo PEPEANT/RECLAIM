@@ -78,6 +78,13 @@
 
         spawnDroneForOperator(op, droneKey) {
             if (!op || op.dead || op.stats?.operator !== true) return null;
+            const fixedDroneCharges = 2;
+            if (!Number.isFinite(Number(op.maxDroneCharges)) || Number(op.maxDroneCharges) < fixedDroneCharges) {
+                op.maxDroneCharges = fixedDroneCharges;
+            }
+            if (!Number.isFinite(Number(op.droneChargesLeft)) || Number(op.droneChargesLeft) < 1) {
+                op.droneChargesLeft = op.maxDroneCharges;
+            }
             if ((op.droneChargesLeft || 0) <= 0) return null;
 
             const aliveOwned = (typeof this.getAliveOperatorDrones === 'function')
@@ -174,7 +181,8 @@
                 drone.ownerRef = op;
             }
 
-            op.droneChargesLeft = Math.max(0, (op.droneChargesLeft || 0) - 1);
+            // Battle-only policy: operator drone launch does not consume fixed base charges.
+            op.droneChargesLeft = Math.max(1, Number(op.maxDroneCharges) || fixedDroneCharges);
             op.manualDeployRequested = false;
             op.manualDeployType = null;
             return drone;

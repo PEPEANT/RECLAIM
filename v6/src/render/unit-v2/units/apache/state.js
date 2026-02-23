@@ -96,7 +96,7 @@
         state.muzzleFlash = Math.max(0, Number(state.muzzleFlash || 0) - 1);
     }
 
-    // lobby-background.js 호환용 (setIconState)
+    // Legacy icon-state compatibility helper (setIconState)
     function setIconState(state) {
         if (!state) return;
         state.rotorAngle     = state.rotorAngle     || 0;

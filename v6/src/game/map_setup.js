@@ -1,4 +1,4 @@
-﻿// src/game/map_setup.js - Map-specific building placement and city setup
+// src/game/map_setup.js - Map-specific building placement
 (function () {
     'use strict';
 
@@ -6,47 +6,35 @@
         apply(game) {
             if (!game) return;
 
-            const rearX = 120;  // HQ(?꾨갑)
+            const rearX = 78;
             const forwardShift = 120;
             const frontX = 520 + forwardShift;
             const towerX = frontX + 450;
+            const gy = Number(game.groundY);
+            const laneBaseY = (typeof game.getGroundLaneBaseY === 'function')
+                ? Number(game.getGroundLaneBaseY())
+                : NaN;
+            const desiredHqY = Number.isFinite(laneBaseY)
+                ? (laneBaseY + 38)
+                : ((Number.isFinite(gy) ? gy : 0) + 110);
+            const maxHqY = Number.isFinite(Number(game.height))
+                ? (Number(game.height) - 12)
+                : desiredHqY;
+            const hqY = Math.max(
+                (Number.isFinite(gy) ? gy : 0) + 24,
+                Math.min(maxHqY, desiredHqY)
+            );
 
-            const skirmishBattle = !!game._skirmishMode;
-            const hasPlayerHQ = skirmishBattle
-                ? false
-                : ((typeof Maps !== 'undefined') ? Maps.getRule('playerHQ') : true);
-            const hasEnemyHQ = skirmishBattle
-                ? false
-                : ((typeof Maps !== 'undefined') ? Maps.getRule('enemyHQ') : true);
-            const hasPlayerDefense = skirmishBattle
-                ? false
-                : ((typeof Maps !== 'undefined') ? Maps.getRule('playerDefense') : true);
-            const hasEnemyDefense = skirmishBattle
-                ? false
-                : ((typeof Maps !== 'undefined') ? Maps.getRule('enemyDefense') : true);
-            const hasBunkers = skirmishBattle
-                ? false
-                : ((typeof Maps !== 'undefined') ? Maps.getRule('bunkers') : true);
-            const campaignTab = String(game._campaignBattleTab || '').trim().toLowerCase();
-            const isOccupationBattle = campaignTab === 'occupation';
+            const hasPlayerHQ = ((typeof Maps !== 'undefined') ? Maps.getRule('playerHQ') : true);
+            const hasEnemyHQ = ((typeof Maps !== 'undefined') ? Maps.getRule('enemyHQ') : true);
+            const hasPlayerDefense = ((typeof Maps !== 'undefined') ? Maps.getRule('playerDefense') : true);
+            const hasEnemyDefense = ((typeof Maps !== 'undefined') ? Maps.getRule('enemyDefense') : true);
+            const hasBunkers = ((typeof Maps !== 'undefined') ? Maps.getRule('bunkers') : true);
 
-            // ?꾧뎔 HQ
             if (hasPlayerHQ) {
-                game.buildings.push(new Building('hq_player', rearX, game.groundY, 'player'));
-            }
-            // [C] 점령전 + HQ 미존재 맵: 임시 생산 거점(Spawn Flag) 제공
-            if (isOccupationBattle && !hasPlayerHQ) {
-                const hasSpawnFlag = game.buildings.some((b) => b && !b.dead && b.type === 'spawn_flag_player');
-                if (!hasSpawnFlag) {
-                    const mapW = Math.max(1000, Number(CONFIG.mapWidth) || 6000);
-                    const flagX = Math.max(120, Math.min(mapW - 140, rearX + 36));
-                    const flag = new Building('spawn_flag_player', flagX, game.groundY, 'player');
-                    flag.hideHp = true;
-                    game.buildings.push(flag);
-                }
+                game.buildings.push(new Building('hq_player', rearX, hqY, 'player'));
             }
 
-            // Player-side forward defenses
             if (hasPlayerDefense && game.settings && game.settings.includeForwardDefense) {
                 const fortressExtraX = 180;
                 const fortressX = frontX + fortressExtraX;
@@ -54,12 +42,10 @@
                 game.buildings.push(new Building('watchtower', towerX, game.groundY, 'player'));
             }
 
-            // ?곴뎔 HQ
             if (hasEnemyHQ) {
-                game.buildings.push(new Building('hq_enemy', CONFIG.mapWidth - rearX, game.groundY, 'enemy'));
+                game.buildings.push(new Building('hq_enemy', CONFIG.mapWidth - rearX, hqY, 'enemy'));
             }
 
-            // Enemy-side forward defenses
             if (hasEnemyDefense && game.settings && game.settings.includeForwardDefense) {
                 const fortressExtraX = 180;
                 const fortressX = frontX + fortressExtraX;
@@ -67,60 +53,15 @@
                 game.buildings.push(new Building('watchtower', CONFIG.mapWidth - towerX, game.groundY, 'enemy'));
             }
 
-            // Neutral bunker placements
             if (hasBunkers) {
                 const bunkerRatios = [0.3, 0.5, 0.7];
-                bunkerRatios.forEach(ratio => {
-                    const bunker = new Building('bunker', CONFIG.mapWidth * ratio, game.groundY, 'neutral');
-                    if (typeof Maps !== 'undefined' && Maps.currentMap === 'city') {
-                        if (Math.abs(ratio - 0.5) < 0.0001) {
-                            bunker.variant = 'luxury';
-                        } else if (Math.abs(ratio - 0.3) < 0.0001) {
-                            bunker.variant = 'legacy';
-                        } else if (Math.abs(ratio - 0.7) < 0.0001) {
-                            bunker.variant = 'legacy';
-                        }
-                    }
-                    game.buildings.push(bunker);
+                bunkerRatios.forEach((ratio) => {
+                    game.buildings.push(new Building('bunker', CONFIG.mapWidth * ratio, game.groundY, 'neutral'));
                 });
             }
 
-            // [CITY] Right-side defense line in front of the far bunker (player only)
-            if (typeof Maps !== 'undefined' && Maps.currentMap === 'city') {
-                const rightBunkerX = CONFIG.mapWidth * 0.7;
-                const defenseOffset = 260;
-                const defenseX = Math.min(CONFIG.mapWidth - 200, rightBunkerX + defenseOffset);
-                const defense = new Building('defense_line', defenseX, game.groundY, 'player');
-
-                const diff = (typeof AI !== 'undefined' && AI.difficulty) ? AI.difficulty : 'veteran';
-                let hpScale = 1.0;
-                let dmgScale = 1.0;
-                if (diff === 'recruit') {
-                    hpScale = 1.6;
-                    dmgScale = 1.2;
-                } else if (diff === 'elite') {
-                    hpScale = 0.7;
-                    dmgScale = 0.7;
-                }
-                defense.maxHp = Math.round(defense.maxHp * hpScale);
-                defense.hp = defense.maxHp;
-                defense.damage = Math.round(defense.damage * dmgScale);
-
-                game.buildings.push(defense);
-            }
-
-            // City map civilians (manual spawn only)
-            if (typeof Maps !== 'undefined' && Maps.currentMap === 'city') {
-                if (typeof game.spawnCityCivilians === 'function') {
-                    game.spawnCityCivilians();
-                }
-                // Ensure city news overlays are reset
-                if (typeof NewsOverlay !== 'undefined') NewsOverlay.hide();
-                if (typeof NewsIntro !== 'undefined') NewsIntro.hide();
-            } else {
-                if (typeof NewsIntro !== 'undefined') NewsIntro.hide();
-                if (typeof NewsOverlay !== 'undefined') NewsOverlay.hide();
-            }
+            if (typeof NewsIntro !== 'undefined') NewsIntro.hide();
+            if (typeof NewsOverlay !== 'undefined') NewsOverlay.hide();
         }
     };
 })();

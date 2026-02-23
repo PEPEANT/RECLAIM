@@ -24,6 +24,44 @@
         else game.flash = Math.max(game.flash || 0, amount);
     }
 
+    // Resolve ground impact Y to the active grass walk band.
+    function resolveGroundImpactY(game, rawY) {
+        const inputY = Number(rawY);
+        if (game) {
+            if (typeof game.clampGroundLaneY === 'function') {
+                if (Number.isFinite(inputY)) return game.clampGroundLaneY(inputY);
+                if (typeof game.getGroundLaneBaseY === 'function') {
+                    const by = Number(game.getGroundLaneBaseY());
+                    if (Number.isFinite(by)) return game.clampGroundLaneY(by);
+                }
+            }
+
+            if (typeof game.getGroundLaneBounds === 'function') {
+                const bounds = game.getGroundLaneBounds();
+                const bMin = Number(bounds && bounds.min);
+                const bMax = Number(bounds && bounds.max);
+                const bBase = Number(bounds && bounds.base);
+                if (Number.isFinite(bMin) && Number.isFinite(bMax) && bMax >= bMin) {
+                    const candidate = Number.isFinite(inputY) ? inputY : (Number.isFinite(bBase) ? bBase : bMin);
+                    return Math.max(bMin, Math.min(bMax, candidate));
+                }
+            }
+
+            const gy = Number(game.groundY);
+            const h = Number(game.height);
+            if (Number.isFinite(gy) && Number.isFinite(h) && h > gy) {
+                const min = gy + Math.max(38, Math.round((h - gy) * 0.30));
+                const max = Math.max(min + 24, h - 18);
+                const candidate = Number.isFinite(inputY) ? inputY : (min + ((max - min) * 0.55));
+                return Math.max(min, Math.min(max, candidate));
+            }
+
+            if (Number.isFinite(gy)) return Number.isFinite(inputY) ? Math.max(gy, inputY) : gy;
+        }
+
+        return Number.isFinite(inputY) ? inputY : 0;
+    }
+
     // Prevent unbounded game.particles growth (prune simple particles first).
     function pruneParticles(game, limit) {
         if (!game || !Array.isArray(game.particles)) return;
@@ -755,7 +793,9 @@
             if (noShake && preset.shake) {
                 preset = Object.assign({}, preset, { shake: 0 });
             }
-            const groundY = (opts && opts.groundY != null) ? opts.groundY : (game.groundY != null ? game.groundY : y);
+            // Prefer caller-provided impact y first, then clamp to the ground walk band.
+            const rawGroundY = (opts && opts.groundY != null) ? opts.groundY : y;
+            const groundY = resolveGroundImpactY(game, rawGroundY);
 
             // y 고정 규칙:
             // - nuke/emp/bomb/artillery/stealth/vehicle: 지면 고정

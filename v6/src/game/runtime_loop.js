@@ -65,6 +65,29 @@
         // If we double update, frame increments twice.
         // This is correct for game logic time.
 
+        const panLeft = !!game._cameraPanLeftKey;
+        const panRight = !!game._cameraPanRightKey;
+        if (!game.paused && (panLeft || panRight)) {
+            const cameraLocked = (typeof game.isCameraLocked === 'function')
+                ? !!game.isCameraLocked()
+                : !!game.cameraLockActive;
+            if (!cameraLocked) {
+                const panStep = 18;
+                let dx = 0;
+                if (panLeft) dx -= panStep;
+                if (panRight) dx += panStep;
+                if (dx !== 0) {
+                    game.cameraX += dx;
+                    if (typeof Camera !== 'undefined' && typeof Camera.clampCameraX === 'function') {
+                        game.cameraX = Camera.clampCameraX(game, game.cameraX);
+                    } else {
+                        const maxX = Math.max(0, (CONFIG.mapWidth || game.width || 0) - (game.width || 0));
+                        game.cameraX = Math.max(0, Math.min(game.cameraX, maxX));
+                    }
+                }
+            }
+        }
+
         // [NEW] Update Timer UI (once per second)
         if (game.$hudTimer) {
             const t = Math.floor(game.frame / 60);
@@ -136,18 +159,6 @@
 
         const elapsedSeconds = game.frame / 60; // 60 FPS 기준
 
-        // [NEW] 도시맵 9분 경과 시 총공세 발동
-        if (typeof Maps !== 'undefined' && Maps.currentMap === 'city') {
-            const enemyHqMax = enemyHQ
-                ? (enemyHQ.maxHp || (CONFIG.buildings?.[enemyHQ.type]?.hp ?? enemyHQ.hp))
-                : 0;
-            const enemyHqCritical = !!(enemyHQ && enemyHqMax > 0 && enemyHQ.hp <= enemyHqMax * 0.25);
-            if (!game.totalWarTriggered && elapsedSeconds >= 540 && enemyHqCritical) {
-                game.triggerTotalWar();
-                if (typeof AI !== 'undefined') AI._totalWarIssued = true;
-            }
-        }
-
         // 생존한 유닛 수 계산 (allocation-free)
         const alivePlayerUnits = countAliveUnits(game.players);
         const aliveEnemyUnits = countAliveUnits(game.enemies);
@@ -180,6 +191,9 @@
         for (let i = 0; i < game.players.length; i++) {
             const u = game.players[i];
             if (!skirmishFrozen) u.update(game.enemies, game.enemyBuildings);
+            if (!u.dead && typeof u.applyGroundLanePostUpdate === 'function') {
+                u.applyGroundLanePostUpdate();
+            }
             if (!u.dead) game.players[writePlayer++] = u;
         }
         game.players.length = writePlayer;
@@ -188,6 +202,9 @@
         for (let i = 0; i < game.enemies.length; i++) {
             const u = game.enemies[i];
             if (!skirmishFrozen) u.update(game.players, game.playerBuildings);
+            if (!u.dead && typeof u.applyGroundLanePostUpdate === 'function') {
+                u.applyGroundLanePostUpdate();
+            }
             if (!u.dead) game.enemies[writeEnemy++] = u;
         }
         game.enemies.length = writeEnemy;
@@ -292,18 +309,7 @@
             game.renderUI();
         }
 
-        const mmInterval = Number.isFinite(game.minimapInterval) ? game.minimapInterval : 8;
-        if (mmInterval > 0 && game.frame % mmInterval === 0) {
-            // [NEW] Draw minimap on fixed HUD
-            if (typeof HUD !== 'undefined') {
-                HUD.drawMinimap();
-            }
-            // Legacy minimap only when modal is visible
-            const mapModal = document.getElementById('map-modal');
-            if (mapModal && !mapModal.classList.contains('hidden')) {
-                game.drawHUDMinimap();
-            }
-        }
+        // Minimap rendering removed.
     }
 
     function renderUI(game) {
@@ -369,7 +375,7 @@
                         game.height,
                         game.groundY,
                         game.cameraX,
-                        game.campaignThreatLevel
+                        1
                     );
                 });
             }
@@ -435,24 +441,42 @@
             if (!u || !u.stats) return false;
             return String(u.stats.category || '') === 'infantry';
         };
-        const drawUnitsInfantryFront = (list) => {
-            if (!Array.isArray(list) || list.length <= 0) return;
-            // Pass 1: non-infantry (armor/air/etc.)
-            for (let i = 0; i < list.length; i++) {
-                const u = list[i];
-                if (!u || u.dead || isInfantryUnit(u)) continue;
-                u.draw(ctx);
+        const getUnitSortY = (u) => {
+            if (!u) return 0;
+            const renderY = (typeof u.getRenderY === 'function')
+                ? Number(u.getRenderY())
+                : Number(u.y);
+            return Number.isFinite(renderY) ? renderY : Number(u.y || 0);
+        };
+        const drawUnitsDepthSorted = (...lists) => {
+            const units = [];
+            for (let li = 0; li < lists.length; li++) {
+                const list = lists[li];
+                if (!Array.isArray(list) || list.length <= 0) continue;
+                for (let i = 0; i < list.length; i++) {
+                    const u = list[i];
+                    if (!u || u.dead) continue;
+                    units.push(u);
+                }
             }
-            // Pass 2: infantry on top when overlapped with armored units.
-            for (let i = 0; i < list.length; i++) {
-                const u = list[i];
-                if (!u || u.dead || !isInfantryUnit(u)) continue;
-                u.draw(ctx);
+            if (units.length <= 0) return;
+            units.sort((a, b) => {
+                const ay = getUnitSortY(a);
+                const by = getUnitSortY(b);
+                if (ay !== by) return ay - by;
+                const aInf = isInfantryUnit(a) ? 1 : 0;
+                const bInf = isInfantryUnit(b) ? 1 : 0;
+                if (aInf !== bInf) return aInf - bInf;
+                const aPlayer = (a.team === 'player') ? 1 : 0;
+                const bPlayer = (b.team === 'player') ? 1 : 0;
+                return aPlayer - bPlayer;
+            });
+            for (let i = 0; i < units.length; i++) {
+                units[i].draw(ctx);
             }
         };
 
-        drawUnitsInfantryFront(game.enemies);
-        drawUnitsInfantryFront(game.players);
+        drawUnitsDepthSorted(game.enemies, game.players);
         game.projectiles.forEach(p => p.draw(ctx));
         game.particles.forEach(p => p.draw(ctx));
 

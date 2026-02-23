@@ -71,28 +71,6 @@ async function waitVisible(page, selector, timeoutMs = 30000) {
   throw new Error('Timeout waiting visible: ' + selector);
 }
 
-async function openCampaignFromCity(page) {
-  await page.evaluate(() => {
-    const g = (typeof game !== 'undefined') ? game : (window.game || null);
-    if (!g) return;
-    if (typeof g.launchBattleFromCity === 'function') g.launchBattleFromCity();
-    if (typeof g.openCampaignMap === 'function') g.openCampaignMap();
-  });
-}
-
-async function startBattle(page) {
-  await page.evaluate(() => {
-    const g = (typeof game !== 'undefined') ? game : (window.game || null);
-    if (g && typeof g.startSelectedCampaignBattle === 'function') {
-      g.startSelectedCampaignBattle();
-    }
-  });
-  await page.waitForFunction(() => {
-    const g = (typeof game !== 'undefined') ? game : (window.game || null);
-    return !!(g && g.running === true);
-  }, null, { timeout: 30000 });
-}
-
 async function finishBattle(page) {
   await page.evaluate(() => {
     const g = (typeof game !== 'undefined') ? game : (window.game || null);
@@ -154,19 +132,19 @@ async function runSmoke() {
     await page.waitForSelector('#cinematic-skip-btn:not([disabled])', { timeout: 15000 });
     await page.click('#cinematic-skip-btn');
 
-    await waitVisible(page, '#lobby-screen', 30000);
-    await page.click('button[onclick="game.startGuestPlay()"]');
+    await waitVisible(page, '#map-select-screen', 30000);
+    await page.click('.map-card[data-map="skirmish"]');
+    await page.waitForFunction(() => {
+      const g = (typeof game !== 'undefined') ? game : (window.game || null);
+      const mapId = (typeof Maps !== 'undefined' && Maps && Maps.currentMap) ? Maps.currentMap : '';
+      return !!(g && g.running === true && mapId === 'skirmish');
+    }, null, { timeout: 30000 });
 
-    await waitVisible(page, '#city-screen', 30000);
-    await openCampaignFromCity(page);
-    await waitVisible(page, '#campaign-screen', 30000);
-
-    await startBattle(page);
     await finishBattle(page);
 
     await waitVisible(page, '#end-screen', 15000);
     await page.click('#end-screen button');
-    await waitVisible(page, '#city-screen', 30000);
+    await waitVisible(page, '#map-select-screen', 30000);
 
     console.log('NETWORK_4XX_5XX_COUNT=' + network404.length);
     for (const item of network404.slice(0, 20)) {

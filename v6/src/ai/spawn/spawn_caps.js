@@ -29,55 +29,10 @@
         const table = (this.globalAliveCaps && typeof this.globalAliveCaps === 'object') ? this.globalAliveCaps : {};
         const tiers = table[this.difficulty] || table.elite || [12, 18, 24];
         const f = Math.max(0, Number(frame) || 0);
-        const occupationStageId = this._getOccupationStageId();
         let cap = tiers[0];
         if (f >= 60 * 210) cap = tiers[2];
         else if (f >= 60 * 90) cap = tiers[1];
-
-        // Occupation final command stage(7): raise concurrent enemy pressure.
-        if (occupationStageId === 7) {
-            const bonus = (f >= 60 * 360) ? 10 : (f >= 60 * 150 ? 8 : 6);
-            cap += bonus;
-        }
-
-        const stageCap = this._getOccupationWaveSpawnCap(f);
-        if (Number.isFinite(stageCap)) cap = Math.min(cap, stageCap);
         return Math.max(1, Math.floor(Number(cap) || 1));
-    },
-
-    _getOccupationStageId() {
-        if (!game || game._skirmishMode) return 0;
-        const stageId = Math.floor(Number(game.activeCampaignStageId) || 0);
-        return (stageId > 0 && stageId < 100) ? stageId : 0;
-    },
-
-    _getOccupationWaveSpawnCap(frame = 0) {
-        const stageId = this._getOccupationStageId();
-        if (!stageId) return null;
-
-        const table = (this.occupationWaveCaps && typeof this.occupationWaveCaps === 'object')
-            ? this.occupationWaveCaps
-            : {};
-        const fallback = table.default || { waveAt: [60 * 90, 60 * 210], caps: [10, 14, 18] };
-        const custom = table[stageId] || {};
-
-        const waveAtSrc = Array.isArray(custom.waveAt) ? custom.waveAt : fallback.waveAt;
-        const capsSrc = Array.isArray(custom.caps) ? custom.caps : fallback.caps;
-
-        const waveAt = [
-            Math.max(0, Math.floor(Number(waveAtSrc?.[0]) || 0)),
-            Math.max(0, Math.floor(Number(waveAtSrc?.[1]) || 0))
-        ];
-        const caps = [
-            Math.max(1, Math.floor(Number(capsSrc?.[0]) || 1)),
-            Math.max(1, Math.floor(Number(capsSrc?.[1]) || 1)),
-            Math.max(1, Math.floor(Number(capsSrc?.[2]) || 1))
-        ];
-
-        const f = Math.max(0, Math.floor(Number(frame) || 0));
-        if (f < waveAt[0]) return caps[0];
-        if (f < waveAt[1]) return caps[1];
-        return caps[2];
     },
 
     _canSpawnByWaveCap(extraUnits = 0, frame = null) {

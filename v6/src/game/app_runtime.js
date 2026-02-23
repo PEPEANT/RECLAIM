@@ -27,9 +27,6 @@
             if (wasUiDirty) {
                 ui.updateCategoryTab(game.currentCategory);
                 ui.updateUnitButtons(game.currentCategory, game.playerStock, game.cooldowns, game.supply, game.spawnQueue);
-                ui.setSkillCount('emp', game.skillCharges.emp);
-                ui.setSkillCount('nuke', game.skillCharges.nuke);
-                ui.setSkillCount('tactical_missile', game.skillCharges.tactical);
                 ui.updateSpeedBtns(game.speed);
             }
 

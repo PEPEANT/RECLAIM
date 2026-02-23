@@ -14,7 +14,6 @@
         spawnJitter: 18, // frames
         checkInterval: 60, // analysis tick (frames)
         settings: {},
-        occupationWaveCaps: {},
         enableSafeAiV2: true,
         spawnControl: {
             recentWindow: 6,
@@ -23,7 +22,6 @@
         recentSpawnIds: [],
         spawnFamilyCooldownUntil: {},
         globalAliveCaps: {},
-        occupationSpawnProfiles: {},
         wave: {
             phase: 'HOLD',          // 'HOLD' | 'PUSH' | 'ASSAULT'
             wpIndex: 0,
@@ -80,12 +78,6 @@
             this.spawnFamilyCooldownUntil = {};
         }
 
-        const occupationStageId = (typeof this._getOccupationStageId === 'function')
-            ? this._getOccupationStageId()
-            : 0;
-        const isOccupationFinalStage = occupationStageId === 7;
-        const isOccupationEarlyStage = occupationStageId > 0 && occupationStageId <= 2;
-
         // [UPDATED] Dynamic Spawn Rate Logic - 초반 물량 완화
         let currentRate = this.settings[this.difficulty].rate;
 
@@ -94,15 +86,6 @@
         if (frame < EARLY_END) {
             // 초반에는 스폰 간격을 1.5배로 늘림
             currentRate = Math.max(currentRate * 1.5, 180);
-        }
-
-        // B-01: occupation early stages(1~2) tempo down for onboarding.
-        if (isOccupationEarlyStage) {
-            if (frame < 60 * 120) {
-                currentRate = Math.max(currentRate * 1.35, 230);
-            } else if (frame < 60 * 240) {
-                currentRate = Math.max(currentRate * 1.18, 185);
-            }
         }
 
         // Elite 난이도 추가 조정
@@ -116,11 +99,6 @@
         if (playerUnitCount > 10) {
             const reduction = Math.min(currentRate * 0.5, (playerUnitCount - 10) * 2);
             currentRate -= reduction;
-        }
-
-        if (isOccupationFinalStage) {
-            const tempoMult = (frame < 60 * 120) ? 0.88 : 0.72;
-            currentRate = Math.max(24, currentRate * tempoMult);
         }
 
         if (!Number.isFinite(this.nextSpawnAt) || this.nextSpawnAt <= 0) {
