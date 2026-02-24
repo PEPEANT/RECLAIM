@@ -188,7 +188,7 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="src/styles/style.css?v=20260223s51">
+    <link rel="stylesheet" href="src/styles/style.css?v=20260224s55">
     <link rel="stylesheet" href="src/styles/skirmish.css?v=20260216sc2">
     <!-- Google Fonts for Cyberpunk/Sci-fi look -->
     <link
@@ -343,10 +343,10 @@
             <button id="hud-all-retreat-btn" class="hud-top-btn hidden" data-hud-top-action="all_retreat" aria-label="All Retreat">
                 <i class="fa-solid fa-arrow-left"></i>
             </button>
-            <button id="hud-all-defense-btn" class="hud-top-btn hidden" data-hud-top-action="all_defense" aria-label="All Defense">
-                <i class="fa-solid fa-shield-halved"></i>
+            <button id="hud-all-attack-btn" class="hud-top-btn hidden" data-hud-top-action="all_stop" aria-label="All Stop">
+                <i class="fa-solid fa-pause"></i>
             </button>
-            <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_move" aria-label="All Move">
+            <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_attack" aria-label="All Attack">
                 <i class="fa-solid fa-arrow-right"></i>
             </button>
         </div>
@@ -360,19 +360,6 @@
         <div id="targeting-overlay"
             class="hidden pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-2xl z-30">
             <span id="target-msg" class="font-bold text-sm" data-lang="target_select">SELECT A TARGET</span>
-        </div>
-
-        <!-- [NEW] Game Timer + Mission Objective (Top Center) -->
-        <div id="hud-timer-container"
-            class="hidden fixed top-2 left-1/2 -translate-x-1/2 z-[95] flex items-center gap-2 pointer-events-auto">
-            <div id="hud-timer"
-                class="text-white text-lg md:text-2xl font-bold bg-black/40 px-3 py-1 rounded pointer-events-none">
-                00:00
-            </div>
-            <button id="btn-mission-objective" onclick="game.showMissionObjective()"
-                class="bg-blue-600/80 hover:bg-blue-500 text-white text-xs md:text-sm font-bold px-2 py-1 rounded border border-blue-400 shadow-lg transition-colors">
-                <i class="fa-solid fa-crosshairs mr-1"></i><span data-lang="mission_objective_btn">MISSION</span>
-            </button>
         </div>
 
         <!-- [NEW] Mission Objective Modal -->
@@ -541,52 +528,32 @@
         <!-- Battle-only flow: non-combat UI removed -->
         <div id="team-color-screen"
             class="hidden absolute inset-0 z-[55] bg-slate-950/95 flex flex-col items-center justify-center pointer-events-auto p-4">
-            <div class="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-5 md:p-6">
+            <div id="faction-panel" class="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-5 md:p-6">
                 <h2 class="text-xl md:text-2xl font-bold text-white tracking-wide">진영 선택</h2>
-                <p class="mt-2 text-sm text-slate-400">
-                    내 진영을 선택하면 적 진영은 자동으로 반대로 설정됩니다.
-                </p>
-
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+                <div id="faction-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
                     <button id="faction-btn-usa"
                         class="text-left bg-slate-800/70 border border-slate-700 rounded-lg p-4 hover:border-blue-400 transition-colors">
                         <div class="w-full h-28 rounded-md overflow-hidden border border-slate-600 mb-3 bg-slate-900">
-                            <img src="png/gonfalon/Us.png" alt="US flag" class="w-full h-full object-cover">
+                            <img src="png/gonfalon/Us.png" alt="US flag" class="w-full h-full object-contain">
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-base font-bold text-white">US 미군</span>
-                            <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#3b82f6"></span>
+                            <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#8b7a5a"></span>
                         </div>
-                        <p class="mt-2 text-xs text-slate-400">아군: US(파랑) / 적군: RS(초록)</p>
                     </button>
                     <button id="faction-btn-russia"
                         class="text-left bg-slate-800/70 border border-slate-700 rounded-lg p-4 hover:border-lime-400 transition-colors">
                         <div class="w-full h-28 rounded-md overflow-hidden border border-slate-600 mb-3 bg-slate-900">
-                            <img src="png/gonfalon/Rs.png" alt="Russia flag" class="w-full h-full object-cover">
+                            <img src="png/gonfalon/Rs.png" alt="Russia flag" class="w-full h-full object-contain">
                         </div>
                         <div class="flex items-center justify-between">
                             <span class="text-base font-bold text-white">RS 러시아</span>
                             <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#6b8e23"></span>
                         </div>
-                        <p class="mt-2 text-xs text-slate-400">아군: RS(초록) / 적군: US(파랑)</p>
                     </button>
                 </div>
 
-                <div class="mt-5 bg-slate-800/70 border border-slate-700 rounded-lg p-3">
-                    <div id="faction-selected-label" class="text-sm font-bold text-slate-100"></div>
-                    <div class="mt-2 flex items-center gap-3 text-xs text-slate-300">
-                        <span class="inline-flex items-center gap-2">
-                            아군
-                            <span id="faction-player-preview" class="inline-block w-4 h-4 rounded border border-slate-500"></span>
-                        </span>
-                        <span class="inline-flex items-center gap-2">
-                            적군
-                            <span id="faction-enemy-preview" class="inline-block w-4 h-4 rounded border border-slate-500"></span>
-                        </span>
-                    </div>
-                </div>
-
-                <div class="flex justify-end gap-2 mt-5">
+                <div id="faction-confirm-row" class="flex justify-end gap-2 mt-5">
                     <button id="faction-confirm-btn"
                         class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-400 text-sm font-bold">
                         진영 확정
@@ -598,20 +565,22 @@
         <div id="map-select-screen"
             class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
 
-            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest">작전 지역 선택</h2>
+            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest">Battle Area</h2>
 
-            <div class="grid grid-cols-1 gap-3 md:gap-6 w-full max-w-md px-2 md:px-4">
-                <button onclick="game.startGame('skirmish_kabul')" class="map-card group" data-map="skirmish_kabul">
+            <div id="battle-area-grid" class="grid grid-cols-1 gap-3 md:gap-6 w-full max-w-md px-2 md:px-4">
+                <button id="battle-area-kabul-card" onclick="window.playMapIntroAndStart ? window.playMapIntroAndStart('skirmish_kabul') : game.startGame('skirmish_kabul')" class="map-card group" data-map="skirmish_kabul">
                     <div class="h-32 relative overflow-hidden rounded-t-lg">
                         <img src="png/map/kavul.png" alt="Kabul map preview" class="w-full h-full object-cover">
                         <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-900/20 to-transparent"></div>
-                        <div class="absolute inset-0 flex items-center justify-center font-black text-2xl text-white/80 group-hover:text-white drop-shadow">
-                            카불
+                        <div class="absolute inset-0 flex flex-col items-center justify-center font-black text-2xl text-white/80 group-hover:text-white drop-shadow">
+                            <span style="text-shadow: 0 0 1px #000, 0 1px 2px #000;">카불 Kabul</span>
                         </div>
                     </div>
                     <div
                         class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
-                        <h3 class="font-bold text-white">카불</h3>
+                        <p class="text-xs leading-snug text-slate-300">
+                            2030년, 세계는 신제국 미합중국과 러시아 연방권으로 갈라지고, 아프간에서 국지전이 발생한다.
+                        </p>
                     </div>
                 </button>
             </div>
@@ -635,6 +604,16 @@
             class="fixed bottom-8 right-8 px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-lg border border-slate-600 hover:border-white transition-all duration-200 flex items-center gap-2 group">
             <span>스킵하기</span>
             <i class="fa-solid fa-forward group-hover:translate-x-1 transition-transform"></i>
+        </button>
+    </div>
+
+    <!-- Map Intro Modal -->
+    <div id="map-intro-modal" class="hidden fixed inset-0 z-[110] bg-black">
+        <video id="map-intro-video" class="absolute inset-0 w-full h-full object-contain bg-black" playsinline preload="auto"></video>
+        <button id="map-intro-skip-btn"
+            class="absolute px-4 py-2 bg-slate-800/85 hover:bg-slate-700 text-white rounded-lg border border-slate-600 hover:border-white transition-all duration-200 text-sm font-bold"
+            style="top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px));">
+            스킵하기
         </button>
     </div>
 
@@ -852,7 +831,7 @@
                         <span data-lang="cmd_skill3">SKILL 3</span>
                     </button>
 
-                    <button id="hud-cmd-interact" class="hud-cmd-btn hud-cmd-interact" data-hud-cmd="interact">
+                    <button id="hud-cmd-interact" class="hud-cmd-btn hud-cmd-interact hidden" data-hud-cmd="interact">
                         <span class="cmd-icon"><i class="fa-solid fa-hand-pointer"></i></span>
                         <span data-lang="cmd_interact">INTERACT</span>
                     </button>
@@ -869,20 +848,27 @@
                 <div id="mobile-dc-stick-knob" class="mobile-direct-stick-knob"></div>
             </div>
         </div>
-        <div class="mobile-direct-action-wrap">
+        <div class="mobile-direct-attack-wrap">
+            <button id="mobile-dc-stance" class="mobile-direct-action-btn mobile-direct-action-stance hidden" type="button" aria-label="Stance">
+                <span id="mobile-dc-stance-label" class="mobile-direct-stance-label">앉</span>
+            </button>
+            <button id="mobile-dc-attack" class="mobile-direct-action-btn mobile-direct-action-attack" type="button" aria-label="Attack">
+                <i class="fa-solid fa-gun"></i>
+            </button>
+        </div>
+        <div class="mobile-direct-skill-wrap">
             <div class="mobile-direct-action-grid">
-                <button id="mobile-dc-attack" class="mobile-direct-action-btn mobile-direct-action-attack" type="button" aria-label="Attack">
-                    <i class="fa-solid fa-gun"></i>
-                    <span>ATK</span>
+                <button id="mobile-dc-skill1" class="mobile-direct-action-btn mobile-direct-action-skill hidden" type="button" aria-label="Skill 1">
+                    <span class="mobile-direct-action-icon"><i class="fa-solid fa-bolt"></i></span>
+                    <span class="mobile-direct-action-label"></span>
                 </button>
-                <button id="mobile-dc-skill1" class="mobile-direct-action-btn" type="button" aria-label="Skill 1">
-                    <span>S1</span>
+                <button id="mobile-dc-skill2" class="mobile-direct-action-btn mobile-direct-action-skill hidden" type="button" aria-label="Skill 2">
+                    <span class="mobile-direct-action-icon"><i class="fa-solid fa-bolt"></i></span>
+                    <span class="mobile-direct-action-label"></span>
                 </button>
-                <button id="mobile-dc-skill2" class="mobile-direct-action-btn" type="button" aria-label="Skill 2">
-                    <span>S2</span>
-                </button>
-                <button id="mobile-dc-skill3" class="mobile-direct-action-btn" type="button" aria-label="Skill 3">
-                    <span>S3</span>
+                <button id="mobile-dc-skill3" class="mobile-direct-action-btn mobile-direct-action-skill hidden" type="button" aria-label="Skill 3">
+                    <span class="mobile-direct-action-icon"><i class="fa-solid fa-bolt"></i></span>
+                    <span class="mobile-direct-action-label"></span>
                 </button>
             </div>
             <div id="mobile-direct-status" class="mobile-direct-status">조종 대기</div>
@@ -906,7 +892,7 @@
     <!-- [ADD] IngameRenderer for unit wreckage rendering -->
     <script src="unit-editor/js/ingame-renderer.js"></script>
     <script src="src/entities/unit-render-utils.js?v=20260223ur4"></script>
-    <script src="src/entities/classes.js?v=20260224air26"></script>
+    <script src="src/entities/classes.js?v=20260224air32"></script>
     <script src="src/combat/projectile-designs.js?v=20260223pd2"></script>
     <!-- VFX (explosions / particles) -->
     <script src="src/vfx/explosion.js?v=20260223ex1"></script>
@@ -931,10 +917,10 @@
     <script src="src/ai/special/special_logic.js"></script>
     <script src="src/ai/tactics/orders.js"></script>
     <script src="src/ai/tactics/wave_controller.js"></script>
-    <script src="src/audio/audio.js?v=20260223a9"></script>
+    <script src="src/audio/audio.js?v=20260224a13"></script>
     <script src="src/i18n/lang.js?v=20260223l6"></script>
     <script src="src/core/version.js?v=20260223v3"></script>
-    <script src="src/units/drone/drone-behavior.js?v=20260223d2"></script>
+    <script src="src/units/drone/drone-behavior.js?v=20260224d4"></script>
     <script src="src/core/spatial.js?v=20260223sp2"></script>
     <script src="src/core/camera.js"></script>
     <script src="src/game/corpse.js"></script>
@@ -960,18 +946,18 @@
     <script src="src/render/unit-v2/units/aa_tank/render_parts.js?v=20260222aa1"></script>
     <script src="src/render/unit-v2/units/aa_tank/fx.js?v=20260222aa1"></script>
     <script src="src/render/unit-v2/units/aa_tank/index.js?v=20260222aa2"></script>
-    <script src="src/render/unit-v2/units/mbt/state.js"></script>
+    <script src="src/render/unit-v2/units/mbt/state.js?v=20260224mb2"></script>
     <script src="src/render/unit-v2/units/mbt/weapons.js"></script>
     <script src="src/render/unit-v2/units/mbt/render_body.js"></script>
     <script src="src/render/unit-v2/units/mbt/render_parts.js"></script>
     <script src="src/render/unit-v2/units/mbt/fx.js"></script>
-    <script src="src/render/unit-v2/units/mbt/index.js?v=20260222mb1"></script>
+    <script src="src/render/unit-v2/units/mbt/index.js?v=20260224mb2"></script>
     <script src="src/render/unit-v2/units/spg/state.js"></script>
-    <script src="src/render/unit-v2/units/spg/weapons.js"></script>
+    <script src="src/render/unit-v2/units/spg/weapons.js?v=20260224sp3"></script>
     <script src="src/render/unit-v2/units/spg/render_body.js"></script>
     <script src="src/render/unit-v2/units/spg/render_parts.js"></script>
     <script src="src/render/unit-v2/units/spg/fx.js"></script>
-    <script src="src/render/unit-v2/units/spg/index.js?v=20260222sp1"></script>
+    <script src="src/render/unit-v2/units/spg/index.js?v=20260224sp3"></script>
     <script src="src/render/unit-v2/units/infantry/state.js"></script>
     <script src="src/render/unit-v2/units/infantry/weapons.js"></script>
     <script src="src/render/unit-v2/units/infantry/render_body.js"></script>
@@ -1003,11 +989,11 @@
     <script src="src/render/unit-v2/units/special_ops/fx.js"></script>
     <script src="src/render/unit-v2/units/special_ops/index.js"></script>
     <!-- Apache V2 Renderer -->
-    <script src="src/render/unit-v2/units/apache/state.js"></script>
-    <script src="src/render/unit-v2/units/apache/weapons.js"></script>
+    <script src="src/render/unit-v2/units/apache/state.js?v=20260224ap1"></script>
+    <script src="src/render/unit-v2/units/apache/weapons.js?v=20260224ap2"></script>
     <script src="src/render/unit-v2/units/apache/render_body.js"></script>
     <script src="src/render/unit-v2/units/apache/fx.js"></script>
-    <script src="src/render/unit-v2/units/apache/index.js"></script>
+    <script src="src/render/unit-v2/units/apache/index.js?v=20260224ap2"></script>
     <!-- Fighter V2 Renderer -->
     <script src="src/render/unit-v2/units/fighter/state.js"></script>
     <script src="src/render/unit-v2/units/fighter/weapons.js"></script>
@@ -1022,37 +1008,37 @@
     <script src="src/render/unit-v2/units/bomber/fx.js?v=20260224bm1"></script>
     <script src="src/render/unit-v2/units/bomber/index.js?v=20260224bm1"></script>
     <!-- Chinook V2 Renderer -->
-    <script src="src/render/unit-v2/units/chinook/state.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/state.js?v=20260224ch2"></script>
     <script src="src/render/unit-v2/units/chinook/weapons.js?v=20260224ch1"></script>
-    <script src="src/render/unit-v2/units/chinook/render_body.js?v=20260224ch1"></script>
-    <script src="src/render/unit-v2/units/chinook/render_parts.js?v=20260224ch2"></script>
+    <script src="src/render/unit-v2/units/chinook/render_body.js?v=20260224ch2"></script>
+    <script src="src/render/unit-v2/units/chinook/render_parts.js?v=20260224ch6"></script>
     <script src="src/render/unit-v2/units/chinook/fx.js?v=20260224ch1"></script>
-    <script src="src/render/unit-v2/units/chinook/index.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/index.js?v=20260224ch2"></script>
     <!-- Blackhawk V2 Renderer -->
-    <script src="src/render/unit-v2/units/blackhawk/state.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/state.js?v=20260224uh60a6"></script>
     <script src="src/render/unit-v2/units/blackhawk/weapons.js?v=20260221uh60a5"></script>
-    <script src="src/render/unit-v2/units/blackhawk/render_body.js?v=20260221uh60a5"></script>
-    <script src="src/render/unit-v2/units/blackhawk/render_parts.js?v=20260222uh60a7"></script>
+    <script src="src/render/unit-v2/units/blackhawk/render_body.js?v=20260224uh60a7"></script>
+    <script src="src/render/unit-v2/units/blackhawk/render_parts.js?v=20260224uh60a8"></script>
     <script src="src/render/unit-v2/units/blackhawk/fx.js?v=20260221uh60a5"></script>
-    <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260224uh60a6"></script>
     <script src="src/render/unit-v2/index.js"></script>
     <script src="src/game/battle_economy.js"></script>
     <script src="src/game/game.js?v=20260224g36"></script>
-    <script src="src/units/drone/drone-manager.js?v=20260223dm1"></script>
-    <script src="src/units/drone/drone-commands.js?v=20260223dc1"></script>
+    <script src="src/units/drone/drone-manager.js?v=20260224dm2"></script>
+    <script src="src/units/drone/drone-commands.js?v=20260224dc2"></script>
     <script src="src/units/drone/drone-control.js"></script>
     <script src="src/game/runtime_loop.js?v=20260223r6"></script>
     <script src="src/game/app_persistence.js?v=20260224ap8"></script>
     <script src="src/game/app_runtime.js"></script>
-    <script src="src/game/input.js?v=20260223dc15"></script>
+    <script src="src/game/input.js?v=20260224dc19"></script>
     <script src="src/game/camera_controls.js"></script>
     <script src="src/game/victory.js?v=20260223v3"></script>
     <script src="src/game/map_setup.js?v=20260223ms2"></script>
     <script src="src/game/news.js"></script>
     <!-- Patch Modules (load order fixed) -->
     <!-- /Patch Modules -->
-    <script src="src/ui/hud.js?v=20260224h20"></script>
-    <script src="src/game/unit_commands.js?v=20260223uc12"></script>
+    <script src="src/ui/hud.js?v=20260224h21"></script>
+    <script src="src/game/unit_commands.js?v=20260224uc15"></script>
     <script src="src/render/news/news_intro.js"></script>
     <script src="src/render/news/news_overlay.js"></script>
 
@@ -1074,6 +1060,9 @@
                 if (mapSelectScreen) mapSelectScreen.classList.remove('hidden');
                 if (typeof game !== 'undefined' && game && typeof game.updateMapSelectLocks === 'function') {
                     game.updateMapSelectLocks();
+                }
+                if (typeof game !== 'undefined' && game && typeof game.playMapSelectBgm === 'function') {
+                    try { game.playMapSelectBgm(); } catch (_) { }
                 }
             };
 
@@ -1150,23 +1139,20 @@
                 loadNext(0);
             };
 
-            const ensureFactionSelection = (() => {
-                let done = false;
+            const openFactionSelection = (() => {
                 let pending = null;
 
-                return () => {
-                    if (done) return Promise.resolve(true);
+                return (options = null) => {
                     if (pending) return pending;
+                    const force = !!(options && options.force === true);
 
                     const api = window.TeamColors;
                     if (!api || typeof api.ensure !== 'function') {
-                        done = true;
                         return Promise.resolve(true);
                     }
 
                     api.ensure();
-                    if (typeof api.hasSelection === 'function' && api.hasSelection()) {
-                        done = true;
+                    if (!force && typeof api.hasSelection === 'function' && api.hasSelection()) {
                         return Promise.resolve(true);
                     }
 
@@ -1175,15 +1161,11 @@
                         const usaBtn = document.getElementById('faction-btn-usa');
                         const russiaBtn = document.getElementById('faction-btn-russia');
                         const confirmBtn = document.getElementById('faction-confirm-btn');
-                        const labelEl = document.getElementById('faction-selected-label');
-                        const playerPreview = document.getElementById('faction-player-preview');
-                        const enemyPreview = document.getElementById('faction-enemy-preview');
 
                         if (!screen || !confirmBtn || !usaBtn || !russiaBtn) {
                             if (typeof api.setFaction === 'function') {
                                 api.setFaction('usa', true);
                             }
-                            done = true;
                             pending = null;
                             resolve(true);
                             return;
@@ -1198,17 +1180,9 @@
                         let selectedFaction = (baseState && baseState.faction && fMap[baseState.faction]) ? baseState.faction : 'usa';
 
                         const render = () => {
-                            const f = fMap[selectedFaction] || fMap.usa || { player: '#3b82f6', enemy: '#6b8e23', name: '미군' };
                             if (typeof api.setFaction === 'function') api.setFaction(selectedFaction, false);
 
-                            if (labelEl) {
-                                const enemyName = selectedFaction === 'usa' ? 'RS 러시아' : 'US 미군';
-                                labelEl.textContent = `선택: ${f.name} (적군: ${enemyName})`;
-                            }
-                            if (playerPreview) playerPreview.style.background = f.player;
-                            if (enemyPreview) enemyPreview.style.background = f.enemy;
-
-                            usaBtn.style.borderColor = (selectedFaction === 'usa') ? '#60a5fa' : '#334155';
+                            usaBtn.style.borderColor = (selectedFaction === 'usa') ? '#b89b6e' : '#334155';
                             russiaBtn.style.borderColor = (selectedFaction === 'russia') ? '#a3e635' : '#334155';
                         };
 
@@ -1226,7 +1200,6 @@
                                 api.setFaction(selectedFaction, true);
                             }
                             screen.classList.add('hidden');
-                            done = true;
                             pending = null;
                             resolve(true);
                         };
@@ -1239,16 +1212,22 @@
                 };
             })();
 
+            window.__RECLAIM_SHOW_FACTION_SELECTION__ = (options = null) => openFactionSelection(options);
+
+            const showFactionThenMapSelect = (options = null) => {
+                openFactionSelection(options)
+                    .catch((err) => {
+                        console.warn('[Boot] faction selection failed:', err);
+                    })
+                    .finally(() => {
+                        showMapSelect();
+                    });
+            };
+
             const runBoot = async () => {
                 if (bootStarted) return;
                 bootStarted = true;
                 console.log('[Boot] cinematic bootstrap start');
-
-                try {
-                    await ensureFactionSelection();
-                } catch (err) {
-                    console.warn('[Boot] faction selection failed:', err);
-                }
 
                 const loadingScreen = document.getElementById('loading-screen');
                 if (loadingScreen) loadingScreen.classList.add('hidden');
@@ -1263,7 +1242,7 @@
                         if (!ok) {
                             console.error('[Boot] Cinematic API missing after script load attempts');
                             console.warn('[Boot] Cinematic API missing, fallback map-select');
-                            showMapSelect();
+                            showFactionThenMapSelect({ force: true });
                             return;
                         }
 
@@ -1285,11 +1264,11 @@
                             console.log('[Boot] Cinematic.play(force=true) invoke');
                             Cinematic.play(() => {
                                 console.log('[Cinematic] Playback complete');
-                                showMapSelect();
+                                showFactionThenMapSelect({ force: true });
                             }, { force: true });
                         } catch (err) {
                             console.error('[Cinematic] Play failed:', err);
-                            showMapSelect();
+                            showFactionThenMapSelect({ force: true });
                         }
                     });
                 }, 120);
@@ -1391,6 +1370,108 @@
             window.addEventListener('load', () => {
                 if (!gatePrepared) prepareBootGate();
             }, { once: true });
+        })();
+    </script>
+    <script>
+        (() => {
+            const MAP_INTRO_VIDEO_BY_MAP = Object.freeze({
+                skirmish_kabul: 'assets/tutorial/videos/Kabul.mp4'
+            });
+
+            let mapIntroPlaying = false;
+            let mapIntroMapId = '';
+
+            const stopMapSelectBgm = () => {
+                if (typeof game !== 'undefined' && game && typeof game.stopMapSelectBgm === 'function') {
+                    try { game.stopMapSelectBgm(); } catch (_) { }
+                }
+            };
+
+            const startMapGame = (mapId) => {
+                const target = String(mapId || '').trim();
+                if (!target) return;
+                if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') return;
+                game.startGame(target);
+            };
+
+            const playMapIntroAndStart = (mapId) => {
+                const target = String(mapId || '').trim();
+                const videoPath = MAP_INTRO_VIDEO_BY_MAP[target];
+                if (!target || !videoPath) {
+                    startMapGame(target);
+                    return;
+                }
+                if (mapIntroPlaying) return;
+
+                const modal = document.getElementById('map-intro-modal');
+                const video = document.getElementById('map-intro-video');
+                const skipBtn = document.getElementById('map-intro-skip-btn');
+                if (!modal || !video || !skipBtn) {
+                    startMapGame(target);
+                    return;
+                }
+
+                mapIntroPlaying = true;
+                mapIntroMapId = target;
+                stopMapSelectBgm();
+
+                const cleanup = () => {
+                    video.onended = null;
+                    video.onerror = null;
+                    skipBtn.onclick = null;
+                    try {
+                        video.pause();
+                        video.currentTime = 0;
+                    } catch (_) { }
+                    try {
+                        video.removeAttribute('src');
+                        video.load();
+                    } catch (_) { }
+                    modal.classList.add('hidden');
+                    mapIntroPlaying = false;
+                };
+
+                const finish = () => {
+                    const nextMapId = mapIntroMapId;
+                    mapIntroMapId = '';
+                    cleanup();
+                    startMapGame(nextMapId);
+                };
+
+                skipBtn.onclick = () => finish();
+                video.onended = () => finish();
+                video.onerror = () => {
+                    console.warn('[MapIntro] video playback failed. Fallback to start game.');
+                    finish();
+                };
+
+                modal.classList.remove('hidden');
+
+                try {
+                    video.pause();
+                    video.currentTime = 0;
+                    video.src = videoPath;
+                    video.defaultMuted = false;
+                    video.muted = false;
+                    video.volume = 1;
+                    video.setAttribute('playsinline', '');
+                    video.load();
+                } catch (err) {
+                    console.warn('[MapIntro] video init failed:', err);
+                    finish();
+                    return;
+                }
+
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch((err) => {
+                        console.warn('[MapIntro] autoplay blocked or failed:', err);
+                        finish();
+                    });
+                }
+            };
+
+            window.playMapIntroAndStart = playMapIntroAndStart;
         })();
     </script>
     <script>
