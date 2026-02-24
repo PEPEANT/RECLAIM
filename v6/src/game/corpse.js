@@ -339,7 +339,8 @@
                     team: this.team
                 }) === true;
             } catch (_) {
-                ok = false;
+                // Prevent occasional double-render fallback when V2 path partially draws then throws.
+                ok = (renderId === 'infantry');
             }
             ctx.restore();
             return ok;
@@ -371,6 +372,10 @@
             }
             else if (this._drawUnitRenderV2Corpse(ctx, applyFilter)) {
                 // handled by Unit Render V2 (infantry family)
+            }
+            else if (INFANTRY_CORPSE_IDS.has(String(this.typeKey || '').trim())) {
+                // Infantry-family corpses should not fallback to legacy renderer.
+                this.drawFallback(ctx);
             }
             else if (this.skin && typeof IngameRenderer !== 'undefined' && IngameRenderer.drawUnitSkin) {
                 const dummyUnit = {

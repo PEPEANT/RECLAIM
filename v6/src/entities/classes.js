@@ -925,16 +925,26 @@ class Unit extends Entity {
                 game._activeCameraman = null;
             }
 
-            // [NEW] 민간 차량 잔해 생성
-            const isCivilianVehicle = this.stats?.category === 'civilian' && ['civ_sedan', 'civ_suv', 'civ_bus'].includes(unitId);
-            if (isCivilianVehicle && typeof game !== 'undefined' && Array.isArray(game.wreckages)) {
+            const pushWreckage = (wreckId) => {
+                if (typeof game === 'undefined' || !Array.isArray(game.wreckages)) return;
+                const rawCap = Number(game.wreckageCap);
+                const cap = Number.isFinite(rawCap) ? Math.max(1, Math.floor(rawCap)) : 18;
+                if (cap > 0 && game.wreckages.length >= cap) {
+                    game.wreckages.shift();
+                }
                 game.wreckages.push(new Wreckage(
-                    unitId,
+                    wreckId,
                     this.x,
                     this.y,
                     this.facing,
                     this.team
                 ));
+            };
+
+            // [NEW] 민간 차량 잔해 생성
+            const isCivilianVehicle = this.stats?.category === 'civilian' && ['civ_sedan', 'civ_suv', 'civ_bus'].includes(unitId);
+            if (isCivilianVehicle) {
+                pushWreckage(unitId);
             }
 
             // [NEW] 보병/민간인 시체 생성 (보행 민간인 포함)
@@ -1005,15 +1015,7 @@ class Unit extends Entity {
                 // 험비/기갑: 사망 시 지상 폭발 + 잔해
                 if (isArmoredDeath) {
                     VFX.spawn(game, 'vehicle', this.x, this.y, { anchorGround: true });
-                    if (typeof game !== 'undefined' && Array.isArray(game.wreckages)) {
-                        game.wreckages.push(new Wreckage(
-                            this.stats.id,
-                            this.x,
-                            this.y,
-                            this.facing,
-                            this.team
-                        ));
-                    }
+                    pushWreckage(this.stats.id);
                     if (typeof game !== 'undefined' && game.createParticles) {
                         game.createParticles(this.x, this.y - 10, 8, '#333');
                     }
@@ -6766,7 +6768,11 @@ class Wreckage {
         this.facing = facing || 1;  // 좌우 방향
         this.team = team;
         this.life = 1.0;            // 1.0 → 0.0 fade
-        this.maxLife = 900;         // 15초 (60fps 기준)
+        this.isArmored = this._isArmoredWreck();
+        this.maxLife = this.isArmored ? 240 : 540; // 기갑 잔해는 더 짧게 유지
+        this.fadeStartRatio = this.isArmored ? 0.45 : 0.7;
+        this.smokeInterval = this.isArmored ? 85 : 40;
+        this.smokeParticleCount = this.isArmored ? 1 : 2;
         this.age = 0;
         this.smokeTimer = 0;
         this.tilt = (Math.random() - 0.5) * 0.1; // 약간의 기울어짐
@@ -6774,18 +6780,28 @@ class Wreckage {
 
     update() {
         this.age++;
-        // 70% 지점부터 fade out 시작
-        if (this.age > this.maxLife * 0.7) {
-            this.life = 1 - (this.age - this.maxLife * 0.7) / (this.maxLife * 0.3);
+        // 설정 비율 지점부터 fade out 시작
+        const fadeStart = Math.max(1, this.maxLife * this.fadeStartRatio);
+        const fadeSpan = Math.max(1, this.maxLife - fadeStart);
+        if (this.age > fadeStart) {
+            this.life = 1 - (this.age - fadeStart) / fadeSpan;
         }
         if (this.life <= 0) this.life = 0;
 
-        // 간헐적 연기 이펙트 (life > 0.3 일 때만)
+        // 간헐적 연기 이펙트 (기갑은 횟수/강도 축소)
         this.smokeTimer++;
-        if (this.smokeTimer > 25 && this.life > 0.3) {
+        const smokeLifeGate = this.isArmored ? 0.5 : 0.3;
+        if (this.smokeTimer >= this.smokeInterval && this.life > smokeLifeGate) {
             this.smokeTimer = 0;
             if (typeof game !== 'undefined' && game.createParticles) {
-                game.createParticles(this.x + (Math.random() - 0.5) * 20, this.y - 15, 2, '#333');
+                if (!this.isArmored || Math.random() < 0.5) {
+                    game.createParticles(
+                        this.x + (Math.random() - 0.5) * 20,
+                        this.y - 15,
+                        this.smokeParticleCount,
+                        '#333'
+                    );
+                }
             }
         }
     }
@@ -6805,8 +6821,8 @@ class Wreckage {
         }
 
         // Armored-only: do not use legacy wreck sprite/debris references.
-        if (this._isArmoredWreck()) {
-            this._drawArmoredRerenderWreck(ctx);
+        if (this.isArmored) {
+            this._drawArmoredLiteWreck(ctx);
             ctx.restore();
             return;
         }
@@ -6862,6 +6878,52 @@ class Wreckage {
         ctx.fillStyle = '#111827';
         ctx.fillRect(-(s.w * 0.45), (s.h * 0.24), s.w * 0.16, Math.max(2, s.h * 0.12));
         ctx.fillRect((s.w * 0.28), (s.h * 0.24), s.w * 0.17, Math.max(2, s.h * 0.12));
+        ctx.restore();
+    }
+
+    _drawArmoredLiteWreck(ctx) {
+        const id = this._normalizeArmoredRenderId(this.unitId);
+        const life = Math.max(0, Math.min(1, this.life));
+        const t = (Math.max(0, Number(this.age) || 0) * 0.11);
+        const overlaySize = {
+            humvee: { w: 22, h: 12 },
+            apc: { w: 25, h: 13 },
+            mbt: { w: 27, h: 14 },
+            spg: { w: 26, h: 13 },
+            aa_tank: { w: 25, h: 13 }
+        };
+        const s = overlaySize[id] || { w: 24, h: 10 };
+
+        ctx.save();
+        ctx.translate(0, -2);
+        ctx.globalAlpha = 0.34 * life;
+        ctx.fillStyle = 'rgba(0,0,0,0.75)';
+        ctx.beginPath();
+        ctx.ellipse(0, 7, s.w * 1.45, s.h * 0.9, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = Math.max(0.08, 0.2 * life);
+        ctx.fillStyle = 'rgba(28,28,28,0.85)';
+        ctx.beginPath();
+        ctx.ellipse((Math.sin(t * 0.7) * 2), -11, s.w * 0.46, s.h * 0.4, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        this._drawArmoredFallbackSilhouette(ctx, id);
+
+        ctx.globalAlpha = 0.48 * life;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.ellipse(-(s.w * 0.36), -3, s.w * 0.36, s.h * 0.28, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse((s.w * 0.28), -1, s.w * 0.28, s.h * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.globalAlpha = Math.max(0.05, 0.12 * life);
+        ctx.fillStyle = 'rgba(239,68,68,0.92)';
+        ctx.beginPath();
+        ctx.ellipse((s.w * 0.3), -5, s.w * 0.22, s.h * 0.18, 0, 0, Math.PI * 2);
+        ctx.fill();
         ctx.restore();
     }
 

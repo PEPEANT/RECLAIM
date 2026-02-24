@@ -92,6 +92,7 @@ const game = {
     _devLastPPressAt: 0,
 
     players: [], enemies: [], civilians: [], projectiles: [], particles: [], buildings: [], wreckages: [], corpses: [],
+    wreckageCap: 18,
     corpseCap: 30,
     corpseCapEnemyInfantry: 12,
     corpseFadeTimer: 180,         // default corpse lifetime (frames)
