@@ -19,6 +19,9 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            team = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(team);
+        }
         if (team === 'ally') team = 'player';
         if (team === 'foe') team = 'enemy';
         if (team === 'enemy') {
@@ -162,3 +165,4 @@
         registry.chinook = api;
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+

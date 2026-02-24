@@ -57,7 +57,11 @@
         if (!state) return false;
         deps.stateApi.updateState(unit, state);
 
-        var palette = (unit.team === 'enemy') ? PALETTE_ENEMY : PALETTE_PLAYER;
+        var paletteTeam = String(unit.team || 'player').trim().toLowerCase();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            paletteTeam = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(paletteTeam);
+        }
+        var palette = (paletteTeam === 'enemy') ? PALETTE_ENEMY : PALETTE_PLAYER;
 
         // ctx???대? (unit.x, unit.y) + scale(1.4) ?곹깭
         // APACHE_SCALE ??floatOffset ??facing ?곸슜

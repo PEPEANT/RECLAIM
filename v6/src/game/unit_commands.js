@@ -28,6 +28,7 @@
     const DIRECT_CONTROL_BLOCKED_IDS = new Set(['icbm', 'icbm_enemy', 'cameraman', 'worker']);
     const DIRECT_CONTROL_TRANSPORT_IDS = new Set(['blackhawk', 'uh60', 'chinook']);
     const DIRECT_CONTROL_AIM_LOCK_RADIUS = 220;
+    const DIRECT_CONTROL_MANUAL_AIM_STALE_FRAMES = 36;
 
     function ensureDirectControlState() {
         if (!game.directControl || typeof game.directControl !== 'object') {
@@ -206,14 +207,35 @@
         return target;
     }
 
+    function clearDirectControlManualAim(unit) {
+        if (!unit || typeof unit !== 'object') return;
+        unit.manualAimX = null;
+        unit.manualAimY = null;
+        unit.manualAimFrame = -1;
+    }
+
+    function getFreshDirectControlManualAim(unit, frameNow = NaN) {
+        if (!unit || unit.dead) return null;
+        const mx = Number(unit.manualAimX);
+        const my = Number(unit.manualAimY);
+        if (!Number.isFinite(mx) || !Number.isFinite(my)) return null;
+
+        const now = Number.isFinite(frameNow)
+            ? Number(frameNow)
+            : Number(game && game.frame);
+        if (Number.isFinite(now)) {
+            const aimFrame = Number(unit.manualAimFrame);
+            if (!Number.isFinite(aimFrame)) return null;
+            if ((now - aimFrame) > DIRECT_CONTROL_MANUAL_AIM_STALE_FRAMES) return null;
+        }
+        return { x: mx, y: my };
+    }
+
     function resolveDirectControlAim(unit) {
         if (!unit || unit.dead) return null;
 
-        const mx = Number(unit.manualAimX);
-        const my = Number(unit.manualAimY);
-        if (Number.isFinite(mx) && Number.isFinite(my)) {
-            return { x: mx, y: my };
-        }
+        const manualAim = getFreshDirectControlManualAim(unit);
+        if (manualAim) return manualAim;
 
         const target = resolveDirectControlAutoTarget(unit);
         if (target && Number.isFinite(Number(target.x))) {
@@ -357,6 +379,7 @@
         const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
         if (!unit || unit.dead) return false;
         unit._forcedInfantryStance = info.next;
+        unit._dcReleaseHold = true;
 
         if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
             ui.showToast(`자세 전환: ${info.nextLabel}`);
@@ -368,6 +391,65 @@
             && typeof window.MobileDirectControlUI.refresh === 'function') {
             window.MobileDirectControlUI.refresh();
         }
+        return true;
+    }
+
+    function normalizeInfantryStance(value) {
+        const raw = String(value || '').trim().toLowerCase();
+        if (raw === 'standing' || raw === 'crouching' || raw === 'prone') return raw;
+        return '';
+    }
+
+    function getCurrentInfantryRenderStance(unit) {
+        if (!unit || !unit._renderV2State || typeof unit._renderV2State !== 'object') return '';
+        const stateStore = unit._renderV2State;
+        const keys = ['infantry', 'sniper', 'special_ops', 'engineer', 'drone_operator'];
+        for (let i = 0; i < keys.length; i++) {
+            const st = stateStore[keys[i]];
+            const stance = normalizeInfantryStance(st && st.stance);
+            if (stance) return stance;
+        }
+        for (const k in stateStore) {
+            if (!Object.prototype.hasOwnProperty.call(stateStore, k)) continue;
+            const st = stateStore[k];
+            const stance = normalizeInfantryStance(st && st.stance);
+            if (stance) return stance;
+        }
+        return '';
+    }
+
+    function hasDirectControlReleaseHold(unit) {
+        return !!(unit && unit._dcReleaseHold === true);
+    }
+
+    function setDirectControlReleaseHold(unit, enabled = true) {
+        if (!unit || typeof unit !== 'object') return false;
+        unit._dcReleaseHold = !!enabled;
+        return true;
+    }
+
+    function clearAllDirectControlReleaseHold() {
+        const list = (game && Array.isArray(game.players)) ? game.players : [];
+        let changed = false;
+        for (let i = 0; i < list.length; i++) {
+            const u = list[i];
+            if (!u || u.dead || u.team !== 'player') continue;
+            if (u._dcReleaseHold === true) changed = true;
+            u._dcReleaseHold = false;
+        }
+        return changed;
+    }
+
+    function setDirectControlCameraFollow(unit, enabled = true) {
+        if (!game) return false;
+        if (!enabled) {
+            game.cameraLockActive = false;
+            game.cameraLockTarget = null;
+            return true;
+        }
+        if (!unit || unit.dead) return false;
+        game.cameraLockActive = true;
+        game.cameraLockTarget = unit;
         return true;
     }
 
@@ -392,11 +474,8 @@
     function fireDirectControlAuto(unit, opts = null) {
         if (!unit || unit.dead) return false;
         const id = String((unit.stats && unit.stats.id) || '');
-        const aimX = Number(unit.manualAimX);
-        const aimY = Number(unit.manualAimY);
-        let aim = (Number.isFinite(aimX) && Number.isFinite(aimY))
-            ? { x: aimX, y: aimY }
-            : null;
+        const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
+        let aim = getFreshDirectControlManualAim(unit, frameNow);
         if (!aim) {
             aim = resolveDirectControlAim(unit);
             if (aim && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
@@ -413,7 +492,6 @@
         }
         if (!target) return false;
 
-        const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
         const channel = (opts && opts.channel === 'sub') ? 'sub' : 'main';
         const key = (channel === 'sub') ? '_mobileDirectSubLastFireFrame' : '_mobileDirectMainLastFireFrame';
         const defaultRate = (id === 'aa_tank') ? 10 : (id === 'apache' ? 18 : 24);
@@ -630,6 +708,8 @@
         target.commandTargetX = null;
         target.lockedTarget = null;
         target.attackTarget = null;
+        clearDirectControlManualAim(target);
+        setDirectControlCameraFollow(target, true);
 
         syncDirectControlSelection(target);
 
@@ -663,20 +743,43 @@
         state.weaponMode = 'main';
 
         if (unit && !unit.dead) {
-            unit.commandMode = 'attack';
+            const hasSavedHold = hasDirectControlReleaseHold(unit);
+            const forcedStance = normalizeInfantryStance(unit._forcedInfantryStance);
+            const infantryPoseHold = (
+                isDirectControlInfantryUnit(unit)
+                && (
+                    forcedStance === 'crouching'
+                    || forcedStance === 'prone'
+                )
+            );
+            const preserveHoldOnRelease = hasSavedHold || infantryPoseHold;
+
+            unit.commandMode = preserveHoldOnRelease ? 'stop' : 'attack';
             unit.returnToBase = false;
             unit.targetX = null;
             unit.targetY = null;
             unit.commandTargetX = null;
             unit.lockedTarget = null;
             unit.attackTarget = null;
-            if (isDirectControlInfantryUnit(unit)) {
+            clearDirectControlManualAim(unit);
+            if (isDirectControlInfantryUnit(unit) && preserveHoldOnRelease) {
+                // Preserve crouch/prone pose after direct-control release while unit holds position.
+                const stanceToKeep = (forcedStance === 'crouching' || forcedStance === 'prone')
+                    ? forcedStance
+                    : '';
+                if (stanceToKeep) {
+                    unit._forcedInfantryStance = stanceToKeep;
+                } else if (forcedStance === 'standing') {
+                    unit._forcedInfantryStance = null;
+                }
+            } else if (isDirectControlInfantryUnit(unit)) {
                 unit._forcedInfantryStance = null;
             }
             if (unit.stats && unit.stats.id === 'mbt' && typeof unit.stopManualTankMG === 'function') {
                 unit.stopManualTankMG(true);
             }
         }
+        setDirectControlCameraFollow(null, false);
 
         // Command cancel should also clear current selection marker.
         if (reason === 'cancel' || reason === 'escape') {
@@ -723,6 +826,8 @@
     game.startDirectControl = startDirectControl;
     game.stopDirectControl = stopDirectControl;
     game.toggleDirectControl = toggleDirectControl;
+    game.setDirectControlReleaseHold = setDirectControlReleaseHold;
+    game.clearAllDirectControlReleaseHold = clearAllDirectControlReleaseHold;
     game.setDirectControlKeyState = function (key, pressed) {
         const state = ensureDirectControlState();
         const k = String(key || '');
@@ -764,10 +869,18 @@
 
     function __clientToCanvas(clientX, clientY) {
         const wrapper = document.getElementById('game-wrapper');
-        const rect = wrapper ? wrapper.getBoundingClientRect() : { left: 0, top: 0 };
+        const rect = wrapper
+            ? wrapper.getBoundingClientRect()
+            : (game.canvas && typeof game.canvas.getBoundingClientRect === 'function'
+                ? game.canvas.getBoundingClientRect()
+                : { left: 0, top: 0, width: Number(game.width) || 1, height: Number(game.height) || 1 });
+        const viewW = Math.max(1, Number(game && game.width) || 1);
+        const viewH = Math.max(1, Number(game && game.height) || 1);
+        const scaleX = Math.max(0.0001, Number(rect.width) / viewW);
+        const scaleY = Math.max(0.0001, Number(rect.height) / viewH);
         return {
-            x: (clientX - rect.left) / (game.scaleRatio || 1),
-            y: (clientY - rect.top) / (game.scaleRatio || 1)
+            x: (clientX - rect.left) / scaleX,
+            y: (clientY - rect.top) / scaleY
         };
     }
 
@@ -853,6 +966,7 @@
                 if (typeof game.stopDirectControl === 'function') game.stopDirectControl('internal');
                 return;
             }
+            setDirectControlCameraFollow(this, true);
 
             const dcState = ensureDirectControlState();
             const keys = dcState.keys || {};
@@ -888,8 +1002,12 @@
             const unitCategory = String((this.stats && this.stats.category) || '').trim().toLowerCase();
             const unitType = String((this.stats && this.stats.type) || '').trim().toLowerCase();
             const isArmoredLike = (unitCategory === 'armored' || unitType === 'mech');
+            const isInfantryLike = (unitCategory === 'infantry' || unitType === 'bio');
             const sprintMul = (keys.shift && isArmoredLike) ? 1.45 : 1.0;
-            const moveSpeed = baseSpeed * ((this.stats && this.stats.type === 'air') ? 1.35 : 1.2) * sprintMul;
+            let moveSpeed = baseSpeed * ((this.stats && this.stats.type === 'air') ? 1.35 : 1.2) * sprintMul;
+            // Direct-control tuning: infantry/armored should not feel over-accelerated.
+            if (isInfantryLike) moveSpeed *= 0.72;
+            else if (isArmoredLike) moveSpeed *= 0.68;
             if (moveXAxis !== 0) {
                 this.x += moveXAxis * moveSpeed;
                 this.facing = (moveXAxis > 0) ? 1 : -1;
@@ -916,9 +1034,11 @@
                 this.depthZ = 0;
             }
 
-            const hasManualAim = Number.isFinite(this.manualAimX) && Number.isFinite(this.manualAimY);
-            if (moveXAxis === 0 && hasManualAim) {
-                const aimDx = Number(this.manualAimX) - Number(this.x);
+            const frameNow = Number.isFinite(Number(game && game.frame)) ? Number(game.frame) : NaN;
+            const manualAim = getFreshDirectControlManualAim(this, frameNow);
+            const hasManualAim = !!manualAim;
+            if (moveXAxis === 0 && manualAim) {
+                const aimDx = Number(manualAim.x) - Number(this.x);
                 if (Math.abs(aimDx) > 4) {
                     this.facing = (aimDx >= 0) ? 1 : -1;
                 }
@@ -942,12 +1062,14 @@
                 if (this.y > maxY) this.y = maxY;
                 this.rotorAngle += 1.0;
             } else {
-                const groundMoveStep = Math.max(0.45, baseSpeed * 1.05);
+                let groundMoveStep = Math.max(0.45, baseSpeed * 1.05);
+                if (isInfantryLike) groundMoveStep *= 0.78;
+                else if (isArmoredLike) groundMoveStep *= 0.74;
                 if (moveDepthAxis !== 0) {
                     const baseTargetY = Number.isFinite(this.targetY)
                         ? this.targetY
                         : (Number.isFinite(this.y) ? this.y : Number(game.groundY));
-                    const nextTargetY = baseTargetY + (moveDepthAxis * groundMoveStep * 3.2);
+                    const nextTargetY = baseTargetY + (moveDepthAxis * groundMoveStep * 2.4);
                     this.targetY = (typeof game.clampGroundLaneY === 'function')
                         ? game.clampGroundLaneY(nextTargetY)
                         : nextTargetY;
@@ -968,7 +1090,7 @@
                 const targetingActive = !!(game && game.targetingType);
                 if (this.manualMgHeld === true && hasManualAim && !buildActive && !targetingActive) {
                     if (typeof this.tryManualTankMGFire === 'function') {
-                        this.tryManualTankMGFire(this.manualAimX, this.manualAimY);
+                        this.tryManualTankMGFire(manualAim.x, manualAim.y);
                     }
                 } else if (this.manualMgModeActive === true && typeof this.stopManualTankMG === 'function') {
                     this.stopManualTankMG(false);
@@ -1061,6 +1183,21 @@
                 if (icbmLaunching) {
                     __origUpdate.call(this, enemies, buildings);
                     return;
+                }
+
+                // Direct-control release hold: keep position, but still allow stop-mode auto fire.
+                if (this._dcReleaseHold === true) {
+                    this.targetX = null;
+                    this.commandTargetX = null;
+                    this.targetY = null;
+                    if (this.manualMgHeld === true) {
+                        this.manualMgHeld = false;
+                        if (typeof this.stopManualTankMG === 'function') {
+                            this.stopManualTankMG(true);
+                        } else if (typeof this._stopTankMGSound === 'function') {
+                            this._stopTankMGSound();
+                        }
+                    }
                 }
 
                 // 지상: 제자리 유지 + 사거리 내 자동 공격만 수행
@@ -1214,8 +1351,8 @@
         return !!(coarsePointer || touchCapable);
     }
 
-    function isUnitHit(u, wx, wy, soft = false) {
-        if (!u || u.dead) return false;
+    function getUnitHitProfile(u, soft = false) {
+        if (!u || u.dead) return null;
         const unitY = getUnitVisualY(u);
         const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
             ? Number(Camera.zoom)
@@ -1233,37 +1370,93 @@
         const extraAirPadY = isAir ? (coarseLike ? (soft ? 24 : 18) : 10) : 0;
         const extraArmorPadX = isArmoredLike ? (coarseLike ? (soft ? 20 : 14) : 8) : 0;
         const extraArmorPadY = isArmoredLike ? (coarseLike ? (soft ? 16 : 12) : 6) : 0;
-        const extraInfPadX = isInfantryLike ? (coarseLike ? (soft ? 40 : 30) : 12) : 0;
-        const extraInfPadY = isInfantryLike ? (coarseLike ? (soft ? 34 : 26) : 10) : 0;
+        const extraInfPadX = isInfantryLike ? (coarseLike ? (soft ? 14 : 10) : 4) : 0;
+        const extraInfPadY = isInfantryLike ? (coarseLike ? (soft ? 12 : 8) : 3) : 0;
         const padX = (padPxX + extraAirPadX + extraArmorPadX + extraInfPadX) / zoom;
         const padY = (padPxY + extraAirPadY + extraArmorPadY + extraInfPadY) / zoom;
-        const infWidthScale = isInfantryLike ? 1.35 : 1;
-        const infHeightScale = isInfantryLike ? 1.55 : 1;
+        const infWidthScale = isInfantryLike ? 1.18 : 1;
+        const infHeightScale = isInfantryLike ? 1.35 : 1;
         const baseHalfW = (Number(u.width || 0) / 2) * renderScale * infWidthScale;
         const baseH = Number(u.height || 0) * renderScale * infHeightScale;
         const minInfHalfW = isInfantryLike
-            ? ((coarseLike ? (soft ? 60 : 52) : (soft ? 36 : 30)) / zoom)
+            ? ((coarseLike ? (soft ? 30 : 26) : (soft ? 18 : 16)) / zoom)
             : 0;
         const minInfH = isInfantryLike
-            ? ((coarseLike ? (soft ? 82 : 70) : (soft ? 50 : 44)) / zoom)
+            ? ((coarseLike ? (soft ? 44 : 38) : (soft ? 28 : 24)) / zoom)
             : 0;
         const halfW = Math.max(baseHalfW, minInfHalfW);
         const bodyH = Math.max(baseH, minInfH);
         const infBottomPad = isInfantryLike
-            ? ((coarseLike ? (soft ? 22 : 18) : (soft ? 12 : 9)) / zoom)
+            ? ((coarseLike ? (soft ? 8 : 6) : (soft ? 4 : 3)) / zoom)
             : 0;
-        const left = u.x - halfW - padX;
-        const right = u.x + halfW + padX;
+        const left = (Number(u.x) || 0) - halfW - padX;
+        const right = (Number(u.x) || 0) + halfW + padX;
         const top = unitY - bodyH - padY;
         const bottom = unitY + padY + infBottomPad;
-        const boxHit = (wx >= left && wx <= right && wy >= top && wy <= bottom);
-        if (boxHit) return true;
+
+        let footBand = null;
+        let groundBand = null;
+        if (!isAir) {
+            const footHalfW = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 30 : 24) : (soft ? 18 : 14))
+                    : (isArmoredLike
+                        ? (coarseLike ? (soft ? 86 : 72) : (soft ? 58 : 46))
+                        : (coarseLike ? (soft ? 64 : 52) : (soft ? 40 : 32)))
+            ) / zoom;
+            const footTopPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 6 : 4) : (soft ? 3 : 2))
+                    : (coarseLike ? (soft ? 12 : 8) : (soft ? 7 : 5))
+            ) / zoom;
+            const footBottomPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 14 : 10) : (soft ? 8 : 6))
+                    : (coarseLike ? (soft ? 46 : 34) : (soft ? 28 : 20))
+            ) / zoom;
+            const cx = Number(u.x) || 0;
+            footBand = {
+                left: cx - footHalfW,
+                right: cx + footHalfW,
+                top: unitY - footTopPad,
+                bottom: unitY + footBottomPad
+            };
+
+            // Ground-anchor band: guarantees reliable "feet / under-body" picking.
+            // Uses lane-ground Y as fallback anchor because render feet can drift by skin/snap.
+            const rawGroundY = Number(u.y);
+            const groundY = Number.isFinite(rawGroundY) ? Math.max(unitY, rawGroundY) : unitY;
+            const groundHalfW = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 40 : 34) : (soft ? 26 : 22))
+                    : (isArmoredLike
+                        ? (coarseLike ? (soft ? 96 : 82) : (soft ? 68 : 56))
+                        : (coarseLike ? (soft ? 72 : 60) : (soft ? 46 : 38)))
+            ) / zoom;
+            const groundTopPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 12 : 9) : (soft ? 8 : 6))
+                    : (coarseLike ? (soft ? 14 : 10) : (soft ? 10 : 8))
+            ) / zoom;
+            const groundBottomPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 28 : 22) : (soft ? 20 : 16))
+                    : (isArmoredLike
+                        ? (coarseLike ? (soft ? 64 : 50) : (soft ? 42 : 34))
+                        : (coarseLike ? (soft ? 54 : 42) : (soft ? 36 : 28)))
+            ) / zoom;
+            groundBand = {
+                left: cx - groundHalfW,
+                right: cx + groundHalfW,
+                top: groundY - groundTopPad,
+                bottom: groundY + groundBottomPad
+            };
+        }
+
+        let ellipse = null;
         if (!isInfantryLike) {
-            // Non-infantry fallback ellipse: improves armored/air tap reliability while preserving intent.
             const cx = Number(u.x) || 0;
             const cy = unitY - (bodyH * (isAir ? 0.48 : 0.44));
-            const dx = (Number(wx) || 0) - cx;
-            const dy = (Number(wy) || 0) - cy;
             const rx = Math.max(
                 halfW * (isAir ? 1.05 : 0.95),
                 ((coarseLike ? (soft ? 96 : 82) : (soft ? 62 : 50)) / zoom)
@@ -1272,21 +1465,348 @@
                 bodyH * (isAir ? 0.82 : 0.74),
                 ((coarseLike ? (soft ? 84 : 72) : (soft ? 52 : 44)) / zoom)
             );
+            ellipse = { cx, cy, rx, ry };
+        }
+
+        let infantryFallback = null;
+        if (isInfantryLike) {
+            const baseR = ((coarseLike ? (soft ? 30 : 24) : (soft ? 18 : 15)) / zoom);
+            infantryFallback = {
+                headY: unitY - (bodyH * 0.88),
+                torsoY: unitY - (bodyH * 0.56),
+                baseR
+            };
+        }
+
+        return {
+            left, right, top, bottom,
+            footBand,
+            groundBand,
+            ellipse,
+            infantryFallback,
+            isInfantryLike,
+            coarseLike
+        };
+    }
+
+    // Client-space profile (screen pixels): keeps hitbox size stable across zoom.
+    function getUnitClientHitProfile(ownerGame, u, soft = false, metrics = null) {
+        if (!u || u.dead) return null;
+        const m = metrics || getClientProjectionMetrics(ownerGame);
+        if (!m) return null;
+
+        const unitWorldX = Number(u.x) || 0;
+        const unitWorldY = getUnitVisualY(u);
+        const unitClientX = worldToClientX(unitWorldX, m);
+        const unitClientY = worldToClientY(unitWorldY, m);
+        if (!Number.isFinite(unitClientX) || !Number.isFinite(unitClientY)) return null;
+
+        const scaleX = Math.max(0.0001, Number(m.scaleX) || 1);
+        const scaleY = Math.max(0.0001, Number(m.scaleY) || 1);
+        const coarseLike = isCoarseLikePointer();
+        const unitCategory = String((u.stats && u.stats.category) || '').trim().toLowerCase();
+        const unitType = String((u.stats && u.stats.type) || '').trim().toLowerCase();
+        const isAir = unitType === 'air';
+        const isInfantryLike = (unitCategory === 'infantry' || unitType === 'bio');
+        const isArmoredLike = (unitCategory === 'armored' || unitType === 'mech');
+        const renderScale = getUnitHitRenderScale(u);
+
+        const padPxX = coarseLike ? (soft ? 52 : 42) : 18;
+        const padPxY = coarseLike ? (soft ? 44 : 34) : 14;
+        const extraAirPadX = isAir ? (coarseLike ? (soft ? 30 : 24) : 12) : 0;
+        const extraAirPadY = isAir ? (coarseLike ? (soft ? 24 : 18) : 10) : 0;
+        const extraArmorPadX = isArmoredLike ? (coarseLike ? (soft ? 20 : 14) : 8) : 0;
+        const extraArmorPadY = isArmoredLike ? (coarseLike ? (soft ? 16 : 12) : 6) : 0;
+        const extraInfPadX = isInfantryLike ? (coarseLike ? (soft ? 14 : 10) : 4) : 0;
+        const extraInfPadY = isInfantryLike ? (coarseLike ? (soft ? 12 : 8) : 3) : 0;
+        const padX = padPxX + extraAirPadX + extraArmorPadX + extraInfPadX;
+        const padY = padPxY + extraAirPadY + extraArmorPadY + extraInfPadY;
+
+        // Keep hitbox dimensions in stable screen-pixel bands, independent from camera zoom.
+        const categoryBaseHalfW = isInfantryLike
+            ? 22
+            : (isArmoredLike ? 56 : (isAir ? 52 : 34));
+        const categoryBaseH = isInfantryLike
+            ? 52
+            : (isArmoredLike ? 50 : (isAir ? 58 : 46));
+        const coarseMul = coarseLike ? 1.28 : 1.0;
+        const softMul = soft ? 1.16 : 1.0;
+        const baseHalfW = categoryBaseHalfW * coarseMul * softMul;
+        const baseBodyH = categoryBaseH * coarseMul * softMul;
+
+        // Apply only a capped visual-size hint so very large hulls still feel fair,
+        // while preventing zoom from affecting hitbox dimensions.
+        const visualHalfWRaw = (Number(u.width || 0) / 2) * renderScale * scaleX;
+        const visualBodyHRaw = Number(u.height || 0) * renderScale * scaleY;
+        const maxVisualBoost = isInfantryLike ? 1.08 : (isAir ? 1.34 : 1.30);
+        const clampedVisualHalfW = Math.min(Math.max(0, visualHalfWRaw), baseHalfW * maxVisualBoost);
+        const clampedVisualBodyH = Math.min(Math.max(0, visualBodyHRaw), baseBodyH * maxVisualBoost);
+        const halfW = Math.max(baseHalfW, clampedVisualHalfW);
+        const bodyH = Math.max(baseBodyH, clampedVisualBodyH);
+        const infBottomPad = isInfantryLike
+            ? (coarseLike ? (soft ? 8 : 6) : (soft ? 4 : 3))
+            : 0;
+
+        const left = unitClientX - halfW - padX;
+        const right = unitClientX + halfW + padX;
+        const top = unitClientY - bodyH - padY;
+        const bottom = unitClientY + padY + infBottomPad;
+
+        let footBand = null;
+        let groundBand = null;
+        if (!isAir) {
+            const footHalfW = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 30 : 24) : (soft ? 18 : 14))
+                    : (isArmoredLike
+                        ? (coarseLike ? (soft ? 86 : 72) : (soft ? 58 : 46))
+                        : (coarseLike ? (soft ? 64 : 52) : (soft ? 40 : 32)))
+            );
+            const footTopPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 6 : 4) : (soft ? 3 : 2))
+                    : (coarseLike ? (soft ? 12 : 8) : (soft ? 7 : 5))
+            );
+            const footBottomPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 14 : 10) : (soft ? 8 : 6))
+                    : (coarseLike ? (soft ? 46 : 34) : (soft ? 28 : 20))
+            );
+            footBand = {
+                left: unitClientX - footHalfW,
+                right: unitClientX + footHalfW,
+                top: unitClientY - footTopPad,
+                bottom: unitClientY + footBottomPad
+            };
+
+            const rawGroundY = Number(u.y);
+            const groundWorldY = Number.isFinite(rawGroundY) ? Math.max(unitWorldY, rawGroundY) : unitWorldY;
+            const groundClientYRaw = worldToClientY(groundWorldY, m);
+            const groundClientY = Number.isFinite(groundClientYRaw) ? groundClientYRaw : unitClientY;
+            const groundHalfW = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 40 : 34) : (soft ? 26 : 22))
+                    : (isArmoredLike
+                        ? (coarseLike ? (soft ? 96 : 82) : (soft ? 68 : 56))
+                        : (coarseLike ? (soft ? 72 : 60) : (soft ? 46 : 38)))
+            );
+            const groundTopPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 12 : 9) : (soft ? 8 : 6))
+                    : (coarseLike ? (soft ? 14 : 10) : (soft ? 10 : 8))
+            );
+            const groundBottomPad = (
+                isInfantryLike
+                    ? (coarseLike ? (soft ? 28 : 22) : (soft ? 20 : 16))
+                    : (isArmoredLike
+                        ? (coarseLike ? (soft ? 64 : 50) : (soft ? 42 : 34))
+                        : (coarseLike ? (soft ? 54 : 42) : (soft ? 36 : 28)))
+            );
+            groundBand = {
+                left: unitClientX - groundHalfW,
+                right: unitClientX + groundHalfW,
+                top: groundClientY - groundTopPad,
+                bottom: groundClientY + groundBottomPad
+            };
+        }
+
+        let ellipse = null;
+        if (!isInfantryLike) {
+            const ecx = unitClientX;
+            const ecy = unitClientY - (bodyH * (isAir ? 0.48 : 0.44));
+            const rx = Math.max(
+                halfW * (isAir ? 1.05 : 0.95),
+                (coarseLike ? (soft ? 96 : 82) : (soft ? 62 : 50))
+            );
+            const ry = Math.max(
+                bodyH * (isAir ? 0.82 : 0.74),
+                (coarseLike ? (soft ? 84 : 72) : (soft ? 52 : 44))
+            );
+            ellipse = { cx: ecx, cy: ecy, rx, ry };
+        }
+
+        let infantryFallback = null;
+        if (isInfantryLike) {
+            const baseR = (coarseLike ? (soft ? 30 : 24) : (soft ? 18 : 15));
+            infantryFallback = {
+                headY: unitClientY - (bodyH * 0.88),
+                torsoY: unitClientY - (bodyH * 0.56),
+                baseR
+            };
+        }
+
+        return {
+            left, right, top, bottom,
+            footBand,
+            groundBand,
+            ellipse,
+            infantryFallback,
+            isInfantryLike,
+            coarseLike
+        };
+    }
+
+    function isUnitHit(u, wx, wy, soft = false) {
+        const profile = getUnitHitProfile(u, soft);
+        if (!profile) return false;
+        const boxHit = (
+            wx >= profile.left
+            && wx <= profile.right
+            && wy >= profile.top
+            && wy <= profile.bottom
+        );
+        if (boxHit) return true;
+        if (profile.footBand) {
+            const footHit = (
+                wx >= profile.footBand.left
+                && wx <= profile.footBand.right
+                && wy >= profile.footBand.top
+                && wy <= profile.footBand.bottom
+            );
+            if (footHit) return true;
+        }
+        if (profile.groundBand) {
+            const groundHit = (
+                wx >= profile.groundBand.left
+                && wx <= profile.groundBand.right
+                && wy >= profile.groundBand.top
+                && wy <= profile.groundBand.bottom
+            );
+            if (groundHit) return true;
+        }
+        if (!profile.isInfantryLike && profile.ellipse) {
+            // Non-infantry fallback ellipse: improves armored/air tap reliability while preserving intent.
+            const dx = (Number(wx) || 0) - profile.ellipse.cx;
+            const dy = (Number(wy) || 0) - profile.ellipse.cy;
+            const rx = profile.ellipse.rx;
+            const ry = profile.ellipse.ry;
             const nx = dx / Math.max(1, rx);
             const ny = dy / Math.max(1, ry);
             return ((nx * nx) + (ny * ny)) <= 1.0;
         }
 
         // Infantry fallback: prioritize head/torso proximity so small units stay reliably clickable.
-        const headY = unitY - (bodyH * 0.88);
-        const torsoY = unitY - (bodyH * 0.56);
-        const baseR = ((coarseLike ? (soft ? 68 : 58) : (soft ? 46 : 40)) / zoom);
+        if (!profile.infantryFallback) return false;
         const headDx = Math.abs((Number(wx) || 0) - (Number(u.x) || 0));
-        const headDy = Math.abs((Number(wy) || 0) - headY);
+        const headDy = Math.abs((Number(wy) || 0) - profile.infantryFallback.headY);
+        const baseR = profile.infantryFallback.baseR;
         if (headDx <= (baseR * 0.95) && headDy <= (baseR * 1.05)) return true;
-        const torsoDy = Math.abs((Number(wy) || 0) - torsoY);
+        const torsoDy = Math.abs((Number(wy) || 0) - profile.infantryFallback.torsoY);
         if (headDx <= (baseR * 1.12) && torsoDy <= (baseR * 1.25)) return true;
         return false;
+    }
+
+    function isNearUnitHitbox(u, wx, wy, nearPx = 16) {
+        const profile = getUnitHitProfile(u, false);
+        if (!profile) return false;
+        const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
+            ? Number(Camera.zoom)
+            : 1;
+        const nearWorld = Math.max(0, Number(nearPx) || 0) / zoom;
+        if (nearWorld <= 0.001) return false;
+
+        const rectDistSq = (left, right, top, bottom) => {
+            const dx = (wx < left) ? (left - wx) : ((wx > right) ? (wx - right) : 0);
+            const dy = (wy < top) ? (top - wy) : ((wy > bottom) ? (wy - bottom) : 0);
+            return (dx * dx) + (dy * dy);
+        };
+
+        let minDistSq = rectDistSq(profile.left, profile.right, profile.top, profile.bottom);
+        if (profile.footBand) {
+            const footDistSq = rectDistSq(
+                profile.footBand.left,
+                profile.footBand.right,
+                profile.footBand.top,
+                profile.footBand.bottom
+            );
+            if (footDistSq < minDistSq) minDistSq = footDistSq;
+        }
+        if (profile.groundBand) {
+            const groundDistSq = rectDistSq(
+                profile.groundBand.left,
+                profile.groundBand.right,
+                profile.groundBand.top,
+                profile.groundBand.bottom
+            );
+            if (groundDistSq < minDistSq) minDistSq = groundDistSq;
+        }
+        return minDistSq <= (nearWorld * nearWorld);
+    }
+
+    function isUnitHoverHit(u, wx, wy) {
+        if (!u || u.dead) return false;
+        if (isUnitHit(u, wx, wy)) return true;
+        const coarseLike = isCoarseLikePointer();
+        if (coarseLike && isUnitHit(u, wx, wy, true)) return true;
+        return isNearUnitHitbox(u, wx, wy, coarseLike ? 20 : 14);
+    }
+
+    function shouldShowUnitHitboxDebug() {
+        const debug = (game && game.debug && typeof game.debug === 'object') ? game.debug : null;
+        if (debug && Object.prototype.hasOwnProperty.call(debug, 'showUnitHitboxes')) {
+            return !!debug.showUnitHitboxes;
+        }
+        return false;
+    }
+
+    function drawUnitHitboxDebugOverlay(ctx, ownerGame) {
+        if (!ctx || !ownerGame || !shouldShowUnitHitboxDebug()) return;
+        const metrics = getClientProjectionMetrics(ownerGame);
+        if (!metrics) return;
+        const toViewX = (clientX) => ((Number(clientX) - Number(metrics.rect.left)) / Math.max(0.0001, Number(metrics.scaleX) || 1));
+        const toViewY = (clientY) => ((Number(clientY) - Number(metrics.rect.top)) / Math.max(0.0001, Number(metrics.scaleY) || 1));
+
+        const drawOne = (u, teamColor) => {
+            if (!u || u.dead) return;
+            const box = getUnitClientHitProfile(ownerGame, u, false, metrics);
+            if (!box) return;
+
+            let left = box.left;
+            let right = box.right;
+            let top = box.top;
+            let bottom = box.bottom;
+            if (box.footBand) {
+                left = Math.min(left, box.footBand.left);
+                right = Math.max(right, box.footBand.right);
+                top = Math.min(top, box.footBand.top);
+                bottom = Math.max(bottom, box.footBand.bottom);
+            }
+            if (box.groundBand) {
+                left = Math.min(left, box.groundBand.left);
+                right = Math.max(right, box.groundBand.right);
+                top = Math.min(top, box.groundBand.top);
+                bottom = Math.max(bottom, box.groundBand.bottom);
+            }
+            const x = toViewX(left);
+            const y = toViewY(top);
+            const w = Math.max(0, toViewX(right) - toViewX(left));
+            const h = Math.max(0, toViewY(bottom) - toViewY(top));
+            if (!(w > 0.001 && h > 0.001)) return;
+
+            ctx.strokeStyle = teamColor;
+            ctx.fillStyle = teamColor;
+            ctx.lineWidth = 1.8;
+            ctx.setLineDash([]);
+            ctx.globalAlpha = 0.88;
+            ctx.strokeRect(x, y, w, h);
+            ctx.globalAlpha = 0.08;
+            ctx.fillRect(x, y, w, h);
+
+            ctx.globalAlpha = 1.0;
+        };
+
+        ctx.save();
+        if (Array.isArray(ownerGame.players)) {
+            for (let i = 0; i < ownerGame.players.length; i++) {
+                drawOne(ownerGame.players[i], 'rgba(34, 197, 94, 1)');
+            }
+        }
+        if (Array.isArray(ownerGame.enemies)) {
+            for (let i = 0; i < ownerGame.enemies.length; i++) {
+                drawOne(ownerGame.enemies[i], 'rgba(239, 68, 68, 1)');
+            }
+        }
+        ctx.restore();
     }
 
     function getUnitHitScore(u, wx, wy) {
@@ -1378,44 +1898,67 @@
         return nextSeq;
     }
 
-    // ============================================
-    // F) game.checkUnitClick 援ы쁽 (?⑥씪 ?대┃ ?좉?)
-    // ============================================
-    game.checkUnitClick = function (wx, wy, opts = null) {
-        const keepSelectedOnRepeatTap = !!(opts && opts.keepSelectedOnRepeatTap);
-        const preferNearestHit = !!(opts && opts.preferNearestHit);
-        const singleSelect = !!(opts && opts.singleSelect);
-        const forcedNearRadiusPxRaw = Number(opts && opts.forceNearRadiusPx);
+    function collectPlayerHitCandidates(ownerGame, wx, wy, opts = null) {
+        const options = (opts && typeof opts === 'object') ? opts : {};
+        const coarseLike = (typeof options.coarseLike === 'boolean')
+            ? options.coarseLike
+            : isCoarseLikePointer();
+        const includeSoft = options.includeSoft !== false;
+        const includeNear = options.includeNear !== false;
+        const includeFarNear = options.includeFarNear !== false;
+        const preferNearest = !!options.preferNearest;
+        const ignoreUnit = options.ignoreUnit || null;
+        const nearPxRaw = Number(options.nearPx);
+        const nearPx = (Number.isFinite(nearPxRaw) && nearPxRaw > 0)
+            ? nearPxRaw
+            : (coarseLike ? 20 : 16);
+        const forcedNearRadiusPxRaw = Number(options.forceNearRadiusPx);
         const forcedNearRadiusPx = (Number.isFinite(forcedNearRadiusPxRaw) && forcedNearRadiusPxRaw > 0)
             ? forcedNearRadiusPxRaw
             : null;
+        const list = Array.isArray(ownerGame && ownerGame.players) ? ownerGame.players : [];
         const hitCandidates = [];
-        for (let i = 0; i < this.players.length; i++) {
-            const u = this.players[i];
+
+        for (let i = 0; i < list.length; i++) {
+            const u = list[i];
+            if (!u || u.dead || u === ignoreUnit) continue;
             if (!isUnitHit(u, wx, wy)) continue;
             hitCandidates.push(u);
         }
-        const coarseLike = isCoarseLikePointer();
-        if (hitCandidates.length === 0 && coarseLike) {
-            for (let i = 0; i < this.players.length; i++) {
-                const u = this.players[i];
+
+        if (hitCandidates.length === 0 && coarseLike && includeSoft) {
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || u === ignoreUnit) continue;
                 if (!isUnitHit(u, wx, wy, true)) continue;
                 hitCandidates.push(u);
             }
         }
-        // Near-click assist: even when pointer hover does not lock perfectly,
-        // pick the nearest player unit around the click radius.
-        if (hitCandidates.length === 0) {
+
+        if (hitCandidates.length === 0 && includeNear) {
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || u === ignoreUnit) continue;
+                if (!isNearUnitHitbox(u, wx, wy, nearPx)) continue;
+                hitCandidates.push(u);
+            }
+        }
+
+        if (hitCandidates.length === 0 && includeFarNear) {
             const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
                 ? Number(Camera.zoom)
                 : 1;
-            const nearPickRadius = ((forcedNearRadiusPx != null) ? forcedNearRadiusPx : (coarseLike ? 170 : 100)) / zoom;
+            const nearPickRadius = (
+                (forcedNearRadiusPx != null)
+                    ? forcedNearRadiusPx
+                    : (coarseLike ? 120 : 80)
+            ) / zoom;
             const nearPickRadiusSq = nearPickRadius * nearPickRadius;
             let nearest = null;
             let nearestScore = Number.POSITIVE_INFINITY;
-            for (let i = 0; i < this.players.length; i++) {
-                const u = this.players[i];
-                if (!u || u.dead) continue;
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || u === ignoreUnit) continue;
                 const score = getUnitHitScore(u, wx, wy);
                 if (!Number.isFinite(score)) continue;
                 if (score < nearestScore) {
@@ -1427,7 +1970,8 @@
                 hitCandidates.push(nearest);
             }
         }
-        if (preferNearestHit || coarseLike) {
+
+        if (preferNearest || coarseLike) {
             hitCandidates.sort((a, b) => {
                 const sa = getUnitHitScore(a, wx, wy);
                 const sb = getUnitHitScore(b, wx, wy);
@@ -1436,6 +1980,290 @@
             });
         } else {
             hitCandidates.sort((a, b) => getUnitRenderY(b) - getUnitRenderY(a));
+        }
+
+        return { candidates: hitCandidates, coarseLike };
+    }
+
+    function getClientProjectionMetrics(ownerGame) {
+        const wrapper = document.getElementById('game-wrapper');
+        const rect = wrapper
+            ? wrapper.getBoundingClientRect()
+            : (ownerGame && ownerGame.canvas && typeof ownerGame.canvas.getBoundingClientRect === 'function'
+                ? ownerGame.canvas.getBoundingClientRect()
+                : null);
+        if (!rect) return null;
+        const viewW = Math.max(1, Number(ownerGame && ownerGame.width) || 1);
+        const viewH = Math.max(1, Number(ownerGame && ownerGame.height) || 1);
+        const scaleX = Math.max(0.0001, rect.width / viewW);
+        const scaleY = Math.max(0.0001, rect.height / viewH);
+        const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
+            ? Number(Camera.zoom)
+            : 1;
+        const pivotRaw = (ownerGame && typeof ownerGame.getCameraPivotY === 'function')
+            ? Number(ownerGame.getCameraPivotY())
+            : Number(ownerGame && ownerGame.groundY);
+        const pivotY = Number.isFinite(pivotRaw) ? pivotRaw : Number(ownerGame && ownerGame.groundY || 0);
+        const cameraX = Number(ownerGame && ownerGame.cameraX) || 0;
+        return { rect, scaleX, scaleY, zoom, pivotY, cameraX };
+    }
+
+    function worldToClientX(wx, metrics) {
+        if (!metrics) return Number.NaN;
+        return Number(metrics.rect.left) + (((Number(wx) || 0) - Number(metrics.cameraX)) * Number(metrics.zoom) * Number(metrics.scaleX));
+    }
+
+    function worldToClientY(wy, metrics) {
+        if (!metrics) return Number.NaN;
+        const y = Number(wy) || 0;
+        const viewY = Number(metrics.pivotY) + ((y - Number(metrics.pivotY)) * Number(metrics.zoom));
+        return Number(metrics.rect.top) + (viewY * Number(metrics.scaleY));
+    }
+
+    function clientRectDistSq(cx, cy, left, right, top, bottom) {
+        const dx = (cx < left) ? (left - cx) : ((cx > right) ? (cx - right) : 0);
+        const dy = (cy < top) ? (top - cy) : ((cy > bottom) ? (cy - bottom) : 0);
+        return (dx * dx) + (dy * dy);
+    }
+
+    function isClientHitProjectedProfile(ownerGame, u, clientX, clientY, opts = null) {
+        if (!u || u.dead) return false;
+        const options = (opts && typeof opts === 'object') ? opts : {};
+        const metrics = options.metrics || getClientProjectionMetrics(ownerGame);
+        if (!metrics) return false;
+        const soft = !!options.soft;
+        const nearPx = Math.max(0, Number(options.nearPx) || 0);
+        const cx = Number(clientX);
+        const cy = Number(clientY);
+        if (!Number.isFinite(cx) || !Number.isFinite(cy)) return false;
+        const profile = getUnitClientHitProfile(ownerGame, u, soft, metrics);
+        if (!profile) return false;
+
+        const left = Math.min(profile.left, profile.right);
+        const right = Math.max(profile.left, profile.right);
+        const top = Math.min(profile.top, profile.bottom);
+        const bottom = Math.max(profile.top, profile.bottom);
+        const inMain = (cx >= left && cx <= right && cy >= top && cy <= bottom);
+        if (inMain) return true;
+
+        if (profile.footBand) {
+            const footLeft = Math.min(profile.footBand.left, profile.footBand.right);
+            const footRight = Math.max(profile.footBand.left, profile.footBand.right);
+            const footTop = Math.min(profile.footBand.top, profile.footBand.bottom);
+            const footBottom = Math.max(profile.footBand.top, profile.footBand.bottom);
+            const inFoot = (cx >= footLeft && cx <= footRight && cy >= footTop && cy <= footBottom);
+            if (inFoot) return true;
+        }
+        if (profile.groundBand) {
+            const groundLeft = Math.min(profile.groundBand.left, profile.groundBand.right);
+            const groundRight = Math.max(profile.groundBand.left, profile.groundBand.right);
+            const groundTop = Math.min(profile.groundBand.top, profile.groundBand.bottom);
+            const groundBottom = Math.max(profile.groundBand.top, profile.groundBand.bottom);
+            const inGround = (cx >= groundLeft && cx <= groundRight && cy >= groundTop && cy <= groundBottom);
+            if (inGround) return true;
+        }
+
+        if (nearPx <= 0.001) return false;
+        let minDistSq = clientRectDistSq(cx, cy, left, right, top, bottom);
+        if (profile.footBand) {
+            const footLeft = Math.min(profile.footBand.left, profile.footBand.right);
+            const footRight = Math.max(profile.footBand.left, profile.footBand.right);
+            const footTop = Math.min(profile.footBand.top, profile.footBand.bottom);
+            const footBottom = Math.max(profile.footBand.top, profile.footBand.bottom);
+            const footDistSq = clientRectDistSq(cx, cy, footLeft, footRight, footTop, footBottom);
+            if (footDistSq < minDistSq) minDistSq = footDistSq;
+        }
+        if (profile.groundBand) {
+            const groundLeft = Math.min(profile.groundBand.left, profile.groundBand.right);
+            const groundRight = Math.max(profile.groundBand.left, profile.groundBand.right);
+            const groundTop = Math.min(profile.groundBand.top, profile.groundBand.bottom);
+            const groundBottom = Math.max(profile.groundBand.top, profile.groundBand.bottom);
+            const groundDistSq = clientRectDistSq(cx, cy, groundLeft, groundRight, groundTop, groundBottom);
+            if (groundDistSq < minDistSq) minDistSq = groundDistSq;
+        }
+        return minDistSq <= (nearPx * nearPx);
+    }
+
+    function getUnitClientPickScore(ownerGame, u, clientX, clientY, metrics = null) {
+        if (!u || u.dead) return Number.POSITIVE_INFINITY;
+        const m = metrics || getClientProjectionMetrics(ownerGame);
+        if (!m) return Number.POSITIVE_INFINITY;
+        const unitX = Number(u.x) || 0;
+        const unitY = getUnitVisualY(u);
+        const sx = worldToClientX(unitX, m);
+        const sy = worldToClientY(unitY, m);
+        const dx = (Number(clientX) || 0) - sx;
+        const dy = (Number(clientY) || 0) - sy;
+        return (dx * dx) + (dy * dy);
+    }
+
+    function collectPlayerClientHitCandidates(ownerGame, clientX, clientY, opts = null) {
+        const options = (opts && typeof opts === 'object') ? opts : {};
+        const coarseLike = (typeof options.coarseLike === 'boolean')
+            ? options.coarseLike
+            : isCoarseLikePointer();
+        const includeSoft = options.includeSoft !== false;
+        const includeNear = options.includeNear !== false;
+        const includeFarNear = options.includeFarNear !== false;
+        const preferNearest = !!options.preferNearest;
+        const ignoreUnit = options.ignoreUnit || null;
+        const nearPxRaw = Number(options.nearPx);
+        const nearPx = (Number.isFinite(nearPxRaw) && nearPxRaw > 0)
+            ? nearPxRaw
+            : (coarseLike ? 20 : 16);
+        const forcedNearRadiusPxRaw = Number(options.forceNearRadiusPx);
+        const forcedNearRadiusPx = (Number.isFinite(forcedNearRadiusPxRaw) && forcedNearRadiusPxRaw > 0)
+            ? forcedNearRadiusPxRaw
+            : null;
+        const list = Array.isArray(ownerGame && ownerGame.players) ? ownerGame.players : [];
+        const hitCandidates = [];
+        const metrics = getClientProjectionMetrics(ownerGame);
+        if (!metrics) return { candidates: hitCandidates, coarseLike };
+
+        for (let i = 0; i < list.length; i++) {
+            const u = list[i];
+            if (!u || u.dead || u === ignoreUnit) continue;
+            if (!isClientHitProjectedProfile(ownerGame, u, clientX, clientY, { metrics, soft: false, nearPx: 0 })) continue;
+            hitCandidates.push(u);
+        }
+
+        if (hitCandidates.length === 0 && coarseLike && includeSoft) {
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || u === ignoreUnit) continue;
+                if (!isClientHitProjectedProfile(ownerGame, u, clientX, clientY, { metrics, soft: true, nearPx: 0 })) continue;
+                hitCandidates.push(u);
+            }
+        }
+
+        if (hitCandidates.length === 0 && includeNear) {
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || u === ignoreUnit) continue;
+                if (!isClientHitProjectedProfile(ownerGame, u, clientX, clientY, { metrics, soft: false, nearPx })) continue;
+                hitCandidates.push(u);
+            }
+        }
+
+        if (hitCandidates.length === 0 && includeFarNear) {
+            const nearPickRadius = (
+                (forcedNearRadiusPx != null)
+                    ? forcedNearRadiusPx
+                    : (coarseLike ? 120 : 80)
+            );
+            const nearPickRadiusSq = nearPickRadius * nearPickRadius;
+            let nearest = null;
+            let nearestScore = Number.POSITIVE_INFINITY;
+            for (let i = 0; i < list.length; i++) {
+                const u = list[i];
+                if (!u || u.dead || u === ignoreUnit) continue;
+                const score = getUnitClientPickScore(ownerGame, u, clientX, clientY, metrics);
+                if (!Number.isFinite(score)) continue;
+                if (score < nearestScore) {
+                    nearestScore = score;
+                    nearest = u;
+                }
+            }
+            if (nearest && nearestScore <= nearPickRadiusSq) {
+                hitCandidates.push(nearest);
+            }
+        }
+
+        if (preferNearest || coarseLike) {
+            hitCandidates.sort((a, b) => {
+                const sa = getUnitClientPickScore(ownerGame, a, clientX, clientY, metrics);
+                const sb = getUnitClientPickScore(ownerGame, b, clientX, clientY, metrics);
+                if (Math.abs(sa - sb) > 0.01) return sa - sb;
+                return getUnitRenderY(b) - getUnitRenderY(a);
+            });
+        } else {
+            hitCandidates.sort((a, b) => getUnitRenderY(b) - getUnitRenderY(a));
+        }
+
+        return { candidates: hitCandidates, coarseLike };
+    }
+
+    const unitHitTestApi = {
+        getProfile(u, soft = false) {
+            return getUnitHitProfile(u, !!soft);
+        },
+        hit(u, wx, wy, soft = false) {
+            return isUnitHit(u, wx, wy, !!soft);
+        },
+        hover(u, wx, wy) {
+            return isUnitHoverHit(u, wx, wy);
+        },
+        near(u, wx, wy, nearPx = 16) {
+            return isNearUnitHitbox(u, wx, wy, nearPx);
+        },
+        score(u, wx, wy) {
+            return getUnitHitScore(u, wx, wy);
+        },
+        getPlayerUnitAt(wx, wy, opts = null) {
+            const picked = collectPlayerHitCandidates(game, wx, wy, opts);
+            return (picked.candidates.length > 0) ? picked.candidates[0] : null;
+        },
+        getPlayerUnitAtClient(clientX, clientY, opts = null) {
+            const picked = collectPlayerClientHitCandidates(game, clientX, clientY, opts);
+            return (picked.candidates.length > 0) ? picked.candidates[0] : null;
+        },
+        hasPlayerUnitAt(wx, wy, ignoreUnit = null, opts = null) {
+            const options = Object.assign({}, (opts && typeof opts === 'object') ? opts : {});
+            options.ignoreUnit = ignoreUnit;
+            return !!this.getPlayerUnitAt(wx, wy, options);
+        },
+        hasPlayerUnitAtClient(clientX, clientY, ignoreUnit = null, opts = null) {
+            const options = Object.assign({}, (opts && typeof opts === 'object') ? opts : {});
+            options.ignoreUnit = ignoreUnit;
+            return !!this.getPlayerUnitAtClient(clientX, clientY, options);
+        }
+    };
+    game._unitHitTest = unitHitTestApi;
+
+    // ============================================
+    // F) game.checkUnitClick 援ы쁽 (?⑥씪 ?대┃ ?좉?)
+    // ============================================
+    game.checkUnitClick = function (wx, wy, opts = null) {
+        const keepSelectedOnRepeatTap = !!(opts && opts.keepSelectedOnRepeatTap);
+        const preferNearestHit = !!(opts && opts.preferNearestHit);
+        const singleSelect = !!(opts && opts.singleSelect);
+        const forcedNearRadiusPxRaw = Number(opts && opts.forceNearRadiusPx);
+        const forcedNearRadiusPx = (Number.isFinite(forcedNearRadiusPxRaw) && forcedNearRadiusPxRaw > 0)
+            ? forcedNearRadiusPxRaw
+            : null;
+        const clientX = Number(opts && opts.clientX);
+        const clientY = Number(opts && opts.clientY);
+        const hasClientPoint = Number.isFinite(clientX) && Number.isFinite(clientY);
+        const hitCandidates = [];
+        let coarseLike = isCoarseLikePointer();
+        if (hasClientPoint) {
+            const clientCollected = collectPlayerClientHitCandidates(this, clientX, clientY, {
+                coarseLike: coarseLike,
+                includeSoft: true,
+                includeNear: true,
+                includeFarNear: true,
+                preferNearest: preferNearestHit,
+                forceNearRadiusPx: forcedNearRadiusPx,
+                ignoreUnit: null
+            });
+            coarseLike = clientCollected.coarseLike;
+            if (clientCollected.candidates.length > 0) {
+                hitCandidates.push(...clientCollected.candidates);
+            }
+        } else {
+            const worldCollected = collectPlayerHitCandidates(this, wx, wy, {
+                coarseLike: coarseLike,
+                includeSoft: true,
+                includeNear: true,
+                includeFarNear: true,
+                preferNearest: preferNearestHit,
+                forceNearRadiusPx: forcedNearRadiusPx,
+                ignoreUnit: null
+            });
+            coarseLike = worldCollected.coarseLike;
+            if (worldCollected.candidates.length > 0) {
+                hitCandidates.push(...worldCollected.candidates);
+            }
         }
 
         // Overlap-cycle: repeated taps/clicks near the same stack cycle through candidates.
@@ -1477,9 +2305,28 @@
         }
 
         let lockedHit = false;
+        const nearPickPx = coarseLike ? 20 : 16;
+        const allowSoftHit = coarseLike;
+        const clientMetrics = hasClientPoint ? getClientProjectionMetrics(this) : null;
+        const useClientValidation = !!(hasClientPoint && clientMetrics);
         for (let i = 0; i < hitCandidates.length; i++) {
             const u = hitCandidates[i];
-            if (!isUnitHit(u, wx, wy) && !isUnitHit(u, wx, wy, true)) continue;
+            const strictHit = isUnitHit(u, wx, wy);
+            const softHit = allowSoftHit && isUnitHit(u, wx, wy, true);
+            const nearHit = isNearUnitHitbox(u, wx, wy, nearPickPx);
+            const clientStrictHit = useClientValidation && isClientHitProjectedProfile(this, u, clientX, clientY, {
+                metrics: clientMetrics, soft: false, nearPx: 0
+            });
+            const clientSoftHit = useClientValidation && allowSoftHit && isClientHitProjectedProfile(this, u, clientX, clientY, {
+                metrics: clientMetrics, soft: true, nearPx: 0
+            });
+            const clientNearHit = useClientValidation && isClientHitProjectedProfile(this, u, clientX, clientY, {
+                metrics: clientMetrics, soft: false, nearPx: nearPickPx
+            });
+            const validHit = useClientValidation
+                ? (clientStrictHit || clientSoftHit || clientNearHit)
+                : (strictHit || softHit || nearHit);
+            if (!validHit) continue;
 
             if (isLockedUnit(u)) {
                 lockedHit = true;
@@ -1748,6 +2595,9 @@
                     if (!droneRecalled) {
                         game.selectedUnits.forEach(u => {
                             if (!u.dead) {
+                                if (typeof setDirectControlReleaseHold === 'function') {
+                                    setDirectControlReleaseHold(u, false);
+                                }
                                 u.commandMode = 'retreat';
                                 u.returnToBase = true;
                                 u.targetX = null;
@@ -1765,6 +2615,19 @@
                 // (기존: stop/attack 등은 바로 적용)
                 game.selectedUnits.forEach(u => {
                     if (!u.dead) {
+                        if (cmd !== 'stop') {
+                            if (typeof setDirectControlReleaseHold === 'function') {
+                                setDirectControlReleaseHold(u, false);
+                            }
+                        }
+                        if (cmd === 'stop'
+                            && typeof game.isDirectControlActive === 'function'
+                            && game.isDirectControlActive()
+                            && typeof game.getDirectControlUnit === 'function'
+                            && game.getDirectControlUnit() === u
+                            && typeof setDirectControlReleaseHold === 'function') {
+                            setDirectControlReleaseHold(u, true);
+                        }
                         u.commandMode = cmd;
                         if (cmd === 'stop' || cmd === 'attack') {
                             u.targetX = null;
@@ -2002,15 +2865,19 @@
         __origDraw();
 
         const ctx = this.ctx;
+        drawUnitHitboxDebugOverlay(ctx, this);
 
         if (this.selectDragActive) {
             ctx.save();
 
             // [FIX] 줌 레벨 적용 - 선택 박스가 커서와 정확히 일치하도록
             const z = (typeof Camera !== 'undefined' && Camera.zoom) ? Camera.zoom : 1;
-            const gy = this.groundY;
+            const pivotRaw = (typeof this.getCameraPivotY === 'function')
+                ? Number(this.getCameraPivotY())
+                : Number(this.groundY);
+            const gy = Number.isFinite(pivotRaw) ? pivotRaw : Number(this.groundY || 0);
 
-            // 월드(view) → 스크린 변환(렌더와 동일: groundY 기준 스케일)
+            // 월드(view) → 스크린 변환(렌더와 동일: cameraPivotY 기준 스케일)
             const toSX = (worldX) => (worldX - this.cameraX) * z;
             const toSY = (viewY) => gy + (viewY - gy) * z;
 
@@ -2125,6 +2992,12 @@
             let hoverType = null;
             let hoverUnit = null;
 
+            const cursorClientX = Number(this.__cursor.clientX);
+            const cursorClientY = Number(this.__cursor.clientY);
+            const hoverMetrics = (Number.isFinite(cursorClientX) && Number.isFinite(cursorClientY))
+                ? getClientProjectionMetrics(this)
+                : null;
+            const useClientHover = !!hoverMetrics;
             const p = Camera.screenToView ? Camera.screenToView(this, this.__cursor.clientX, this.__cursor.clientY) : { x: this.__cursor.x, y: this.__cursor.y };
             const wx = p.x + this.cameraX;
             const wy = p.y;
@@ -2132,7 +3005,20 @@
             if (Array.isArray(this.players)) {
                 for (let i = this.players.length - 1; i >= 0; i--) {
                     const u = this.players[i];
-                    if (u && !u.dead && u.team === 'player' && isUnitHit(u, wx, wy)) {
+                    const hovered = useClientHover
+                        ? (
+                            isClientHitProjectedProfile(this, u, cursorClientX, cursorClientY, {
+                                metrics: hoverMetrics, soft: false, nearPx: 0
+                            })
+                            || isClientHitProjectedProfile(this, u, cursorClientX, cursorClientY, {
+                                metrics: hoverMetrics, soft: true, nearPx: 0
+                            })
+                            || isClientHitProjectedProfile(this, u, cursorClientX, cursorClientY, {
+                                metrics: hoverMetrics, soft: false, nearPx: 18
+                            })
+                        )
+                        : isUnitHoverHit(u, wx, wy);
+                    if (u && !u.dead && u.team === 'player' && hovered) {
                         isHovering = true;
                         hoverType = 'ally';
                         hoverUnit = u;
@@ -2143,7 +3029,20 @@
             if (!isHovering && Array.isArray(this.enemies)) {
                 for (let i = this.enemies.length - 1; i >= 0; i--) {
                     const u = this.enemies[i];
-                    if (u && !u.dead && u.team === 'enemy' && isUnitHit(u, wx, wy)) {
+                    const hovered = useClientHover
+                        ? (
+                            isClientHitProjectedProfile(this, u, cursorClientX, cursorClientY, {
+                                metrics: hoverMetrics, soft: false, nearPx: 0
+                            })
+                            || isClientHitProjectedProfile(this, u, cursorClientX, cursorClientY, {
+                                metrics: hoverMetrics, soft: true, nearPx: 0
+                            })
+                            || isClientHitProjectedProfile(this, u, cursorClientX, cursorClientY, {
+                                metrics: hoverMetrics, soft: false, nearPx: 18
+                            })
+                        )
+                        : isUnitHoverHit(u, wx, wy);
+                    if (u && !u.dead && u.team === 'enemy' && hovered) {
                         isHovering = true;
                         hoverType = 'enemy';
                         hoverUnit = u;
@@ -2158,7 +3057,39 @@
             ctx.save();
             ctx.translate(mx, my);
 
-            if (isHovering) {
+            const directControlActive = !!(
+                typeof this.isDirectControlActive === 'function'
+                && this.isDirectControlActive()
+                && typeof this.getDirectControlUnit === 'function'
+                && this.getDirectControlUnit()
+            );
+
+            if (directControlActive) {
+                // Direct-control cursor: always show explicit aim reticle on PC.
+                const aimColor = (hoverType === 'enemy') ? '#ff4d4d' : '#66ffd9';
+                const outerR = (hoverType === 'enemy') ? 12 : 11;
+                const innerR = 3;
+
+                ctx.strokeStyle = aimColor;
+                ctx.lineWidth = 2;
+                ctx.setLineDash((hoverType === 'enemy') ? [] : [4, 3]);
+                ctx.beginPath();
+                ctx.arc(0, 0, outerR, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.setLineDash([]);
+
+                ctx.beginPath();
+                ctx.moveTo(-outerR - 6, 0); ctx.lineTo(-innerR, 0);
+                ctx.moveTo(innerR, 0); ctx.lineTo(outerR + 6, 0);
+                ctx.moveTo(0, -outerR - 6); ctx.lineTo(0, -innerR);
+                ctx.moveTo(0, innerR); ctx.lineTo(0, outerR + 6);
+                ctx.stroke();
+
+                ctx.fillStyle = aimColor;
+                ctx.beginPath();
+                ctx.arc(0, 0, (hoverType === 'enemy') ? 2.2 : 1.8, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (isHovering) {
                 // Hover cursor (ally/enemy)
                 const targetColor = (hoverType === 'ally') ? '#00ff00' : '#ff3333';
                 const infantryHover = !!(hoverUnit && isInfantryLikeUnit(hoverUnit));

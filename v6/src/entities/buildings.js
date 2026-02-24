@@ -335,7 +335,6 @@ class Building extends Entity {
                     const targetId = target.stats ? target.stats.id : null;
                     const isDrone = targetId && (targetId.includes('drone') || targetId === 'tactical_drone');
                     const isArmoredOrAir = targetType === 'mech' || targetType === 'air';
-                    const isAirTarget = targetType === 'air';
 
                     const isEngineerMissileLocked = (t) => {
                         if (!t || t.dead) return false;
@@ -353,17 +352,18 @@ class Building extends Entity {
                         if (!t) return;
                         t._engMissileLock = {
                             team: this.team,
-                            until: game.frame + 40
+                            until: game.frame + 96
                         };
                     };
 
-                    if (isArmoredOrAir && !isDrone && !(isAirTarget && isEngineerMissileLocked(target))) {
+                    if (isArmoredOrAir && !isDrone && !isEngineerMissileLocked(target)) {
                         const shooter = this.garrisonUnits.find(u =>
                             u && !u.dead && (u.stats?.id === 'engineer' || u.stats?.id === 'rpg') && u.missileReady !== false
                         );
                         if (shooter) {
-                            if (isAirTarget) lockEngineerMissile(target);
-                            const missileDmg = shooter.stats?.missileDamage || 80;
+                            lockEngineerMissile(target);
+                            const missileDmgRaw = Number(shooter.stats?.missileDamage);
+                            const missileDmg = (Number.isFinite(missileDmgRaw) && missileDmgRaw > 0) ? missileDmgRaw : 120;
                             game.projectiles.push(new Projectile(this.x, this.y - this.height / 2, target, missileDmg, this.team, 'engineer_missile', { source: this }));
                             shooter.missileReady = false; // 1諛??쒗븳
                             this.lastShot = game.frame;

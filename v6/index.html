@@ -685,6 +685,8 @@
                             <div class="opt-video-control">
                                 <button id="opt-fullscreen-toggle" type="button" class="opt-video-toggle">전체화면 켜기</button>
                                 <div id="opt-fullscreen-state" class="opt-video-state">현재: 창 모드</div>
+                                <button id="opt-hitbox-toggle" type="button" class="opt-video-toggle">히트박스 켜기</button>
+                                <div id="opt-hitbox-state" class="opt-video-state">현재: 숨김</div>
                             </div>
                             <ul class="opt-info-list">
                                 <li>주소창/하단바 노출 시 화면 회전 후 다시 열면 복구됩니다.</li>
@@ -917,7 +919,7 @@
     <script src="src/ai/special/special_logic.js"></script>
     <script src="src/ai/tactics/orders.js"></script>
     <script src="src/ai/tactics/wave_controller.js"></script>
-    <script src="src/audio/audio.js?v=20260224a14"></script>
+    <script src="src/audio/audio.js?v=20260224a15"></script>
     <script src="src/i18n/lang.js?v=20260223l6"></script>
     <script src="src/core/version.js?v=20260223v3"></script>
     <script src="src/units/drone/drone-behavior.js?v=20260224d4"></script>
@@ -926,74 +928,74 @@
     <script src="src/game/corpse.js"></script>
     <script src="src/render/unit-v2/registry.js"></script>
     <script src="src/render/unit-v2/common/scale.js"></script>
-    <script src="src/render/unit-v2/common/palettes.js?v=20260224p2"></script>
+    <script src="src/render/unit-v2/common/palettes.js?v=20260224p3"></script>
     <script src="src/render/unit-v2/common/math.js"></script>
     <script src="src/render/unit-v2/units/humvee/state.js"></script>
     <script src="src/render/unit-v2/units/humvee/weapons.js"></script>
     <script src="src/render/unit-v2/units/humvee/render_body.js"></script>
     <script src="src/render/unit-v2/units/humvee/render_parts.js"></script>
     <script src="src/render/unit-v2/units/humvee/fx.js"></script>
-    <script src="src/render/unit-v2/units/humvee/index.js?v=20260222hv1"></script>
+    <script src="src/render/unit-v2/units/humvee/index.js?v=20260224hv2"></script>
     <script src="src/render/unit-v2/units/apc/state.js"></script>
     <script src="src/render/unit-v2/units/apc/weapons.js?v=20260224apw1"></script>
     <script src="src/render/unit-v2/units/apc/render_body.js"></script>
     <script src="src/render/unit-v2/units/apc/render_parts.js?v=20260224apr1"></script>
     <script src="src/render/unit-v2/units/apc/fx.js"></script>
-    <script src="src/render/unit-v2/units/apc/index.js?v=20260222ap1"></script>
+    <script src="src/render/unit-v2/units/apc/index.js?v=20260224ap2"></script>
     <script src="src/render/unit-v2/units/aa_tank/state.js?v=20260222aa1"></script>
     <script src="src/render/unit-v2/units/aa_tank/weapons.js?v=20260222aa1"></script>
     <script src="src/render/unit-v2/units/aa_tank/render_body.js?v=20260222aa1"></script>
     <script src="src/render/unit-v2/units/aa_tank/render_parts.js?v=20260222aa1"></script>
     <script src="src/render/unit-v2/units/aa_tank/fx.js?v=20260222aa1"></script>
-    <script src="src/render/unit-v2/units/aa_tank/index.js?v=20260222aa2"></script>
+    <script src="src/render/unit-v2/units/aa_tank/index.js?v=20260224aa3"></script>
     <script src="src/render/unit-v2/units/mbt/state.js?v=20260224mb2"></script>
     <script src="src/render/unit-v2/units/mbt/weapons.js"></script>
     <script src="src/render/unit-v2/units/mbt/render_body.js"></script>
     <script src="src/render/unit-v2/units/mbt/render_parts.js"></script>
     <script src="src/render/unit-v2/units/mbt/fx.js"></script>
-    <script src="src/render/unit-v2/units/mbt/index.js?v=20260224mb2"></script>
+    <script src="src/render/unit-v2/units/mbt/index.js?v=20260224mb3"></script>
     <script src="src/render/unit-v2/units/spg/state.js"></script>
     <script src="src/render/unit-v2/units/spg/weapons.js?v=20260224sp3"></script>
     <script src="src/render/unit-v2/units/spg/render_body.js"></script>
     <script src="src/render/unit-v2/units/spg/render_parts.js"></script>
     <script src="src/render/unit-v2/units/spg/fx.js"></script>
-    <script src="src/render/unit-v2/units/spg/index.js?v=20260224sp3"></script>
+    <script src="src/render/unit-v2/units/spg/index.js?v=20260224sp4"></script>
     <script src="src/render/unit-v2/units/infantry/state.js"></script>
     <script src="src/render/unit-v2/units/infantry/weapons.js"></script>
     <script src="src/render/unit-v2/units/infantry/render_body.js"></script>
     <script src="src/render/unit-v2/units/infantry/render_parts.js"></script>
     <script src="src/render/unit-v2/units/infantry/fx.js"></script>
-    <script src="src/render/unit-v2/units/infantry/index.js"></script>
+    <script src="src/render/unit-v2/units/infantry/index.js?v=20260224inf2"></script>
     <script src="src/render/unit-v2/units/engineer/state.js"></script>
     <script src="src/render/unit-v2/units/engineer/weapons.js"></script>
     <script src="src/render/unit-v2/units/engineer/render_body.js"></script>
     <script src="src/render/unit-v2/units/engineer/render_parts.js"></script>
     <script src="src/render/unit-v2/units/engineer/fx.js"></script>
-    <script src="src/render/unit-v2/units/engineer/index.js"></script>
+    <script src="src/render/unit-v2/units/engineer/index.js?v=20260224eng2"></script>
     <script src="src/render/unit-v2/units/drone_operator/state.js"></script>
     <script src="src/render/unit-v2/units/drone_operator/weapons.js"></script>
     <script src="src/render/unit-v2/units/drone_operator/render_body.js"></script>
     <script src="src/render/unit-v2/units/drone_operator/render_parts.js"></script>
     <script src="src/render/unit-v2/units/drone_operator/fx.js"></script>
-    <script src="src/render/unit-v2/units/drone_operator/index.js"></script>
+    <script src="src/render/unit-v2/units/drone_operator/index.js?v=20260224dop2"></script>
     <script src="src/render/unit-v2/units/sniper/state.js"></script>
     <script src="src/render/unit-v2/units/sniper/weapons.js"></script>
     <script src="src/render/unit-v2/units/sniper/render_body.js"></script>
     <script src="src/render/unit-v2/units/sniper/render_parts.js"></script>
     <script src="src/render/unit-v2/units/sniper/fx.js"></script>
-    <script src="src/render/unit-v2/units/sniper/index.js"></script>
+    <script src="src/render/unit-v2/units/sniper/index.js?v=20260224sn2"></script>
     <script src="src/render/unit-v2/units/special_ops/state.js"></script>
     <script src="src/render/unit-v2/units/special_ops/weapons.js"></script>
     <script src="src/render/unit-v2/units/special_ops/render_body.js"></script>
     <script src="src/render/unit-v2/units/special_ops/render_parts.js"></script>
     <script src="src/render/unit-v2/units/special_ops/fx.js"></script>
-    <script src="src/render/unit-v2/units/special_ops/index.js"></script>
+    <script src="src/render/unit-v2/units/special_ops/index.js?v=20260224so2"></script>
     <!-- Apache V2 Renderer -->
     <script src="src/render/unit-v2/units/apache/state.js?v=20260224ap1"></script>
     <script src="src/render/unit-v2/units/apache/weapons.js?v=20260224ap2"></script>
     <script src="src/render/unit-v2/units/apache/render_body.js"></script>
     <script src="src/render/unit-v2/units/apache/fx.js"></script>
-    <script src="src/render/unit-v2/units/apache/index.js?v=20260224ap2"></script>
+    <script src="src/render/unit-v2/units/apache/index.js?v=20260224ap3"></script>
     <!-- Fighter V2 Renderer -->
     <script src="src/render/unit-v2/units/fighter/state.js"></script>
     <script src="src/render/unit-v2/units/fighter/weapons.js"></script>
@@ -1003,24 +1005,24 @@
     <script src="src/render/unit-v2/units/fighter/index.js"></script>
     <!-- Bomber V2 Renderer -->
     <script src="src/render/unit-v2/units/bomber/state.js?v=20260224bm1"></script>
-    <script src="src/render/unit-v2/units/bomber/render_body.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/render_body.js?v=20260224bm2"></script>
     <script src="src/render/unit-v2/units/bomber/render_parts.js?v=20260224bm1"></script>
     <script src="src/render/unit-v2/units/bomber/fx.js?v=20260224bm1"></script>
-    <script src="src/render/unit-v2/units/bomber/index.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/index.js?v=20260224bm2"></script>
     <!-- Chinook V2 Renderer -->
     <script src="src/render/unit-v2/units/chinook/state.js?v=20260224ch2"></script>
     <script src="src/render/unit-v2/units/chinook/weapons.js?v=20260224ch1"></script>
     <script src="src/render/unit-v2/units/chinook/render_body.js?v=20260224ch2"></script>
     <script src="src/render/unit-v2/units/chinook/render_parts.js?v=20260224ch6"></script>
     <script src="src/render/unit-v2/units/chinook/fx.js?v=20260224ch1"></script>
-    <script src="src/render/unit-v2/units/chinook/index.js?v=20260224ch2"></script>
+    <script src="src/render/unit-v2/units/chinook/index.js?v=20260224ch3"></script>
     <!-- Blackhawk V2 Renderer -->
     <script src="src/render/unit-v2/units/blackhawk/state.js?v=20260224uh60a6"></script>
     <script src="src/render/unit-v2/units/blackhawk/weapons.js?v=20260221uh60a5"></script>
     <script src="src/render/unit-v2/units/blackhawk/render_body.js?v=20260224uh60a7"></script>
     <script src="src/render/unit-v2/units/blackhawk/render_parts.js?v=20260224uh60a8"></script>
     <script src="src/render/unit-v2/units/blackhawk/fx.js?v=20260221uh60a5"></script>
-    <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260224uh60a6"></script>
+    <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260224uh60a7"></script>
     <script src="src/render/unit-v2/index.js"></script>
     <script src="src/game/battle_economy.js"></script>
     <script src="src/game/game.js?v=20260224g42"></script>
@@ -1032,18 +1034,18 @@
     <script src="src/game/app_runtime.js"></script>
     <script src="src/game/input.js?v=20260224dc40"></script>
     <script src="src/game/camera_controls.js"></script>
-    <script src="src/game/victory.js?v=20260224v6"></script>
+    <script src="src/game/victory.js?v=20260224v7"></script>
     <script src="src/game/map_setup.js?v=20260223ms2"></script>
     <script src="src/game/news.js"></script>
     <!-- Patch Modules (load order fixed) -->
     <!-- /Patch Modules -->
-    <script src="src/ui/hud.js?v=20260224h26"></script>
-    <script src="src/game/unit_commands.js?v=20260224uc30"></script>
+    <script src="src/ui/hud.js?v=20260224h27"></script>
+    <script src="src/game/unit_commands.js?v=20260224uc32"></script>
     <script src="src/render/news/news_intro.js"></script>
     <script src="src/render/news/news_overlay.js"></script>
 
     <!-- Cinematic System -->
-    <script src="src/ui/cinematic.js?v=20260221c4"></script>
+    <script src="src/ui/cinematic.js?v=20260224c7"></script>
     <script>
         // 시작 시 사용자 제스처로 오디오를 먼저 unlock한 뒤 시네마틱 부팅
         (() => {
@@ -1112,7 +1114,7 @@
                 cinematicLoaderStarted = true;
 
                 const candidates = [
-                    'src/ui/cinematic.js?v=20260221c4',
+                    'src/ui/cinematic.js?v=20260224c7',
                     'src/ui/cinematic.js'
                 ];
 
@@ -1381,7 +1383,10 @@
     <script>
         (() => {
             const MAP_INTRO_VIDEO_BY_MAP = Object.freeze({
-                skirmish_kabul: 'assets/tutorial/videos/Kabul.mp4'
+                skirmish_kabul: 'assets/tutorial/videos/0221.mp4'
+            });
+            const MAP_INTRO_BGM_BY_MAP = Object.freeze({
+                skirmish_kabul: 'bgm/ost/freesound.mp3'
             });
 
             let mapIntroPlaying = false;
@@ -1403,6 +1408,7 @@
             const playMapIntroAndStart = (mapId) => {
                 const target = String(mapId || '').trim();
                 const videoPath = MAP_INTRO_VIDEO_BY_MAP[target];
+                const bgmPath = String(MAP_INTRO_BGM_BY_MAP[target] || '').trim();
                 if (!target || !videoPath) {
                     startMapGame(target);
                     return;
@@ -1420,11 +1426,24 @@
                 mapIntroPlaying = true;
                 mapIntroMapId = target;
                 stopMapSelectBgm();
+                let introAudio = null;
+
+                const stopIntroAudio = () => {
+                    if (!introAudio) return;
+                    try {
+                        introAudio.pause();
+                        introAudio.currentTime = 0;
+                    } catch (_) { }
+                    introAudio.onended = null;
+                    introAudio.onerror = null;
+                    introAudio = null;
+                };
 
                 const cleanup = () => {
                     video.onended = null;
                     video.onerror = null;
                     skipBtn.onclick = null;
+                    stopIntroAudio();
                     try {
                         video.pause();
                         video.currentTime = 0;
@@ -1457,9 +1476,9 @@
                     video.pause();
                     video.currentTime = 0;
                     video.src = videoPath;
-                    video.defaultMuted = false;
-                    video.muted = false;
-                    video.volume = 1;
+                    video.defaultMuted = !!bgmPath;
+                    video.muted = !!bgmPath;
+                    video.volume = bgmPath ? 0 : 1;
                     video.setAttribute('playsinline', '');
                     video.load();
                 } catch (err) {
@@ -1474,6 +1493,22 @@
                         console.warn('[MapIntro] autoplay blocked or failed:', err);
                         finish();
                     });
+                }
+                if (bgmPath) {
+                    try {
+                        introAudio = new Audio(bgmPath);
+                        introAudio.preload = 'auto';
+                        introAudio.loop = false;
+                        introAudio.volume = 1;
+                        const audioPlayPromise = introAudio.play();
+                        if (audioPlayPromise && typeof audioPlayPromise.catch === 'function') {
+                            audioPlayPromise.catch((err) => {
+                                console.warn('[MapIntro] BGM autoplay blocked or failed:', err);
+                            });
+                        }
+                    } catch (err) {
+                        console.warn('[MapIntro] BGM init failed:', err);
+                    }
                 }
             };
 

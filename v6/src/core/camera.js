@@ -31,9 +31,18 @@
 
         screenToView(game, clientX, clientY) {
             const wrapper = document.getElementById('game-wrapper');
-            const rect = wrapper.getBoundingClientRect();
-            const sx = (clientX - rect.left) / game.scaleRatio;
-            const sy = (clientY - rect.top) / game.scaleRatio;
+            const rect = wrapper
+                ? wrapper.getBoundingClientRect()
+                : (game && game.canvas && typeof game.canvas.getBoundingClientRect === 'function'
+                    ? game.canvas.getBoundingClientRect()
+                    : null);
+            if (!rect) return { x: 0, y: 0 };
+            const viewW = Math.max(1, Number(game && game.width) || 1);
+            const viewH = Math.max(1, Number(game && game.height) || 1);
+            const scaleX = Math.max(0.0001, rect.width / viewW);
+            const scaleY = Math.max(0.0001, rect.height / viewH);
+            const sx = (clientX - rect.left) / scaleX;
+            const sy = (clientY - rect.top) / scaleY;
             const viewX = sx / this.zoom;
             const pivotRaw = (game && typeof game.getCameraPivotY === 'function')
                 ? Number(game.getCameraPivotY())

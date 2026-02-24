@@ -1,4 +1,4 @@
-﻿// Unit Render V2 entry for: spg
+// Unit Render V2 entry for: spg
 // [SPG 고정 요구사항]
 // 1) K9 계열 차체/포탑 실루엣 반영
 // 2) 고각 조준 범위 유지 + 이동/전투 자세 분리
@@ -50,6 +50,9 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            team = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(team);
+        }
         if (team === 'enemy') {
             return {
                 base: '#8b7a5a',
@@ -287,3 +290,4 @@
         registry.spg = api;
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+

@@ -8,6 +8,7 @@ const ui = {
     _optTabsBound: false,
     _optFullscreenBound: false,
     _optFullscreenDocBound: false,
+    _optHitboxBound: false,
     _optActiveTab: 'general',
     _optContext: 'general',
     _exitAction: 'quit',
@@ -16,6 +17,7 @@ const ui = {
     init() {
         this.initUnitScroller();
         this.bindOptionFullscreenControl();
+        this.bindOptionHitboxControl();
     },
 
     ensureGlobalToastElement() {
@@ -795,6 +797,54 @@ const ui = {
         this.syncOptionFullscreenState();
     },
 
+    isHitboxDebugEnabled() {
+        const gameObj = (typeof game !== 'undefined') ? game : null;
+        if (!gameObj) return false;
+        if (!gameObj.debug || typeof gameObj.debug !== 'object') {
+            gameObj.debug = {};
+        }
+        if (!Object.prototype.hasOwnProperty.call(gameObj.debug, 'showUnitHitboxes')) {
+            gameObj.debug.showUnitHitboxes = false;
+        }
+        return gameObj.debug.showUnitHitboxes === true;
+    },
+
+    syncOptionHitboxState() {
+        const btn = document.getElementById('opt-hitbox-toggle');
+        const state = document.getElementById('opt-hitbox-state');
+        if (!btn) return;
+        const enabled = this.isHitboxDebugEnabled();
+        btn.innerText = enabled ? '히트박스 끄기' : '히트박스 켜기';
+        if (state) state.innerText = enabled ? '현재: 표시 중' : '현재: 숨김';
+    },
+
+    setHitboxDebugEnabled(enabled) {
+        const gameObj = (typeof game !== 'undefined') ? game : null;
+        if (!gameObj) return false;
+        if (!gameObj.debug || typeof gameObj.debug !== 'object') {
+            gameObj.debug = {};
+        }
+        gameObj.debug.showUnitHitboxes = !!enabled;
+        this.syncOptionHitboxState();
+        return true;
+    },
+
+    toggleOptionHitboxDebug() {
+        const next = !this.isHitboxDebugEnabled();
+        this.setHitboxDebugEnabled(next);
+    },
+
+    bindOptionHitboxControl() {
+        const toggleBtn = document.getElementById('opt-hitbox-toggle');
+        if (toggleBtn && !this._optHitboxBound) {
+            toggleBtn.addEventListener('click', () => {
+                this.toggleOptionHitboxDebug();
+            });
+            this._optHitboxBound = true;
+        }
+        this.syncOptionHitboxState();
+    },
+
     isElementVisibleById(id) {
         const el = document.getElementById(id);
         if (!el) return false;
@@ -933,6 +983,7 @@ const ui = {
         document.getElementById('option-modal').classList.add('active');
         this.bindOptionTabs();
         this.bindOptionFullscreenControl();
+        this.bindOptionHitboxControl();
         this.applyOptionContext(context);
 
         let defaultTab = 'gameplay';

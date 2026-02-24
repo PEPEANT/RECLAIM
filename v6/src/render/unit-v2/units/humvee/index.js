@@ -1,4 +1,4 @@
-﻿// Unit Render V2 entry for: humvee
+// Unit Render V2 entry for: humvee
 (function attachUnitRenderV2_humvee(globalScope) {
     'use strict';
 
@@ -19,6 +19,9 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            team = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(team);
+        }
 
         if (team === 'enemy') {
             return {
@@ -196,3 +199,4 @@
         registry.humvee = api;
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+

@@ -9,6 +9,18 @@
                 return Camera.screenToView(this, clientX, clientY);
             };
 
+            const getClientScaleInfo = () => {
+                const wrapper = document.getElementById('game-wrapper');
+                const rect = wrapper
+                    ? wrapper.getBoundingClientRect()
+                    : this.canvas.getBoundingClientRect();
+                const viewW = Math.max(1, Number(this.width) || 1);
+                const viewH = Math.max(1, Number(this.height) || 1);
+                const scaleX = Math.max(0.0001, rect.width / viewW);
+                const scaleY = Math.max(0.0001, rect.height / viewH);
+                return { rect, scaleX, scaleY };
+            };
+
             // [NEW] Check if click/touch is inside HUD area (input blocking)
             // Note: HUD footer can become fullscreen in desktop split mode,
             // so Y-only checks cause false positives and block all canvas input.
@@ -130,10 +142,9 @@
             // Screen-space bounds check: independent from zoom/world conversion.
             // This keeps sky/top-area drag selectable when zoomed out.
             const isInsideCanvasClient = (clientX, clientY) => {
-                const wrapper = document.getElementById('game-wrapper');
-                const rect = wrapper ? wrapper.getBoundingClientRect() : this.canvas.getBoundingClientRect();
-                const sx = (clientX - rect.left) / (this.scaleRatio || 1);
-                const sy = (clientY - rect.top) / (this.scaleRatio || 1);
+                const scaleInfo = getClientScaleInfo();
+                const sx = (clientX - scaleInfo.rect.left) / scaleInfo.scaleX;
+                const sy = (clientY - scaleInfo.rect.top) / scaleInfo.scaleY;
                 return sx >= 0 && sx <= this.width && sy >= 0 && sy <= this.height;
             };
 
@@ -228,12 +239,14 @@
             let mobileTapSuppressed = false;
             let mobileTouchStartAt = 0;
             let lastTouchInputAt = 0;
+            let mobileTouchStartedOnSelectable = false;
 
             let tapStartClientX = 0, tapStartClientY = 0;
             let tapLastClientX = 0, tapLastClientY = 0;
             // Mobile tap should be forgiving; small finger drift must still count as selection.
             const TAP_THRESHOLD_PX = 34;
             const MOBILE_PAN_DEADZONE_PX = 24;
+            const MOBILE_PAN_DEADZONE_ON_SELECTABLE_PX = 36;
             const MOBILE_LONGPRESS_MS = 220;
             const GHOST_MOUSE_BLOCK_MS = 900;
 
@@ -299,159 +312,113 @@
                 return u;
             };
 
-            const isUnitHitAt = (u, wx, wy) => {
+            const detectCoarseLikePointer = () => {
+                let coarsePointer = false;
+                let touchCapable = false;
+                try {
+                    coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+                } catch (_) { }
+                try {
+                    touchCapable = (typeof navigator !== 'undefined')
+                        ? ((Number(navigator.maxTouchPoints) || 0) > 0)
+                        : false;
+                } catch (_) { }
+                return !!(coarsePointer || touchCapable);
+            };
+
+            const getUnitHitTestApi = () => {
+                const api = this && this._unitHitTest;
+                return (api && typeof api === 'object') ? api : null;
+            };
+
+            const isUnitHitAt = (u, wx, wy, opts = null) => {
+                const hitApi = getUnitHitTestApi();
+                const options = (opts && typeof opts === 'object') ? opts : {};
+                const coarseLike = (typeof options.coarseLike === 'boolean')
+                    ? options.coarseLike
+                    : detectCoarseLikePointer();
+                const nearPxRaw = Number(options.nearPx);
+                const nearPx = (Number.isFinite(nearPxRaw) && nearPxRaw > 0)
+                    ? nearPxRaw
+                    : (coarseLike ? 20 : 16);
+
+                if (hitApi && typeof hitApi.hit === 'function') {
+                    if (hitApi.hit(u, wx, wy, false)) return true;
+                    if (coarseLike && hitApi.hit(u, wx, wy, true)) return true;
+                    if (typeof hitApi.near === 'function') return !!hitApi.near(u, wx, wy, nearPx);
+                    return false;
+                }
+
                 if (!u || u.dead) return false;
-                const getHitRenderScale = (unit) => {
-                    const id = String((unit && unit.stats && unit.stats.id) || '').trim().toLowerCase();
-                    const armoredBoost = {
-                        humvee: 1.18,
-                        apc: 1.16,
-                        mbt: 1.16,
-                        spg: 1.16,
-                        aa_tank: 1.12,
-                        icbm: 1.16,
-                        icbm_enemy: 1.16
-                    };
-                    const boost = Number(armoredBoost[id]) || 1;
-                    return 1.4 * boost;
-                };
+                const halfW = Math.max(10, (Number(u.width) || 20) * 0.7);
+                const bodyH = Math.max(12, (Number(u.height) || 20) * 1.0);
                 const renderY = (typeof u.getRenderY === 'function')
                     ? Number(u.getRenderY())
                     : Number(u.y);
-                let unitY = Number.isFinite(renderY) ? renderY : Number(u.y || 0);
-                try {
-                    if (typeof u.computeFeetSnapDy === 'function') {
-                        const snapDy = Number(u.computeFeetSnapDy());
-                        if (Number.isFinite(snapDy)) unitY += snapDy;
-                    }
-                } catch (_) { }
-                const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
-                    ? Number(Camera.zoom)
-                    : 1;
-                let coarsePointer = false;
-                let touchCapable = false;
-                try {
-                    coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-                } catch (_) { }
-                try {
-                    touchCapable = (typeof navigator !== 'undefined')
-                        ? ((Number(navigator.maxTouchPoints) || 0) > 0)
-                        : false;
-                } catch (_) { }
-                const coarseLike = !!(coarsePointer || touchCapable);
-                const isAir = String((u.stats && u.stats.type) || '').trim().toLowerCase() === 'air';
-                const unitCategory = String((u.stats && u.stats.category) || '').trim().toLowerCase();
-                const unitType = String((u.stats && u.stats.type) || '').trim().toLowerCase();
-                const isInfantryLike = (unitCategory === 'infantry' || unitType === 'bio');
-                const isArmoredLike = (unitCategory === 'armored' || unitType === 'mech');
-                const renderScale = getHitRenderScale(u);
-                const padPxX = coarseLike ? 42 : 18;
-                const padPxY = coarseLike ? 34 : 14;
-                const extraAirPadX = isAir ? (coarseLike ? 24 : 12) : 0;
-                const extraAirPadY = isAir ? (coarseLike ? 18 : 10) : 0;
-                const extraArmorPadX = isArmoredLike ? (coarseLike ? 14 : 8) : 0;
-                const extraArmorPadY = isArmoredLike ? (coarseLike ? 12 : 6) : 0;
-                const extraInfPadX = isInfantryLike ? (coarseLike ? 30 : 12) : 0;
-                const extraInfPadY = isInfantryLike ? (coarseLike ? 26 : 10) : 0;
-                const padX = padPxX / zoom;
-                const padY = padPxY / zoom;
-                const airPadX = (extraAirPadX + extraArmorPadX) / zoom;
-                const airPadY = (extraAirPadY + extraArmorPadY) / zoom;
-                const infPadX = extraInfPadX / zoom;
-                const infPadY = extraInfPadY / zoom;
-                const infWidthScale = isInfantryLike ? 1.35 : 1;
-                const infHeightScale = isInfantryLike ? 1.55 : 1;
-                const baseHalfW = (Number(u.width || 0) / 2) * renderScale * infWidthScale;
-                const baseH = Number(u.height || 0) * renderScale * infHeightScale;
-                const minInfHalfW = isInfantryLike
-                    ? ((coarseLike ? 52 : 30) / zoom)
-                    : 0;
-                const minInfH = isInfantryLike
-                    ? ((coarseLike ? 70 : 44) / zoom)
-                    : 0;
-                const halfW = Math.max(baseHalfW, minInfHalfW);
-                const bodyH = Math.max(baseH, minInfH);
-                const infBottomPad = isInfantryLike
-                    ? ((coarseLike ? 18 : 9) / zoom)
-                    : 0;
-                const left = u.x - halfW - padX - airPadX - infPadX;
-                const right = u.x + halfW + padX + airPadX + infPadX;
-                const top = unitY - bodyH - padY - airPadY - infPadY;
-                const bottom = unitY + padY + airPadY + infPadY + infBottomPad;
-                const boxHit = (wx >= left && wx <= right && wy >= top && wy <= bottom);
-                if (boxHit) return true;
-                if (!isInfantryLike) {
-                    // Non-infantry fallback ellipse to avoid tap misses on armor/air.
-                    const cx = Number(u.x) || 0;
-                    const cy = unitY - (bodyH * (isAir ? 0.48 : 0.44));
-                    const dx = (Number(wx) || 0) - cx;
-                    const dy = (Number(wy) || 0) - cy;
-                    const rx = Math.max(halfW * (isAir ? 1.05 : 0.95), (coarseLike ? 82 : 50) / zoom);
-                    const ry = Math.max(bodyH * (isAir ? 0.82 : 0.74), (coarseLike ? 72 : 44) / zoom);
-                    const nx = dx / Math.max(1, rx);
-                    const ny = dy / Math.max(1, ry);
-                    return ((nx * nx) + (ny * ny)) <= 1.0;
-                }
-
-                // Infantry fallback for hover/select parity with unit_commands.js
-                const headY = unitY - (bodyH * 0.88);
-                const torsoY = unitY - (bodyH * 0.56);
-                const r = (coarseLike ? 58 : 40) / zoom;
-                const dx = Math.abs((Number(wx) || 0) - (Number(u.x) || 0));
-                const dyHead = Math.abs((Number(wy) || 0) - headY);
-                if (dx <= (r * 0.95) && dyHead <= (r * 1.05)) return true;
-                const dyTorso = Math.abs((Number(wy) || 0) - torsoY);
-                return (dx <= (r * 1.12) && dyTorso <= (r * 1.25));
+                const unitY = Number.isFinite(renderY) ? renderY : Number(u.y || 0);
+                const left = (Number(u.x) || 0) - halfW;
+                const right = (Number(u.x) || 0) + halfW;
+                const top = unitY - bodyH;
+                const bottom = unitY + 8;
+                return (wx >= left && wx <= right && wy >= top && wy <= bottom);
             };
 
-            const hasOtherPlayerUnitAt = (wx, wy, ignoreUnit) => {
-                if (!Array.isArray(this.players)) return false;
-                const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
-                    ? Number(Camera.zoom)
-                    : 1;
-                let coarsePointer = false;
-                let touchCapable = false;
-                try {
-                    coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
-                } catch (_) { }
-                try {
-                    touchCapable = (typeof navigator !== 'undefined')
-                        ? ((Number(navigator.maxTouchPoints) || 0) > 0)
-                        : false;
-                } catch (_) { }
-                const coarseLike = !!(coarsePointer || touchCapable);
-                const nearR = (coarseLike ? 120 : 82) / zoom;
-                const nearRSq = nearR * nearR;
+            const getOtherPlayerUnitAt = (wx, wy, ignoreUnit = null, opts = null) => {
+                const hitApi = getUnitHitTestApi();
+                const options = (opts && typeof opts === 'object') ? opts : {};
+                const coarseLike = (typeof options.coarseLike === 'boolean')
+                    ? options.coarseLike
+                    : detectCoarseLikePointer();
+                const clientX = Number(options.clientX);
+                const clientY = Number(options.clientY);
+                const hasClientPoint = Number.isFinite(clientX) && Number.isFinite(clientY);
+                if (hitApi && typeof hitApi.getPlayerUnitAt === 'function') {
+                    if (hasClientPoint && typeof hitApi.getPlayerUnitAtClient === 'function') {
+                        const viaClient = hitApi.getPlayerUnitAtClient(clientX, clientY, {
+                            ignoreUnit,
+                            includeSoft: options.includeSoft !== false,
+                            includeNear: options.includeNear !== false,
+                            includeFarNear: options.includeFarNear !== false,
+                            preferNearest: options.preferNearest !== false,
+                            nearPx: Number.isFinite(Number(options.nearPx))
+                                ? Number(options.nearPx)
+                                : (coarseLike ? 20 : 16),
+                            forceNearRadiusPx: Number.isFinite(Number(options.forceNearRadiusPx))
+                                ? Number(options.forceNearRadiusPx)
+                                : (coarseLike ? 92 : 62),
+                            coarseLike
+                        });
+                        // Client-space picking is the authoritative path when client coordinates are known.
+                        // Avoid world-space fallback (zoom-dependent) to keep hit behavior stable.
+                        return viaClient || null;
+                    }
+                    return hitApi.getPlayerUnitAt(wx, wy, {
+                        ignoreUnit,
+                        includeSoft: options.includeSoft !== false,
+                        includeNear: options.includeNear !== false,
+                        includeFarNear: options.includeFarNear !== false,
+                        preferNearest: options.preferNearest !== false,
+                        nearPx: Number.isFinite(Number(options.nearPx))
+                            ? Number(options.nearPx)
+                            : (coarseLike ? 20 : 16),
+                        forceNearRadiusPx: Number.isFinite(Number(options.forceNearRadiusPx))
+                            ? Number(options.forceNearRadiusPx)
+                            : (coarseLike ? 92 : 62),
+                        coarseLike
+                    });
+                }
+
+                if (!Array.isArray(this.players)) return null;
                 for (let i = this.players.length - 1; i >= 0; i--) {
                     const u = this.players[i];
-                    if (!u || u === ignoreUnit || u.dead) continue;
-                    if (isUnitHitAt(u, wx, wy)) return true;
-                    const renderY = (typeof u.getRenderY === 'function')
-                        ? Number(u.getRenderY())
-                        : Number(u.y);
-                    const unitY = Number.isFinite(renderY) ? renderY : Number(u.y || 0);
-                    const unitType = String((u.stats && u.stats.type) || '').trim().toLowerCase();
-                    const unitCategory = String((u.stats && u.stats.category) || '').trim().toLowerCase();
-                    const isAir = unitType === 'air';
-                    const isInfantryLike = (unitCategory === 'infantry' || unitType === 'bio');
-                    const armoredBoost = {
-                        humvee: 1.18,
-                        apc: 1.16,
-                        mbt: 1.16,
-                        spg: 1.16,
-                        aa_tank: 1.12,
-                        icbm: 1.16,
-                        icbm_enemy: 1.16
-                    };
-                    const boost = Number(armoredBoost[String((u.stats && u.stats.id) || '').trim().toLowerCase()]) || 1;
-                    const renderScale = 1.4 * boost;
-                    const h = Math.max(1, Number(u.height) || 1) * renderScale * (isInfantryLike ? 1.35 : 1);
-                    const cy = isInfantryLike ? (unitY - (h * 0.88)) : (isAir ? (unitY - (h * 0.46)) : (unitY - (h * 0.44)));
-                    const dx = (Number(wx) || 0) - (Number(u.x) || 0);
-                    const dy = (Number(wy) || 0) - cy;
-                    if (((dx * dx) + (dy * dy)) <= nearRSq) return true;
+                    if (!u || u.dead || u === ignoreUnit) continue;
+                    if (isUnitHitAt(u, wx, wy, { coarseLike })) return u;
                 }
-                return false;
+                return null;
+            };
+
+            const hasOtherPlayerUnitAt = (wx, wy, ignoreUnit, opts = null) => {
+                return !!getOtherPlayerUnitAt(wx, wy, ignoreUnit, opts);
             };
 
             const hasSelectableBuildingAt = (wx, wy) => {
@@ -1114,6 +1081,9 @@
 
                         this.selectedUnits.forEach(u => {
                             if (!u || u.dead) return;
+                            if (typeof this.setDirectControlReleaseHold === 'function') {
+                                this.setDirectControlReleaseHold(u, false);
+                            }
                             u.commandMode = 'move';
                             u.commandTargetX = worldX; // ???熬곣뫖利??レ벁?????醫딆┣???(facing??
                             u.targetX = worldX;
@@ -1151,7 +1121,10 @@
                     const directControlUnit = (typeof this.getDirectControlUnit === 'function')
                         ? this.getDirectControlUnit()
                         : null;
-                    const clickedPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, null);
+                    const clickedPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, null, {
+                        clientX: e.clientX,
+                        clientY: e.clientY
+                    });
                     const clickedSelectableBuilding = hasSelectableBuildingAt(worldX, worldY);
                     const shouldPrioritizeSelection = clickedPlayerUnit || clickedSelectableBuilding;
                     if (directControlUnit && directControlUnit.stats && !shouldPrioritizeSelection) {
@@ -1193,7 +1166,10 @@
                     const manualTank = getSingleSelectedPlayerMbt();
                     if (manualTank && !e.shiftKey) {
                         updateManualTankAim(manualTank, worldX, worldY);
-                        const clickedAnotherPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, manualTank);
+                        const clickedAnotherPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, manualTank, {
+                            clientX: e.clientX,
+                            clientY: e.clientY
+                        });
                         const clickedSelectableBuilding = hasSelectableBuildingAt(worldX, worldY);
                         if (!clickedAnotherPlayerUnit && !clickedSelectableBuilding) {
                             if (typeof manualTank.tryManualTankMainFire === 'function') {
@@ -1206,7 +1182,10 @@
                     const manualSpg = getSingleSelectedPlayerSpg();
                     if (manualSpg && !e.shiftKey) {
                         updateManualTankAim(manualSpg, worldX, worldY);
-                        const clickedAnotherPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, manualSpg);
+                        const clickedAnotherPlayerUnit = hasOtherPlayerUnitAt(worldX, worldY, manualSpg, {
+                            clientX: e.clientX,
+                            clientY: e.clientY
+                        });
                         const clickedSelectableBuilding = hasSelectableBuildingAt(worldX, worldY);
                         if (!clickedAnotherPlayerUnit && !clickedSelectableBuilding) {
                             if (typeof manualSpg.tryManualSpgMainFire === 'function') {
@@ -1239,7 +1218,14 @@
 
                 // ??⑤㈇??癲????嶺뚮Ĳ?됪뤃??(???關履숂뭐??
                 const manualArmor = getSingleSelectedPlayerManualArmor();
-                if (manualArmor && !this.buildMode.active && !this.targetingType && isInsideCanvasClient(e.clientX, e.clientY)) {
+                const allowLegacyManualArmorAim = !!(
+                    manualArmor
+                    && manualArmor.manualMgHeld === true
+                );
+                if (allowLegacyManualArmorAim
+                    && !this.buildMode.active
+                    && !this.targetingType
+                    && isInsideCanvasClient(e.clientX, e.clientY)) {
                     updateManualTankAim(manualArmor, worldX, worldY);
                 }
                 const directControlUnit = (typeof this.getDirectControlUnit === 'function')
@@ -1287,7 +1273,10 @@
                     const clickX = pUp.x + this.cameraX;
                     const clickY = pUp.y;
                     const movedPx = Math.hypot(e.clientX - pcLeftDownClientX, e.clientY - pcLeftDownClientY);
-                    const clickedPlayerUnit = hasOtherPlayerUnitAt(clickX, clickY, null);
+                    const clickedPlayerUnit = hasOtherPlayerUnitAt(clickX, clickY, null, {
+                        clientX: e.clientX,
+                        clientY: e.clientY
+                    });
                     const clickedSelectableBuilding = hasSelectableBuildingAt(clickX, clickY);
                     if (!clickedPlayerUnit && !clickedSelectableBuilding) {
                         if (this.tryDroneLockdown && this.tryDroneLockdown(clickX, clickY)) return;
@@ -1296,7 +1285,9 @@
                     const unitClicked = this.checkUnitClick && this.checkUnitClick(clickX, clickY, {
                         keepSelectedOnRepeatTap: true,
                         preferNearestHit: true,
-                        singleSelect: !e.shiftKey
+                        singleSelect: !e.shiftKey,
+                        clientX: e.clientX,
+                        clientY: e.clientY
                     });
                     if (unitClicked) { this.selectedBuilding = null; return; }
                     if (movedPx < Math.max(14, PC_PAN_DEADZONE_PX + 4)) {
@@ -1306,7 +1297,9 @@
                             const startHit = this.checkUnitClick && this.checkUnitClick(startX, startY, {
                                 keepSelectedOnRepeatTap: true,
                                 preferNearestHit: true,
-                                singleSelect: !e.shiftKey
+                                singleSelect: !e.shiftKey,
+                                clientX: pcLeftDownClientX,
+                                clientY: pcLeftDownClientY
                             });
                             if (startHit) { this.selectedBuilding = null; return; }
                         }
@@ -1398,7 +1391,9 @@
                         keepSelectedOnRepeatTap: true,
                         preferNearestHit: true,
                         singleSelect: true,
-                        forceNearRadiusPx: coarseLike ? 200 : 120
+                        forceNearRadiusPx: coarseLike ? 120 : 80,
+                        clientX,
+                        clientY
                     });
                 if (unitClicked) {
                     this.selectedBuilding = null;
@@ -1472,6 +1467,7 @@
                     pinchLastDist = 0;
                     mobileLongPressTriggered = false;
                     mobileTapSuppressed = false;
+                    mobileTouchStartedOnSelectable = false;
                     mobilePrimaryTouchId = t.identifier;
                     mobileTouchStartAt = (typeof performance !== 'undefined' && performance.now)
                         ? performance.now()
@@ -1483,6 +1479,13 @@
                     const p = getScaledPos(t.clientX, t.clientY);
                     const touchWorldX = p.x + this.cameraX;
                     const touchWorldY = p.y;
+                    mobileTouchStartedOnSelectable = (
+                        hasOtherPlayerUnitAt(touchWorldX, touchWorldY, null, {
+                            clientX: t.clientX,
+                            clientY: t.clientY
+                        })
+                        || hasSelectableBuildingAt(touchWorldX, touchWorldY)
+                    );
 
                     if (this.buildMode.active) {
                         this.updateBuildPreview(p.x + this.cameraX, p.y);
@@ -1497,10 +1500,6 @@
                         return;
                     }
 
-                    const directControlUnit = (typeof this.getDirectControlUnit === 'function')
-                        ? this.getDirectControlUnit()
-                        : null;
-                    const directControlId = String((directControlUnit && directControlUnit.stats && directControlUnit.stats.id) || '');
                     const directControlActive = !!(
                         typeof this.isDirectControlActive === 'function'
                         && this.isDirectControlActive()
@@ -1537,15 +1536,11 @@
                     const t = e.touches[0];
                     tapLastClientX = t.clientX;
                     tapLastClientY = t.clientY;
-
-                    // Direct-control aim touch follow.
-                    if (!isMobileSelecting
+                    const directControlActive = !!(
+                        !isMobileSelecting
                         && typeof this.isDirectControlActive === 'function'
-                        && this.isDirectControlActive()) {
-                        e.preventDefault();
-                        updateDirectControlAimFromClient(t.clientX, t.clientY);
-                        return;
-                    }
+                        && this.isDirectControlActive()
+                    );
 
                     // If we just ended a two-finger gesture and one finger remains,
                     // continue with one-finger camera pan.
@@ -1559,7 +1554,10 @@
                     }
 
                     const movedPx = Math.hypot(t.clientX - tapStartClientX, t.clientY - tapStartClientY);
-                    if (!isMobileSinglePan && !mobileLongPressTriggered && movedPx >= MOBILE_PAN_DEADZONE_PX) {
+                    const panDeadzonePx = mobileTouchStartedOnSelectable
+                        ? MOBILE_PAN_DEADZONE_ON_SELECTABLE_PX
+                        : MOBILE_PAN_DEADZONE_PX;
+                    if (!isMobileSinglePan && !mobileLongPressTriggered && movedPx >= panDeadzonePx) {
                         clearMobileLongPressTimer();
                         isMobileSinglePan = true;
                         mobileTapSuppressed = true;
@@ -1573,6 +1571,13 @@
                         this.cameraX -= (p.x - cameraLastX);
                         this.cameraX = Camera.clampCameraX(this, this.cameraX);
                         cameraLastX = p.x;
+                        return;
+                    }
+
+                    // Direct-control aim touch follow (only when not panning).
+                    if (directControlActive) {
+                        e.preventDefault();
+                        updateDirectControlAimFromClient(t.clientX, t.clientY);
                     }
                     return;
                 }
@@ -1619,9 +1624,10 @@
                     const zoomNow = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
                         ? Number(Camera.zoom)
                         : 1;
-                    const scaleRatio = Math.max(0.001, Number(this.scaleRatio) || 1);
+                    const scaleInfo = getClientScaleInfo();
+                    const scaleX = Math.max(0.001, Number(scaleInfo.scaleX) || 1);
                     const dxClient = Number(mid.x) - Number(pinchLastMidClientX);
-                    const dxView = dxClient / (scaleRatio * zoomNow);
+                    const dxView = dxClient / (scaleX * zoomNow);
                     this.cameraX -= dxView;
                     this.cameraX = Camera.clampCameraX(this, this.cameraX);
                     pinchLastMidClientX = mid.x;
@@ -1698,6 +1704,7 @@
                     mobilePrimaryTouchId = null;
                     mobileLongPressTriggered = false;
                     mobileTapSuppressed = false;
+                    mobileTouchStartedOnSelectable = false;
                     this.selectDragActive = false;
                 } else if (e.touches.length < 2) {
                     pinchActive = false;
@@ -1719,6 +1726,7 @@
                 mobilePrimaryTouchId = null;
                 mobileLongPressTriggered = false;
                 mobileTapSuppressed = false;
+                mobileTouchStartedOnSelectable = false;
                 this.selectDragActive = false;
             });
 

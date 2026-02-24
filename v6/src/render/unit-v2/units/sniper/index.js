@@ -28,7 +28,11 @@
     };
 
     function resolvePalette(team) {
-        return (team === 'player') ? PALETTES.player : PALETTES.enemy;
+        var resolvedTeam = String(team || 'player').trim().toLowerCase();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            resolvedTeam = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(resolvedTeam);
+        }
+        return (resolvedTeam === 'player') ? PALETTES.player : PALETTES.enemy;
     }
 
     function getDeps() {

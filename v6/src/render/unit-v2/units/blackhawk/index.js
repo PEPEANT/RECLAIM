@@ -1,4 +1,4 @@
-﻿// Unit Render V2 entry for: blackhawk (UH-60)
+// Unit Render V2 entry for: blackhawk (UH-60)
 (function attachUnitRenderV2_blackhawk(globalScope) {
     'use strict';
 
@@ -19,6 +19,9 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            team = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(team);
+        }
         if (team === 'ally') team = 'player';
         if (team === 'foe') team = 'enemy';
         if (team === 'enemy') {
@@ -162,3 +165,4 @@
         registry.uh60 = api;
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+

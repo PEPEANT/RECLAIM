@@ -105,7 +105,11 @@
         ctx.globalAlpha = 1;
 
         // Team accent.
-        ctx.fillStyle = (unit && unit.team === 'enemy') ? palette.accentEnemy : palette.accent;
+        var accentTeam = String(unit && unit.team ? unit.team : 'player').trim().toLowerCase();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            accentTeam = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(accentTeam);
+        }
+        ctx.fillStyle = (accentTeam === 'enemy') ? palette.accentEnemy : palette.accent;
         ctx.fillRect(-5, -4, 13, 2.6);
         ctx.fillRect(-22, -1, 8, 1.9);
 

@@ -19,6 +19,9 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            team = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(team);
+        }
         if (team === 'enemy') {
             return {
                 base: '#8b7a5a',
@@ -189,3 +192,4 @@
         registry.apc = api;
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+

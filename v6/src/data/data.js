@@ -113,7 +113,7 @@ const CONFIG = {
         },
         engineer: {
             id: 'engineer', name: '공병', cost: 30, cooldown: 20, maxCount: 12,
-            hp: 60, damage: 15, range: 180, missileRange: 620, missileDamage: 80, speed: 0.7,
+            hp: 60, damage: 15, range: 180, missileRange: 620, missileDamage: 120, speed: 0.7,
             width: 14, height: 22, color: '#f87171', type: 'bio', antiAir: true, category: 'infantry',
             role: '대전차/대공', description: '보병에겐 기관총, 기갑/공중에겐 유도 미사일로 공격합니다.',
             hasMissile: true, missileCount: 1, missileAimFrames: 54

@@ -562,7 +562,7 @@
         const nowMs = Date.now();
         if (heliAud > 0.02) this._battleMoveHeliHoldUntilMs = nowMs + 600;
         if (tankAud > 0.02) this._battleMoveTankHoldUntilMs = nowMs + 450;
-        if (humveeAud > 0.02) this._battleMoveHumveeHoldUntilMs = nowMs + 560;
+        if (humveeAud > 0.02) this._battleMoveHumveeHoldUntilMs = nowMs + 460;
 
         const heliHeld = nowMs < (Number(this._battleMoveHeliHoldUntilMs) || 0);
         const tankHeld = nowMs < (Number(this._battleMoveTankHoldUntilMs) || 0);
@@ -570,7 +570,7 @@
 
         const heliEffectiveAud = Math.max(heliAud, heliHeld ? 0.20 : 0);
         const tankEffectiveAud = Math.max(tankAud, tankHeld ? 0.22 : 0);
-        const humveeEffectiveAud = Math.max(humveeAud, humveeHeld ? 0.20 : 0);
+        const humveeEffectiveAud = Math.max(humveeAud, humveeHeld ? 0.14 : 0);
         if (infantryAud > 0.1) {
             const lastStep = Number(this._battleMoveLastInfantryStepMs) || 0;
             const stepGap = (infantryAud > 0.58) ? 620 : 860;
@@ -597,7 +597,7 @@
             'humvee',
             'bgm/mov/tank_moving2.mp3',
             humveeEffectiveAud > 0.02,
-            mix * 0.42 * humveeEffectiveAud
+            mix * 0.24 * humveeEffectiveAud
         );
 
         // 화면 밖에서 들리는 적 기갑 포성(짧게 1회) 트리거.

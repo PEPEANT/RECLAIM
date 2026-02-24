@@ -167,7 +167,9 @@
             );
         }
 
-        if (enemyCount > 0 || playerCount > 0 || state.enemyRisk > 0.1 || state.playerCapture > 0.1) {
+        // Overlay should pulse on new breach events only, then fade out.
+        // Do not extend visibility every frame from accumulated percentage values.
+        if (enemyCount > 0 || playerCount > 0) {
             state.showUntilFrame = frame + CAPTURE_SHOW_HOLD_FRAMES;
         }
 

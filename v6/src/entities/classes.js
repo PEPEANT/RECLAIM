@@ -310,6 +310,7 @@ class Unit extends Entity {
         const targetMinById = {
             infantry: 340,
             engineer: 390,
+            rpg: 390,
             drone_operator: 360,
             special_ops: 520,
             sniper: 1500,
@@ -376,6 +377,56 @@ class Unit extends Entity {
         let scaled = Math.round(raw * 1.24);
         if (targetMin > 0) scaled = Math.max(scaled, targetMin);
         return Math.max(unitRange, scaled);
+    }
+
+    _isEngineerMissileTargetLocked(target, opts = null) {
+        if (!target || target.dead) return false;
+        const lock = target._engMissileLock;
+        if (!lock || typeof lock !== 'object') return false;
+
+        const frameNow = (typeof game !== 'undefined' && Number.isFinite(Number(game.frame)))
+            ? Number(game.frame)
+            : 0;
+        const until = Number(lock.until);
+        if (Number.isFinite(until) && frameNow > until) {
+            target._engMissileLock = null;
+            return false;
+        }
+
+        const lockTeam = (lock.team != null) ? String(lock.team) : '';
+        const myTeam = String(this.team || '');
+        if (lockTeam && lockTeam !== myTeam) return false;
+
+        const allowOwner = (opts && Object.prototype.hasOwnProperty.call(opts, 'allowOwner'))
+            ? opts.allowOwner
+            : null;
+        if (allowOwner && lock.owner === allowOwner) return false;
+        return true;
+    }
+
+    _lockEngineerMissileTarget(target, holdFrames = 48) {
+        if (!target || target.dead) return false;
+        const frameNow = (typeof game !== 'undefined' && Number.isFinite(Number(game.frame)))
+            ? Number(game.frame)
+            : 0;
+        const hold = Math.max(8, Math.floor(Number(holdFrames) || 0));
+        const until = frameNow + hold;
+        const current = target._engMissileLock;
+        if (
+            current
+            && typeof current === 'object'
+            && current.owner === this
+            && Number.isFinite(Number(current.until))
+            && Number(current.until) > until
+        ) {
+            return true;
+        }
+        target._engMissileLock = {
+            team: this.team,
+            owner: this,
+            until
+        };
+        return true;
     }
 
     isRearTrackingAllowed() {
@@ -2343,6 +2394,12 @@ class Unit extends Entity {
 
             return false;
         };
+        const hasMissileTargetLockConflict = (t) => (
+            isRpgUnit
+            && canUseMissile
+            && isMissileTarget(t)
+            && this._isEngineerMissileTargetLocked(t, { allowOwner: this })
+        );
 
         const extraCivilianTargets = (this.team === 'enemy' && typeof game !== 'undefined' && Array.isArray(game.civilians) && game.civilians.length)
             ? game.civilians
@@ -2362,6 +2419,7 @@ class Unit extends Entity {
             const isInvulnerable = this.attackTarget.stats && this.attackTarget.stats.invulnerable;
             const isCivilianTarget = this.attackTarget.stats && this.attackTarget.stats.civilian;
             const effRange = (canUseMissile && isMissileTarget(this.attackTarget)) ? missileRange : unitRange;
+            const lockConflict = hasMissileTargetLockConflict(this.attackTarget);
 
             if (this.attackTarget.dead ||
                 (restrictForward && isBehind(this.attackTarget.x)) ||
@@ -2371,6 +2429,7 @@ class Unit extends Entity {
                 this.attackTarget.team === 'neutral' ||
                 (isCivilianTarget && this.team === 'player') ||
                 isInvulnerable ||
+                lockConflict ||
                 (isStealth && dist > 100)) {
                 this.attackTarget = null;
             }
@@ -2405,6 +2464,7 @@ class Unit extends Entity {
                     const dist = Math.abs(e.x - this.x);
                     const effRange = (canUseMissile && isMissileTarget(e)) ? missileRange : unitRange;
                     if (dist > effRange) continue;
+                    if (hasMissileTargetLockConflict(e)) continue;
 
                     let score = dist;
                     // ?怨??좊떅? ??났湲??곗꽑
@@ -2424,6 +2484,7 @@ class Unit extends Entity {
                         const dist = Math.abs(e.x - this.x);
                         const effRange = (canUseMissile && isMissileTarget(e)) ? missileRange : unitRange;
                         if (dist > effRange) continue;
+                        if (hasMissileTargetLockConflict(e)) continue;
                         let score = dist;
                         if (score < bestScore) { bestScore = score; this.attackTarget = e; }
                     }
@@ -2437,6 +2498,7 @@ class Unit extends Entity {
                         const buildingRange = (canUseMissile && isMissileTarget(b)) ? missileRange : unitRange;
                         if (dist > buildingRange + b.width / 2) continue;
                         if (restrictForward && isBehind(b.x)) continue;
+                        if (hasMissileTargetLockConflict(b)) continue;
                         if (dist < bestScore) { bestScore = dist; this.attackTarget = b; }
                     }
                 }
@@ -2472,24 +2534,32 @@ class Unit extends Entity {
             if (isRpgUnit && canUseMissile && isMissileTarget(target)) {
                 const rawAimFrames = Number(this.stats.missileAimFrames);
                 const aimFrames = Number.isFinite(rawAimFrames) ? Math.max(1, Math.floor(rawAimFrames)) : 54;
-                if (this.engineerAimTarget !== target) {
+                if (this._isEngineerMissileTargetLocked(target, { allowOwner: this })) {
+                    this.attackTarget = null;
+                    this.engineerAimTarget = null;
+                    this.engineerAimTimer = 0;
+                    this.engineerMode = 'carrying';
+                    handledAttackCycle = true;
+                } else if (this.engineerAimTarget !== target) {
                     this.engineerAimTarget = target;
                     this.engineerAimTimer = aimFrames;
                 }
-                this.engineerMode = 'firing';
-
-                const timerNow = Math.max(0, Math.floor(Number(this.engineerAimTimer) || 0));
-                if (timerNow > 0) {
-                    this.engineerAimTimer = timerNow - 1;
-                    handledAttackCycle = true;
-                } else if (game.frame - this.lastAttack > rate) {
-                    this.attack(target);
-                    this.lastAttack = game.frame;
-                    this.engineerAimTarget = null;
-                    this.engineerAimTimer = 0;
-                    handledAttackCycle = true;
-                } else {
-                    handledAttackCycle = true;
+                if (!handledAttackCycle) {
+                    this.engineerMode = 'firing';
+                    this._lockEngineerMissileTarget(target, aimFrames + 18);
+                    const timerNow = Math.max(0, Math.floor(Number(this.engineerAimTimer) || 0));
+                    if (timerNow > 0) {
+                        this.engineerAimTimer = timerNow - 1;
+                        handledAttackCycle = true;
+                    } else if (game.frame - this.lastAttack > rate) {
+                        this.attack(target);
+                        this.lastAttack = game.frame;
+                        this.engineerAimTarget = null;
+                        this.engineerAimTimer = 0;
+                        handledAttackCycle = true;
+                    } else {
+                        handledAttackCycle = true;
+                    }
                 }
             } else if (isRpgUnit) {
                 this.engineerAimTarget = null;
@@ -4033,6 +4103,21 @@ class Unit extends Entity {
         const isAir = !!(this.stats && this.stats.type === 'air');
         const isArmoredLike = (category === 'armored' || unitType === 'mech');
         if (isInfantry) {
+            const forcedStance = String(this._forcedInfantryStance || '').trim().toLowerCase();
+            const shouldHoldByForcedStance = (
+                (forcedStance === 'standing' || forcedStance === 'crouching' || forcedStance === 'prone')
+                && this.commandMode !== 'move'
+                && this.commandMode !== 'retreat'
+                && !this.returnToBase
+            );
+            if (shouldHoldByForcedStance) {
+                if (!Number.isFinite(Number(this._infantryStanceHoldX))) {
+                    this._infantryStanceHoldX = this.x;
+                }
+                this._infantryStanceHoldTarget = target;
+                this.x = Number(this._infantryStanceHoldX);
+                return;
+            }
             const stateStore = this._renderV2State && this._renderV2State.infantry;
             if (stateStore) {
                 const stance = String(stateStore.stance || '');
@@ -4265,37 +4350,17 @@ class Unit extends Entity {
             const targetId = target.stats ? target.stats.id : null;
             const isDrone = targetId && (targetId.includes('drone') || targetId === 'tactical_drone');
             const isArmoredOrAir = targetType === 'mech' || targetType === 'air';
-            const isAirTarget = targetType === 'air';
-
-            const isEngineerMissileLocked = (t) => {
-                if (!t || t.dead) return false;
-                const lock = t._engMissileLock;
-                if (!lock) return false;
-                if (lock.team && lock.team !== this.team) return false;
-                if (Number.isFinite(lock.until) && game.frame > lock.until) {
-                    t._engMissileLock = null;
-                    return false;
-                }
-                return true;
-            };
-
-            const lockEngineerMissile = (t) => {
-                if (!t) return;
-                t._engMissileLock = {
-                    team: this.team,
-                    until: game.frame + 40
-                };
-            };
 
             if (isArmoredOrAir && !isDrone && this.missileReady !== false) {
-                if (isAirTarget && isEngineerMissileLocked(target)) {
+                if (this._isEngineerMissileTargetLocked(target, { allowOwner: this })) {
                     this.engineerMode = 'carrying';
                     return;
                 }
-                if (isAirTarget) lockEngineerMissile(target);
+                this._lockEngineerMissileTarget(target, 96);
                 // 미사일 모드: 기갑/공중 (드론 제외)
                 this.engineerMode = 'firing';
-                const missileDmg = this.stats.missileDamage || 80;
+                const missileDmgRaw = Number(this.stats.missileDamage);
+                const missileDmg = (Number.isFinite(missileDmgRaw) && missileDmgRaw > 0) ? missileDmgRaw : 120;
                 const spawnDir = Number.isFinite(this.facing) ? this.facing : (this.team === 'player' ? 1 : -1);
                 const spawnX = this.x + (spawnDir * 16);
                 const spawnY = this.y - this.height / 2 - 10;
@@ -6739,19 +6804,21 @@ class Wreckage {
             return;
         }
 
-        // 잔해 렌더링
+        // Armored-only: do not use legacy wreck sprite/debris references.
+        if (this._isArmoredWreck()) {
+            this._drawArmoredRerenderWreck(ctx);
+            ctx.restore();
+            return;
+        }
+
+        // Non-armored wreck rendering keeps legacy path for now.
         if (typeof IngameRenderer !== 'undefined' && IngameRenderer.drawWreck) {
             IngameRenderer.drawWreck(ctx, this.unitId, {
                 team: this.team,
-                facing: 1  // facing은 이미 scale로 적용됨
+                facing: 1  // facing is already applied by scale
             });
         } else {
-            // Fallback: 간단한 잔해 표현
             this._drawFallback(ctx);
-        }
-
-        if (this._isArmoredWreck()) {
-            this._drawArmoredWreckOverlay(ctx);
         }
 
         ctx.restore();
@@ -6762,54 +6829,157 @@ class Wreckage {
         return ['mbt', 'apc', 'aa_tank', 'humvee', 'spg', 'tank', 'ifv', 'sam', 'mlrs'].includes(id);
     }
 
-    _drawArmoredWreckOverlay(ctx) {
-        const id = String(this.unitId || '').trim().toLowerCase();
-        const emberAlpha = Math.max(0, Math.min(1, this.life));
-        const scorch = 'rgba(0, 0, 0, 0.42)';
-        const metal = '#1f2937';
-        const metalLight = '#334155';
-        const glowing = `rgba(239, 68, 68, ${0.08 + (0.12 * emberAlpha)})`;
+    _normalizeArmoredRenderId(id) {
+        const key = String(id || '').trim().toLowerCase();
+        if (key === 'tank') return 'mbt';
+        if (key === 'ifv') return 'apc';
+        if (key === 'sam' || key === 'mlrs') return 'aa_tank';
+        return key;
+    }
+
+    _drawArmoredFallbackSilhouette(ctx, id) {
+        const sizeById = {
+            humvee: { w: 30, h: 11, turret: false },
+            apc: { w: 36, h: 12, turret: true },
+            mbt: { w: 40, h: 13, turret: true },
+            spg: { w: 39, h: 12, turret: true },
+            aa_tank: { w: 37, h: 12, turret: true }
+        };
+        const s = sizeById[id] || { w: 35, h: 12, turret: true };
 
         ctx.save();
+        ctx.rotate(-0.06);
+        ctx.fillStyle = '#3c3f45';
+        ctx.fillRect(-(s.w * 0.5), -(s.h * 0.5), s.w, s.h);
+        ctx.fillStyle = '#272b32';
+        ctx.fillRect(-(s.w * 0.5), -(s.h * 0.5), s.w, Math.max(3, s.h * 0.3));
+        if (s.turret) {
+            ctx.fillStyle = '#4d525b';
+            ctx.fillRect(-(s.w * 0.14), -(s.h * 0.75), s.w * 0.28, s.h * 0.34);
+            ctx.fillStyle = '#252a31';
+            ctx.fillRect((s.w * 0.14), -(s.h * 0.72), s.w * 0.26, s.h * 0.08);
+        }
+        ctx.fillStyle = '#111827';
+        ctx.fillRect(-(s.w * 0.45), (s.h * 0.24), s.w * 0.16, Math.max(2, s.h * 0.12));
+        ctx.fillRect((s.w * 0.28), (s.h * 0.24), s.w * 0.17, Math.max(2, s.h * 0.12));
+        ctx.restore();
+    }
 
-        // Ground scorch under all armored wrecks.
-        ctx.fillStyle = scorch;
+    _drawArmoredRerenderWreck(ctx) {
+        const id = this._normalizeArmoredRenderId(this.unitId);
+        const life = Math.max(0, Math.min(1, this.life));
+        const t = (Math.max(0, Number(this.age) || 0) * 0.09);
+        const emberPulse = 0.45 + (Math.sin(t) * 0.25);
+        const glow = Math.max(0.06, (0.18 * life * emberPulse));
+        const overlaySize = {
+            humvee: { w: 22, h: 12 },
+            apc: { w: 25, h: 13 },
+            mbt: { w: 27, h: 14 },
+            spg: { w: 26, h: 13 },
+            aa_tank: { w: 25, h: 13 }
+        };
+        const s = overlaySize[id] || { w: 24, h: 10 };
+        const armoredBoostById = {
+            humvee: 1.18,
+            apc: 1.16,
+            mbt: 1.16,
+            spg: 1.16,
+            aa_tank: 1.12
+        };
+
+        ctx.save();
+        ctx.translate(0, -3);
+
+        // Scorch and minimal smoke.
+        ctx.globalAlpha = 0.38 * life;
+        ctx.fillStyle = 'rgba(0,0,0,0.78)';
         ctx.beginPath();
-        ctx.ellipse(0, -2, 30, 10, 0, 0, Math.PI * 2);
+        ctx.ellipse(0, 7, s.w * 1.55, s.h * 0.95, 0, 0, Math.PI * 2);
         ctx.fill();
 
-        // Hot shard glow (subtle flicker).
-        if ((this.age % 14) < 6) {
-            ctx.fillStyle = glowing;
-            ctx.beginPath();
-            ctx.ellipse(4, -8, 9, 4, 0, 0, Math.PI * 2);
-            ctx.fill();
+        ctx.globalAlpha = Math.max(0.08, 0.22 * life);
+        ctx.fillStyle = 'rgba(30,30,30,0.85)';
+        ctx.beginPath();
+        ctx.ellipse((Math.sin(t * 0.6) * 2.5), -13, s.w * 0.50, s.h * 0.45, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Main wreck silhouette: rerender armored body with burn filter.
+        let rendered = false;
+        if (typeof UnitRenderV2 !== 'undefined' && UnitRenderV2 && typeof UnitRenderV2.draw === 'function') {
+            const boost = Number(armoredBoostById[id]) || 1.14;
+            const bodyAlpha = Math.max(0, Math.min(1, 0.82 * life));
+            const dummyUnit = {
+                x: 0,
+                y: 0,
+                vx: 0,
+                facing: 1,
+                team: this.team,
+                stats: {
+                    id: id,
+                    category: 'armored',
+                    type: 'mech',
+                    speed: 0.8,
+                    range: 320
+                },
+                hp: 1,
+                maxHp: 100,
+                dead: false,
+                commandMode: 'stop',
+                attackTarget: null,
+                lastAttack: -9999,
+                lastDamagedFrame: -9999,
+                recoil: 0,
+                missileFlash: 0,
+                _renderV2State: {}
+            };
+            ctx.globalAlpha = bodyAlpha;
+            ctx.save();
+            ctx.rotate(-0.035 + (Math.sin(t * 0.35) * 0.015));
+            ctx.scale(1.4 * boost * 0.95, 1.4 * boost * 0.97);
+            if ('filter' in ctx) {
+                ctx.filter = 'saturate(0.20) brightness(0.43) contrast(0.92)';
+            }
+            try {
+                rendered = UnitRenderV2.draw(dummyUnit, ctx, { mode: 'battle', team: this.team }) === true;
+            } catch (_) {
+                rendered = false;
+            }
+            ctx.restore();
+        }
+        if (!rendered) {
+            this._drawArmoredFallbackSilhouette(ctx, id);
         }
 
-        if (id === 'mbt' || id === 'tank') {
-            ctx.fillStyle = metal;
-            ctx.fillRect(-12, -20, 24, 6); // detached turret slab
-            ctx.fillStyle = metalLight;
-            ctx.fillRect(10, -19, 10, 3);  // snapped barrel piece
-        } else if (id === 'spg' || id === 'mlrs') {
-            ctx.fillStyle = metal;
-            ctx.fillRect(-18, -18, 28, 5); // launcher break
-            ctx.fillRect(12, -14, 8, 3);
-        } else if (id === 'aa_tank' || id === 'ifv' || id === 'sam') {
-            ctx.fillStyle = metal;
-            ctx.fillRect(-14, -16, 18, 5); // radar/weapon debris
-            ctx.fillStyle = metalLight;
-            ctx.fillRect(6, -14, 10, 3);
-        } else if (id === 'apc' || id === 'humvee') {
-            ctx.fillStyle = metal;
-            ctx.fillRect(-10, -14, 16, 4); // door/hood scrap
-            ctx.fillRect(8, -10, 7, 3);    // axle scrap
-        }
+        // Burn overlay and broken marks.
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        ctx.globalAlpha = 0.22 * life;
+        ctx.fillStyle = 'rgba(20,20,20,0.92)';
+        ctx.beginPath();
+        ctx.ellipse(-2, -4, s.w * 0.78, s.h * 0.54, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
 
-        // Broken track/wheel hints.
+        ctx.globalAlpha = 0.56 * life;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.ellipse(-(s.w * 0.42), -4, s.w * 0.42, s.h * 0.36, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse((s.w * 0.32), -1, s.w * 0.32, s.h * 0.26, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Broken wheel/track hints.
         ctx.fillStyle = '#0b1220';
-        ctx.fillRect(-24, -4, 10, 2);
-        ctx.fillRect(14, -4, 9, 2);
+        ctx.fillRect(-(s.w * 1.18), 2, s.w * 0.36, Math.max(2, s.h * 0.18));
+        ctx.fillRect((s.w * 0.76), 2, s.w * 0.38, Math.max(2, s.h * 0.18));
+
+        // Hot ember.
+        ctx.globalAlpha = glow;
+        ctx.fillStyle = 'rgba(239, 68, 68, 0.95)';
+        ctx.beginPath();
+        ctx.ellipse((s.w * 0.35), -6, s.w * 0.30, s.h * 0.22, 0, 0, Math.PI * 2);
+        ctx.fill();
 
         ctx.restore();
     }

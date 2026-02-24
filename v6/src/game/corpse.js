@@ -51,6 +51,10 @@
             this.kbAngle = 0;
             this.kbSpin = 0;
             if (this.isExplosion) this._initKnockback();
+            if (this.isExplosion) {
+                // Explosive deaths should not linger in standing pose.
+                this.fallProgress = 0.22;
+            }
 
             // 총맞음 혈흔/소품 드롭(생성 시 고정)
             this.bloodSpots = this._initBloodSpots();
@@ -101,7 +105,8 @@
 
             // 쓰러지는 애니메이션 (약 20프레임)
             if (this.fallProgress < 1) {
-                this.fallProgress += 0.05;
+                const fallStep = this.isExplosion ? 0.11 : 0.05;
+                this.fallProgress += fallStep;
                 if (this.fallProgress >= 1) {
                     this.fallProgress = 1;
                     this.fallen = true;
@@ -242,10 +247,24 @@
         }
 
         _drawUnitRenderV2Corpse(ctx, applyFilter) {
-            const id = String(this.typeKey || '').trim();
-            if (!id) return false;
-            if (id === 'civ_a' || id === 'civ_b' || id === 'civ_crowd') return false;
+            const sourceId = String(this.typeKey || '').trim();
+            if (!sourceId) return false;
+            if (sourceId === 'civ_a' || sourceId === 'civ_b' || sourceId === 'civ_crowd') return false;
             if (typeof UnitRenderV2 === 'undefined' || !UnitRenderV2 || typeof UnitRenderV2.draw !== 'function') return false;
+
+            // Use a single infantry corpse renderer path for infantry-family units.
+            // This avoids unknown placeholder fallbacks and keeps death poses consistent.
+            const infantryCorpseIds = new Set([
+                'infantry',
+                'bagpiper',
+                'engineer',
+                'rpg',
+                'sniper',
+                'special_ops',
+                'special_forces',
+                'drone_operator'
+            ]);
+            const renderId = infantryCorpseIds.has(sourceId) ? 'infantry' : sourceId;
 
             const dummyUnit = {
                 x: 0,
@@ -254,7 +273,7 @@
                 facing: this.facing || 1,
                 team: this.team,
                 stats: {
-                    id: id,
+                    id: renderId,
                     category: 'infantry',
                     speed: 0.9,
                     range: 260
@@ -267,10 +286,14 @@
                 lastAttack: -1,
                 lastDamagedFrame: -9999
             };
+            if (renderId === 'infantry') {
+                dummyUnit.commandMode = 'stop';
+                dummyUnit._forcedInfantryStance = this.isExplosion ? 'prone' : 'crouching';
+            }
 
-            if (id === 'drone_operator') {
+            if (sourceId === 'drone_operator') {
                 dummyUnit.opState = (this.opState === 'laptop') ? 'laptop' : 'rifle';
-            } else if (id === 'engineer' || id === 'rpg') {
+            } else if (sourceId === 'engineer' || sourceId === 'rpg') {
                 dummyUnit.engineerMode = 'carrying';
             }
 

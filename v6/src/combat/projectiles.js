@@ -875,6 +875,16 @@ class Projectile {
                 AudioSystem.playSFX('engineer_explosion', this.x);
             }
 
+            // Clear missile reservation lock on impact so other shooters can retarget immediately.
+            if (this.target && this.target._engMissileLock) {
+                const lock = this.target._engMissileLock;
+                const lockTeam = (lock && lock.team != null) ? String(lock.team) : '';
+                const shotTeam = String(this.team || '');
+                if (!lockTeam || lockTeam === shotTeam) {
+                    this.target._engMissileLock = null;
+                }
+            }
+
             // ?⑥씪 ?寃??쇳빐
             if (this.target && !this.target.dead) {
                 if (!(this.target.stats && this.target.stats.invulnerable)) {

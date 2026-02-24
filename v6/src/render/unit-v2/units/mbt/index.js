@@ -1,4 +1,4 @@
-﻿// Unit Render V2 entry for: mbt
+// Unit Render V2 entry for: mbt
 // [MBT 고정 요구사항]
 // 1) 플레이어 조종 시 포탑 조준 각도 제한 구현
 // 2) 포탑 조준 상한은 -45도 기준
@@ -27,6 +27,9 @@
 
     function resolvePalette(unit, options) {
         var team = String(options && options.team ? options.team : (unit && unit.team ? unit.team : 'player')).trim();
+        if (globalScope.UnitRenderV2Palettes && typeof globalScope.UnitRenderV2Palettes.resolveLegacyTeam === 'function') {
+            team = globalScope.UnitRenderV2Palettes.resolveLegacyTeam(team);
+        }
 
         if (team === 'enemy') {
             return {
@@ -214,3 +217,4 @@
         registry.mbt = api;
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+
