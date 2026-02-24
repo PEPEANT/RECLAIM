@@ -68,6 +68,9 @@ const game = {
     logicalHeight: LOGICAL_HEIGHT,
     groundLaneBaseOffset: 0,
     groundLaneSpread: 0,
+    mobileCameraPivotOffsetY: 0,
+    mobileCameraPivotUserPercent: 0,
+    mobileViewportActive: false,
 
     // [NEW] Total War Trigger Flag
     totalWarTriggered: false,
@@ -291,6 +294,65 @@ const game = {
         const value = Number(y);
         const safe = Number.isFinite(value) ? value : bounds.base;
         return Math.max(bounds.min, Math.min(bounds.max, safe));
+    },
+
+    getCameraPivotUserRangePx() {
+        const h = Number(this.height);
+        const raw = Number.isFinite(h) && h > 0 ? Math.round(h * 0.11) : 90;
+        return Math.max(56, Math.min(130, raw));
+    },
+
+    getCameraPivotSnapRangePx() {
+        const h = Number(this.height);
+        const raw = Number.isFinite(h) && h > 0 ? Math.round(h * 0.24) : 170;
+        return Math.max(120, Math.min(260, raw));
+    },
+
+    setCameraPivotUserPercent(percent) {
+        const raw = Number(percent);
+        const safe = Number.isFinite(raw) ? raw : 0;
+        const clamped = Math.max(-100, Math.min(100, safe));
+        // 3-step snap only: -100(bottom view), 0(mid), +100(sky)
+        let snapped = 0;
+        if (clamped >= 50) snapped = 100;
+        else if (clamped <= -50) snapped = -100;
+        this.mobileCameraPivotUserPercent = snapped;
+        return snapped;
+    },
+
+    getCameraPivotUserPercent() {
+        const raw = Number(this.mobileCameraPivotUserPercent);
+        const safe = Number.isFinite(raw) ? raw : 0;
+        return Math.max(-100, Math.min(100, safe));
+    },
+
+    getCameraPivotY() {
+        const laneBaseRaw = (typeof this.getGroundLaneBaseY === 'function')
+            ? Number(this.getGroundLaneBaseY())
+            : Number(this.groundY);
+        const fallbackBase = Number.isFinite(laneBaseRaw)
+            ? laneBaseRaw
+            : (Number.isFinite(Number(this.groundY)) ? Number(this.groundY) : 0);
+        const combatBandRaw = Number(this.height) - Number(this.groundY);
+        const combatBand = Number.isFinite(combatBandRaw) ? Math.max(60, combatBandRaw) : 300;
+        const infantryFeetBias = Math.max(10, Math.min(34, Math.round(combatBand * 0.08)));
+        const offset = Number(this.mobileCameraPivotOffsetY);
+        const safeOffset = Number.isFinite(offset) ? offset : 0;
+        let userOffset = 0;
+        if (this.mobileViewportActive === true) {
+            const userPercent = this.getCameraPivotUserPercent();
+            const stage = (userPercent >= 50) ? 1 : ((userPercent <= -50) ? -1 : 0);
+            const snapRange = this.getCameraPivotSnapRangePx();
+            // 3-stage camera presets:
+            // stage -1 = lower/background focus, 0 = middle, +1 = sky focus.
+            userOffset = -(stage * snapRange);
+        }
+        const raw = fallbackBase + infantryFeetBias + safeOffset + userOffset;
+        const h = Number(this.height);
+        if (Number.isFinite(h) && h > 0) {
+            return Math.max(0, Math.min(h, raw));
+        }
+        return Math.max(0, raw);
     },
 
     isGroundLaneUnit(unit) {
@@ -1781,6 +1843,9 @@ const game = {
     },
 
     _forceHideBattleUI() {
+        const wrapper = document.getElementById('game-wrapper');
+        if (wrapper) wrapper.classList.remove('battle-cursor-lock');
+
         const hideIds = [
             'hud-ctrl-wrapper',
             'hud-top-actions',
@@ -1798,6 +1863,7 @@ const game = {
             'chat-hq-open-btn',
             'mobile-direct-ui',
             'mobile-direct-toggle-btn',
+            'mobile-camera-tilt-control',
             'spawn-indicator',
             'skirmish-placement-ui',
             'skirmish-countdown',
@@ -2129,12 +2195,26 @@ const game = {
 
         // [NEW] 모바일 자동 줌인: 사용자가 수동 줌하지 않았고, 터치 디바이스면 자동 줌 적용
         const isMobile = window.matchMedia('(pointer: coarse)').matches;
+        this.mobileViewportActive = isMobile;
+        // Pivot base already follows infantry lane; keep extra mobile offset neutral.
+        this.mobileCameraPivotOffsetY = 0;
+        this.mobileCameraPivotUserPercent = this.getCameraPivotUserPercent();
         if (isMobile && !Camera.userZoomed) {
             // 목표 뷰 너비: 1200px (적당한 시야)
             const targetViewW = 1200;
             const autoZoom = Math.min(Camera.MAX, Math.max(Camera.MIN, this.width / targetViewW));
-            if (Math.abs(Camera.zoom - autoZoom) > 0.01) {
+            // Never auto-zoom in on resize; only auto-zoom out when needed.
+            if ((Camera.zoom - autoZoom) > 0.01) {
                 Camera.zoom = autoZoom;
+                this.cameraX = Camera.clampCameraX(this, this.cameraX);
+            }
+        }
+
+        // Global floor: stop zoom-out before side blue background can appear.
+        if (typeof Camera.getEffectiveMinZoom === 'function') {
+            const minZoom = Camera.getEffectiveMinZoom(this);
+            if (Number(Camera.zoom) < minZoom) {
+                Camera.zoom = minZoom;
                 this.cameraX = Camera.clampCameraX(this, this.cameraX);
             }
         }
@@ -3840,6 +3920,20 @@ const game = {
         } else {
             this.enemies.push(unit);
             this.enemyEverSeen = true;
+        }
+
+        // Auto-start bagpipe once when a player bagpiper is produced.
+        if (
+            team === 'player'
+            && unit
+            && unit.stats
+            && unit.stats.id === 'bagpiper'
+            && typeof unit.startBagpipeSkill === 'function'
+        ) {
+            const started = unit.startBagpipeSkill() === true;
+            if (started && typeof this.updateHUDSelection === 'function') {
+                this.updateHUDSelection();
+            }
         }
 
         // [R 4.2] 생성된 unit 반환 (치명 버그 수정)

@@ -10,6 +10,10 @@ function getTeamColor(team, variant = 'primary') {
     return '#eab308';
 }
 
+// Lower aerial lane slightly for current battle framing and reduce visual footprint.
+const AIR_ALTITUDE_DROP_PX = 70;
+const AIR_RENDER_SCALE_MULTIPLIER = 0.86;
+
 class Entity {
     constructor(x, y, team, hp, width, height) {
         this.x = x; this.y = y; this.team = team;
@@ -67,22 +71,22 @@ class Unit extends Entity {
         // Air lanes: globally lift all aerial units and keep altitude hierarchy.
         // Priority: recon > fighter > apache > blackhawk/uh60/chinook
         if (stats.id === 'stealth_drone') {
-            startY = groundY - 620 - Math.random() * 90;
+            startY = groundY - 620 + AIR_ALTITUDE_DROP_PX - Math.random() * 90;
         } else if (stats.id === 'recon') {
-            startY = groundY - 600 - Math.random() * 90;
+            startY = groundY - 600 + AIR_ALTITUDE_DROP_PX - Math.random() * 90;
         } else if (stats.id === 'fighter') {
-            startY = groundY - 550 - Math.random() * 90;
+            startY = groundY - 550 + AIR_ALTITUDE_DROP_PX - Math.random() * 90;
         } else if (stats.id === 'bomber') {
-            startY = groundY - 570 - Math.random() * 80;
+            startY = groundY - 570 + AIR_ALTITUDE_DROP_PX - Math.random() * 80;
         } else if (stats.id === 'apache') {
-            startY = groundY - 500 - Math.random() * 80;
+            startY = groundY - 500 + AIR_ALTITUDE_DROP_PX - Math.random() * 80;
         } else if (stats.id === 'blackhawk' || stats.id === 'chinook' || stats.id === 'uh60') {
-            startY = groundY - 450 - Math.random() * 80;
+            startY = groundY - 450 + AIR_ALTITUDE_DROP_PX - Math.random() * 80;
         // [R 4.2 FIX v4] 자폭/대전차 드론은 발밑에서 시작 (상승 애니메이션용)
         } else if (stats.id === 'drone_suicide' || stats.id === 'drone_at') {
             startY = groundY;
         } else if (stats.type === 'air') {
-            startY = groundY - 430 - Math.random() * 80;
+            startY = groundY - 430 + AIR_ALTITUDE_DROP_PX - Math.random() * 80;
         }
 
         super(x, startY, team, stats.hp, stats.width, stats.height);
@@ -517,6 +521,28 @@ class Unit extends Entity {
         if (this.stats.civilian === true) return false;
         if (this.isCameraman || this.stats.isCameraman) return false;
         return true;
+    }
+
+    _recordCaptureEdgeBreach() {
+        const g = (typeof game !== 'undefined' && game && typeof game === 'object') ? game : null;
+        if (!g) return;
+        const team = String(this.team || '').trim().toLowerCase();
+        const key = (team === 'enemy') ? 'enemy' : ((team === 'player') ? 'player' : '');
+        if (!key) return;
+        // Player breach counts only after manual control is released.
+        if (key === 'player') {
+            const directActive = (typeof g.isDirectControlActive === 'function') ? !!g.isDirectControlActive() : false;
+            if (directActive) {
+                const directUnit = (typeof g.getDirectControlUnit === 'function') ? g.getDirectControlUnit() : null;
+                if (directUnit === this) return;
+            }
+        }
+        if (!g._captureEdgeBreach || typeof g._captureEdgeBreach !== 'object') {
+            g._captureEdgeBreach = { enemy: 0, player: 0 };
+        }
+        const prev = Number(g._captureEdgeBreach[key]);
+        const safePrev = Number.isFinite(prev) ? Math.max(0, Math.floor(prev)) : 0;
+        g._captureEdgeBreach[key] = safePrev + 1;
     }
 
     _resolveGroundLaneTargetY(options = null) {
@@ -1010,6 +1036,39 @@ class Unit extends Entity {
         return true;
     }
 
+    _resolveCrashForwardDir() {
+        // 1) Current combat target direction (closest to "attacking direction")
+        let target = null;
+        if (this.attackTarget && !this.attackTarget.dead) {
+            target = this.attackTarget;
+        } else if (this._combatSideTarget && !this._combatSideTarget.dead) {
+            target = this._combatSideTarget;
+        }
+        if (target && Number.isFinite(Number(target.x))) {
+            const dtx = Number(target.x) - Number(this.x);
+            if (Math.abs(dtx) > 3) return dtx >= 0 ? 1 : -1;
+        }
+
+        // 2) Recent manual aim direction
+        if (Number.isFinite(Number(this.manualAimX))) {
+            const dxAim = Number(this.manualAimX) - Number(this.x);
+            if (Math.abs(dxAim) > 3) return dxAim >= 0 ? 1 : -1;
+        }
+
+        // 3) Actual movement vector
+        if (Number.isFinite(Number(this.vx)) && Math.abs(Number(this.vx)) > 0.06) {
+            return Number(this.vx) >= 0 ? 1 : -1;
+        }
+
+        // 4) Fallback: current facing
+        if (Number.isFinite(Number(this.facing)) && Number(this.facing) !== 0) {
+            return Number(this.facing) >= 0 ? 1 : -1;
+        }
+
+        // 5) Team-default facing
+        return (this.team === 'player') ? 1 : -1;
+    }
+
     _beginCrashDescent(hitVx = null, hitVy = null) {
         if (this.dead || this.crashState || this._forceDirectDeath) return false;
         if (!this._canUseCrashDescent()) return false;
@@ -1020,9 +1079,8 @@ class Unit extends Entity {
         const isHeli = (id === 'apache' || id === 'blackhawk' || id === 'chinook' || id === 'uh60');
         const kind = isDrone ? 'drone' : (isFighter ? 'fighter' : (isHeli ? 'heli' : 'aircraft'));
         const speed = Math.max(0.6, Number(this.stats?.speed) || 0.6);
-        const facing = Number.isFinite(Number(this.facing)) ? Number(this.facing) : ((this.team === 'player') ? 1 : -1);
-        const dir = (facing >= 0) ? 1 : -1;
-        const inertiaVx = Number.isFinite(Number(hitVx)) ? Number(hitVx) * 0.07 : 0;
+        const dir = this._resolveCrashForwardDir();
+        const rawInertiaVx = Number.isFinite(Number(hitVx)) ? Number(hitVx) * 0.07 : 0;
         const inertiaVy = Number.isFinite(Number(hitVy)) ? Math.abs(Number(hitVy)) * 0.05 : 0;
 
         // Per-airframe tuning: readable falling without changing gameplay too much.
@@ -1047,12 +1105,22 @@ class Unit extends Entity {
             gravity = 0.2;
         }
 
+        // Keep crash direction consistent with the current attack/nose direction.
+        // Hit inertia can bias speed, but should not flip the direction.
+        const maxInertiaVx = Math.max(0.12, Math.abs(baseVx) * 0.55);
+        let inertiaVx = Math.max(-maxInertiaVx, Math.min(maxInertiaVx, rawInertiaVx));
+        let crashVx = baseVx + inertiaVx;
+        if (crashVx * dir < 0) {
+            crashVx = dir * Math.max(0.18, Math.abs(baseVx) * 0.42);
+            inertiaVx = crashVx - baseVx;
+        }
+
         const spinBase = (kind === 'aircraft') ? 0.045 : (kind === 'heli' ? 0.07 : 0.06);
         const spin = (Math.random() * spinBase + spinBase * 0.55) * dir;
 
         this.crashState = {
             kind,
-            vx: baseVx + inertiaVx,
+            vx: crashVx,
             vy: Math.max(0.8, inertiaVy + baseVy),
             gravity,
             spin,
@@ -1903,19 +1971,19 @@ class Unit extends Entity {
             if (Number.isFinite(groundRefY) && !this.dropState) {
                 let desiredAirY = null;
                 if (this.stats.id === 'stealth_drone') {
-                    desiredAirY = groundRefY - 640;
+                    desiredAirY = groundRefY - 640 + AIR_ALTITUDE_DROP_PX;
                 } else if (this.stats.id === 'recon') {
-                    desiredAirY = groundRefY - 620;
+                    desiredAirY = groundRefY - 620 + AIR_ALTITUDE_DROP_PX;
                 } else if (this.stats.id === 'fighter') {
-                    desiredAirY = groundRefY - 560;
+                    desiredAirY = groundRefY - 560 + AIR_ALTITUDE_DROP_PX;
                 } else if (this.stats.id === 'bomber') {
-                    desiredAirY = groundRefY - 570;
+                    desiredAirY = groundRefY - 570 + AIR_ALTITUDE_DROP_PX;
                 } else if (this.stats.id === 'apache') {
-                    desiredAirY = groundRefY - 500;
+                    desiredAirY = groundRefY - 500 + AIR_ALTITUDE_DROP_PX;
                 } else if (this.stats.id === 'blackhawk' || this.stats.id === 'chinook' || this.stats.id === 'uh60') {
-                    desiredAirY = groundRefY - 450;
+                    desiredAirY = groundRefY - 450 + AIR_ALTITUDE_DROP_PX;
                 } else {
-                    desiredAirY = groundRefY - 430;
+                    desiredAirY = groundRefY - 430 + AIR_ALTITUDE_DROP_PX;
                 }
                 if (Number.isFinite(desiredAirY)) {
                     this.y += (desiredAirY - this.y) * 0.12;
@@ -2071,6 +2139,7 @@ class Unit extends Entity {
         if (this.stats.type === 'air' && !this.stats.id.startsWith('drone') && !['blackhawk', 'chinook', 'uh60'].includes(this.stats.id)) {
             const isOut = (this.team === 'player' && this.x > CONFIG.mapWidth + 100) || (this.team === 'enemy' && this.x < -100);
             if (isOut) {
+                this._recordCaptureEdgeBreach();
                 this.dead = true;
                 if (this.team === 'player') {
                     if (this.isVeteran && this.veteranId && game.playerVeteranStock && Object.prototype.hasOwnProperty.call(game.playerVeteranStock, this.veteranId)) {
@@ -2156,6 +2225,7 @@ class Unit extends Entity {
             const outOfBounds = (this.team === 'player' && this.x > CONFIG.mapWidth + 100) ||
                 (this.team === 'enemy' && this.x < -100);
             if (outOfBounds) {
+                this._recordCaptureEdgeBreach();
                 this.dead = true;
                 if (this.team === 'player') {
                     if (this.isVeteran && this.veteranId && game.playerVeteranStock && Object.prototype.hasOwnProperty.call(game.playerVeteranStock, this.veteranId)) {
@@ -4616,7 +4686,8 @@ class Unit extends Entity {
         const skin = (!disableSkinForV2Armor && skins) ? (skins[id] || skins[this.typeKey]) : null;
         const snapDy = this.computeFeetSnapDy(skin);
         const renderY = this.getRenderY();
-        const showHp = !this.hideHp && (this.isSelected || this.hp < this.maxHp);
+        // Selected units use a center star marker instead of an HP bar.
+        const showHp = !this.hideHp && !this.isSelected && (this.hp < this.maxHp);
         const drawHpBar = () => {
             if (typeof UnitRenderUtils !== 'undefined' && UnitRenderUtils.drawUnitHpBar) {
                 UnitRenderUtils.drawUnitHpBar(this, ctx, snapDy, showHp);
@@ -4628,35 +4699,98 @@ class Unit extends Entity {
             const barX = this.x;
             const barY = (renderY + snapDy) + yOffset;
             ctx.fillStyle = '#ef4444'; ctx.fillRect(barX - w / 2, barY, w, h);
-            ctx.fillStyle = '#22c55e'; ctx.fillRect(barX - w / 2, barY, w * hpPct, h);
-            ctx.strokeStyle = '#000'; ctx.lineWidth = 0.5; ctx.strokeRect(barX - w / 2, barY, w, h);
-
-            const directUnit = (typeof game !== 'undefined'
-                && game
-                && typeof game.getDirectControlUnit === 'function')
-                ? game.getDirectControlUnit()
-                : null;
-            if (directUnit && directUnit === this) {
-                const cx = (barX - w / 2) - 6;
-                const cy = barY + (h * 0.5);
-                ctx.save();
-                ctx.beginPath();
-                for (let p = 0; p < 10; p++) {
-                    const angle = (-Math.PI / 2) + (p * Math.PI / 5);
-                    const r = (p % 2 === 0) ? 3.1 : 1.5;
-                    const sx = cx + Math.cos(angle) * r;
-                    const sy = cy + Math.sin(angle) * r;
-                    if (p === 0) ctx.moveTo(sx, sy);
-                    else ctx.lineTo(sx, sy);
-                }
-                ctx.closePath();
-                ctx.fillStyle = '#facc15';
-                ctx.fill();
-                ctx.strokeStyle = '#92400e';
-                ctx.lineWidth = 0.8;
-                ctx.stroke();
-                ctx.restore();
+                ctx.fillStyle = '#22c55e'; ctx.fillRect(barX - w / 2, barY, w * hpPct, h);
+                ctx.strokeStyle = '#000'; ctx.lineWidth = 0.5; ctx.strokeRect(barX - w / 2, barY, w, h);
+        };
+        const drawSelectionMarker = () => {
+            if (!this.isSelected || this.dead) return;
+            const cx = Number(this.x) || 0;
+            const h = Math.max(12, Number(this.height) || 24);
+            const cat = String((this.stats && this.stats.category) || '').trim().toLowerCase();
+            const type = String((this.stats && this.stats.type) || '').trim().toLowerCase();
+            const isInfantryMarker = (cat === 'infantry' || type === 'bio');
+            const isAirMarker = (type === 'air' || cat === 'air');
+            const isArmoredMarker = (cat === 'armored' || type === 'mech');
+            const baseY = (renderY + snapDy);
+            let cy = baseY - (h * 0.46);
+            if (isInfantryMarker) {
+                const infantryState = (this._renderV2State && this._renderV2State.infantry && typeof this._renderV2State.infantry === 'object')
+                    ? this._renderV2State.infantry
+                    : null;
+                const stanceRaw = String(
+                    (infantryState && infantryState.stance)
+                    || this._forcedInfantryStance
+                    || 'standing'
+                ).trim().toLowerCase();
+                let headOffset = h * 1.88;
+                if (stanceRaw === 'crouching') headOffset = h * 1.52;
+                else if (stanceRaw === 'prone') headOffset = h * 1.08;
+                cy = baseY - headOffset - 9;
+            } else if (isArmoredMarker) {
+                // Armored/mech units are rendered with extra V2 scale; account for that so marker sits above hull.
+                const armoredMarkerBoost = {
+                    humvee: 1.18,
+                    apc: 1.16,
+                    mbt: 1.16,
+                    spg: 1.16,
+                    aa_tank: 1.12,
+                    icbm: 1.16,
+                    icbm_enemy: 1.16
+                };
+                const visualScale = 1.4 * (Number(armoredMarkerBoost[id]) || 1);
+                const visualH = h * visualScale;
+                const armoredExtraUp = {
+                    humvee: 18,
+                    apc: 22,
+                    mbt: 30,
+                    spg: 28,
+                    aa_tank: 22,
+                    icbm: 34,
+                    icbm_enemy: 34
+                };
+                cy = baseY - (visualH * 0.68) - (Number(armoredExtraUp[id]) || 20);
+            } else if (isAirMarker) {
+                // Keep air-unit selection marker above rotor/body top (not the center).
+                const airVisualScale = 1.4 * AIR_RENDER_SCALE_MULTIPLIER;
+                const airVisualH = h * airVisualScale;
+                const airExtraUp = {
+                    recon: 12,
+                    fighter: 14,
+                    bomber: 16,
+                    apache: 20,
+                    blackhawk: 16,
+                    uh60: 16,
+                    chinook: 18
+                };
+                cy = baseY - (airVisualH * 0.92) - (Number(airExtraUp[id]) || 16);
             }
+            const outerBase = ((Number(this.width) || 24) * 0.18) + 3.8;
+            const outer = isInfantryMarker
+                ? Math.max(6.8, Math.min(12.4, outerBase + 1.2))
+                : (isArmoredMarker
+                    ? Math.max(7.2, Math.min(13.2, outerBase + 1.4))
+                    : Math.max(5.6, Math.min(11.5, outerBase)));
+            const inner = outer * 0.5;
+
+            ctx.save();
+            ctx.shadowColor = 'rgba(250, 204, 21, 0.55)';
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            for (let p = 0; p < 10; p++) {
+                const angle = (-Math.PI / 2) + (p * Math.PI / 5);
+                const r = (p % 2 === 0) ? outer : inner;
+                const sx = cx + Math.cos(angle) * r;
+                const sy = cy + Math.sin(angle) * r;
+                if (p === 0) ctx.moveTo(sx, sy);
+                else ctx.lineTo(sx, sy);
+            }
+            ctx.closePath();
+            ctx.fillStyle = '#facc15';
+            ctx.fill();
+            ctx.strokeStyle = '#7c2d12';
+            ctx.lineWidth = 1.2;
+            ctx.stroke();
+            ctx.restore();
         };
         const crashVisualState = (this.crashState && this.stats && this.stats.type === 'air')
             ? this.crashState
@@ -4726,7 +4860,12 @@ class Unit extends Entity {
         };
         const armoredBoost = Number(ARMORED_RENDER_BOOST[id]) || 1;
         const baseRenderScale = 1.4;
-        ctx.scale(baseRenderScale * armoredBoost, baseRenderScale * armoredBoost);  // [C-01] armored visual size boost
+        const isAirVisual = !!(this.stats && this.stats.type === 'air');
+        const airRenderScale = isAirVisual ? AIR_RENDER_SCALE_MULTIPLIER : 1;
+        ctx.scale(
+            baseRenderScale * armoredBoost * airRenderScale,
+            baseRenderScale * armoredBoost * airRenderScale
+        );  // [C-01] armored visual size boost + air size tune
 
         // ... (?꾩닠 ?쒕줎 ?쎌삩 諛뺤뒪 肄붾뱶??洹몃?濡??좎?) ...
         if (id === 'tactical_drone' && this.lockedTarget && !this.lockedTarget.dead) {
@@ -4760,6 +4899,7 @@ class Unit extends Entity {
         if (renderedWithSkin) {
             drawCrashDamageOverlay();
             ctx.restore();
+            drawSelectionMarker();
             drawHpBar();
             return;
         }
@@ -4794,6 +4934,7 @@ class Unit extends Entity {
             if (renderedWithV2) {
                 drawCrashDamageOverlay();
                 ctx.restore();
+                drawSelectionMarker();
                 drawHpBar();
                 return;
             }
@@ -6352,6 +6493,7 @@ class Unit extends Entity {
 
         drawCrashDamageOverlay();
         ctx.restore();
+        drawSelectionMarker();
         drawHpBar();
     }
 }

@@ -1,6 +1,96 @@
 ﻿(function (global) {
     'use strict';
 
+    function updateUnitVelocity(unit, prevX, prevY) {
+        if (!unit) return;
+        const x0 = Number(prevX);
+        const y0 = Number(prevY);
+        const x1 = Number(unit.x);
+        const y1 = Number(unit.y);
+        const vx = (Number.isFinite(x0) && Number.isFinite(x1)) ? (x1 - x0) : 0;
+        const vy = (Number.isFinite(y0) && Number.isFinite(y1)) ? (y1 - y0) : 0;
+        unit.vx = Number.isFinite(vx) ? vx : 0;
+        unit.vy = Number.isFinite(vy) ? vy : 0;
+    }
+
+    function drawCaptureControlOverlay(game, ctx) {
+        const state = game && game._captureControlState;
+        if (!state || !ctx) return;
+
+        const frame = Number(game.frame) || 0;
+        const enemyRisk = Math.max(0, Math.min(100, Number(state.enemyRisk) || 0));
+        const playerCapture = Math.max(0, Math.min(100, Number(state.playerCapture) || 0));
+        const threshold = Math.max(1, Number(state.threshold) || 5);
+        const enemyCount = Math.max(0, Number(state.enemyCount) || 0);
+        const playerCount = Math.max(0, Number(state.playerCount) || 0);
+        const enemyActive = enemyCount >= threshold;
+        const playerActive = playerCount >= threshold;
+
+        const holdUntil = Number(state.showUntilFrame) || 0;
+        const hasValue = enemyRisk > 0.05 || playerCapture > 0.05;
+        if (!enemyActive && !playerActive && (!hasValue || frame > holdUntil)) return;
+
+        let mode = String(state.displayMode || '').toLowerCase();
+        if (mode !== 'enemy' && mode !== 'player') {
+            mode = enemyRisk >= playerCapture ? 'enemy' : 'player';
+        }
+
+        const value = mode === 'enemy' ? enemyRisk : playerCapture;
+        if (value <= 0.05) return;
+
+        let alpha = 0.93;
+        if (!enemyActive && !playerActive) {
+            const fadeFrames = 42;
+            const fadeStart = holdUntil - fadeFrames;
+            if (frame >= fadeStart) {
+                const fade = Math.max(0, Math.min(1, (holdUntil - frame) / Math.max(1, fadeFrames)));
+                alpha *= fade;
+            }
+        }
+        if (alpha <= 0.01) return;
+
+        const label = mode === 'enemy' ? '점령 위험도' : '점령도';
+        const barColor = mode === 'enemy' ? '#ef4444' : '#22c55e';
+        const glowColor = mode === 'enemy' ? 'rgba(239,68,68,0.6)' : 'rgba(34,197,94,0.6)';
+        const panelW = Math.max(240, Math.min(420, (Number(game.width) || 1280) * 0.42));
+        const panelH = panelW > 320 ? 62 : 56;
+        const x = ((Number(game.width) || 1280) - panelW) * 0.5;
+        const y = Math.max(54, Math.floor((Number(game.height) || 840) * 0.33));
+        const barPad = 16;
+        const barW = panelW - (barPad * 2);
+        const barH = 10;
+        const barY = y + panelH - barH - 12;
+        const textY = y + 10;
+
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+        ctx.globalAlpha = alpha;
+        ctx.fillStyle = 'rgba(2,6,23,0.76)';
+        ctx.fillRect(x, y, panelW, panelH);
+        ctx.strokeStyle = 'rgba(148,163,184,0.45)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, panelW - 1, panelH - 1);
+
+        ctx.shadowColor = glowColor;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = '#f8fafc';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.font = 'bold 16px "Orbitron", sans-serif';
+        ctx.fillText(`${label} ${Math.round(value)}%`, x + panelW / 2, textY);
+
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(51,65,85,0.88)';
+        ctx.fillRect(x + barPad, barY, barW, barH);
+        ctx.fillStyle = barColor;
+        ctx.fillRect(x + barPad, barY, barW * (value / 100), barH);
+        ctx.strokeStyle = 'rgba(226,232,240,0.35)';
+        ctx.strokeRect(x + barPad + 0.5, barY + 0.5, barW - 1, barH - 1);
+
+        ctx.restore();
+    }
+
     function loop(game) {
         if (!game.running) {
             if (typeof AudioSystem !== 'undefined'
@@ -190,10 +280,13 @@
         let writePlayer = 0;
         for (let i = 0; i < game.players.length; i++) {
             const u = game.players[i];
+            const prevX = Number(u && u.x);
+            const prevY = Number(u && u.y);
             if (!skirmishFrozen) u.update(game.enemies, game.enemyBuildings);
             if (!u.dead && typeof u.applyGroundLanePostUpdate === 'function') {
                 u.applyGroundLanePostUpdate();
             }
+            updateUnitVelocity(u, prevX, prevY);
             if (!u.dead) game.players[writePlayer++] = u;
         }
         game.players.length = writePlayer;
@@ -201,10 +294,13 @@
         let writeEnemy = 0;
         for (let i = 0; i < game.enemies.length; i++) {
             const u = game.enemies[i];
+            const prevX = Number(u && u.x);
+            const prevY = Number(u && u.y);
             if (!skirmishFrozen) u.update(game.players, game.playerBuildings);
             if (!u.dead && typeof u.applyGroundLanePostUpdate === 'function') {
                 u.applyGroundLanePostUpdate();
             }
+            updateUnitVelocity(u, prevX, prevY);
             if (!u.dead) game.enemies[writeEnemy++] = u;
         }
         game.enemies.length = writeEnemy;
@@ -212,8 +308,11 @@
         let writeCivilian = 0;
         for (let i = 0; i < game.civilians.length; i++) {
             const u = game.civilians[i];
+            const prevX = Number(u && u.x);
+            const prevY = Number(u && u.y);
             // Keep neutral civilians moving during skirmish placement/countdown.
             u.update(game.enemies, game.enemyBuildings);
+            updateUnitVelocity(u, prevX, prevY);
             if (!u.dead) game.civilians[writeCivilian++] = u;
         }
         game.civilians.length = writeCivilian;
@@ -337,54 +436,69 @@
         ctx.fillStyle = '#bae6fd';
         ctx.fillRect(0, 0, game.width, game.height);
 
+        const cameraPivotYRaw = (typeof game.getCameraPivotY === 'function')
+            ? Number(game.getCameraPivotY())
+            : Number(game.groundY);
+        const cameraPivotY = Number.isFinite(cameraPivotYRaw) ? cameraPivotYRaw : Number(game.groundY || 0);
+        const zoomNow = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
+            ? Number(Camera.zoom)
+            : 1;
+        const mapDrawWidth = Math.max(1, game.width / zoomNow);
+        const worldPad = Math.max(1, 2 / zoomNow);
+        const mapTopWorld = (cameraPivotY + ((0 - cameraPivotY) / zoomNow)) - worldPad;
+        const mapBottomWorld = (cameraPivotY + ((game.height - cameraPivotY) / zoomNow)) + worldPad;
+        const mapDrawHeight = Math.max(1, mapBottomWorld - mapTopWorld);
+        const mapGroundY = Number(game.groundY || 0) - mapTopWorld;
+
         if (typeof Maps !== 'undefined') {
-            // 1) Base sky/ground stays in screen space
+            // Apply the same zoom pivot to map layers so background/units scale together.
+            ctx.save();
+            ctx.translate(0, cameraPivotY);
+            ctx.scale(zoomNow, zoomNow);
+            ctx.translate(0, -cameraPivotY);
+            // Draw map in the exact world-space slice visible on screen to avoid blue gutters/clipping.
+            ctx.translate(0, mapTopWorld);
+
             const drewBase = safeDrawCall('draw:map-base', () => {
-                Maps.drawBase(ctx, game.width, game.height, game.groundY, game.cameraX);
+                Maps.drawBase(ctx, mapDrawWidth, mapDrawHeight, mapGroundY, game.cameraX);
             });
             if (!drewBase) {
                 ctx.fillStyle = '#1e293b';
-                ctx.fillRect(0, 0, game.width, game.height);
+                ctx.fillRect(0, 0, mapDrawWidth, mapDrawHeight);
                 ctx.fillStyle = '#334155';
-                ctx.fillRect(0, game.groundY, game.width, game.height - game.groundY);
+                ctx.fillRect(0, mapGroundY, mapDrawWidth, mapDrawHeight - mapGroundY);
             }
-
-            // 2) Decorations draw in zoomed world space
-            ctx.save();
-            ctx.translate(0, game.groundY);
-            ctx.scale(Camera.zoom, Camera.zoom);
-            ctx.translate(0, -game.groundY);
 
             safeDrawCall('draw:map-decorations', () => {
                 Maps.drawDecorations(
                     ctx,
-                    game.width / Camera.zoom,
-                    game.height / Camera.zoom,
-                    game.groundY,
+                    mapDrawWidth,
+                    mapDrawHeight,
+                    mapGroundY,
                     game.cameraX
                 );
             });
-
-            ctx.restore();
 
             if (typeof Maps.drawThreatOverlay === 'function') {
                 safeDrawCall('draw:map-threat-overlay', () => {
                     Maps.drawThreatOverlay(
                         ctx,
-                        game.width,
-                        game.height,
-                        game.groundY,
+                        mapDrawWidth,
+                        mapDrawHeight,
+                        mapGroundY,
                         game.cameraX,
                         1
                     );
                 });
             }
+
+            ctx.restore();
         }
 
         ctx.save();
-        ctx.translate(0, game.groundY);
+        ctx.translate(0, cameraPivotY);
         ctx.scale(Camera.zoom, Camera.zoom);
-        ctx.translate(0, -game.groundY);
+        ctx.translate(0, -cameraPivotY);
         ctx.translate(-Math.floor(game.cameraX), 0);
 
         // [VFX] world-layer shake (screen 기준 고정)
@@ -415,8 +529,8 @@
         const pad = Number.isFinite(game.corpseCullPadding) ? game.corpseCullPadding : 0;
         const viewLeft = game.cameraX - pad / z;
         const viewRight = game.cameraX + (game.width + pad) / z;
-        const viewTop = game.groundY + ((-pad - game.groundY) / z);
-        const viewBottom = game.groundY + ((game.height + pad - game.groundY) / z);
+        const viewTop = cameraPivotY + ((-pad - cameraPivotY) / z);
+        const viewBottom = cameraPivotY + ((game.height + pad - cameraPivotY) / z);
         game.corpses.forEach(c => {
             if (!c) return;
             if (c.x < viewLeft || c.x > viewRight || c.y < viewTop || c.y > viewBottom) return;
@@ -503,6 +617,8 @@
         if (typeof NewsOverlay !== 'undefined') {
             NewsOverlay.renderFromGame(game);
         }
+
+        drawCaptureControlOverlay(game, ctx);
 
     }
 
