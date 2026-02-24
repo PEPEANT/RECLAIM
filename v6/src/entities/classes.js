@@ -130,6 +130,8 @@ class Unit extends Entity {
         this.retreatUntilFrame = 0;
         this.retreatMinHoldUntil = 0;
         this.retreatCooldownUntil = 0;
+        this._retreatThreatRef = null;
+        this._retreatThreatX = null;
         this.engineerAimTarget = null;
         this.engineerAimTimer = 0;
         // [P0] 타겟 탐색 주기(프레임) - 유닛별로 분산
@@ -155,9 +157,11 @@ class Unit extends Entity {
             this.coverTarget = null;
             this.ownedDrone = null;
             this.ownedDrones = [];
-            const fixedDroneCharges = Math.max(2, Math.floor(Number(stats.droneCharges) || 1));
+            const fixedDroneCharges = 2;
             this.droneChargesLeft = fixedDroneCharges;
             this.maxDroneCharges = fixedDroneCharges;
+            this.droneLaunchLimit = fixedDroneCharges;
+            this.droneLaunchCount = 0;
             this.droneRecallRefundsLeft = Number.isFinite(Number(stats.droneRecallRefunds))
                 ? Math.max(0, Math.floor(Number(stats.droneRecallRefunds)))
                 : 0;
@@ -206,6 +210,11 @@ class Unit extends Entity {
             this.icbmHasFired = false;
             this.icbmMuzzleFlash = 0;
             this.icbmRaiseSoundPlaying = false;
+            const icbmAmmoRaw = Number(stats.icbmAmmo);
+            this.icbmAmmoMax = Number.isFinite(icbmAmmoRaw)
+                ? Math.max(0, Math.floor(icbmAmmoRaw))
+                : 3;
+            this.icbmAmmoLeft = this.icbmAmmoMax;
             // ICBM는 스프라이트 방향을 고정한다. (아군/적군 전용 모델 분리)
             this.facing = (stats.id === 'icbm') ? -1 : 1;
             if (stats.id === 'icbm_enemy') {
@@ -217,7 +226,7 @@ class Unit extends Entity {
         }
 
         // [NEW] 수송 유닛 하차 설정
-        if (['blackhawk', 'chinook', 'apc', 'humvee'].includes(stats.id)) {
+        if (['blackhawk', 'chinook', 'uh60', 'apc', 'humvee'].includes(stats.id)) {
             this.transportDropsLeft = 1;
             this.transportDropManifest = null;
             if (stats.id === 'chinook') {
@@ -229,7 +238,7 @@ class Unit extends Entity {
                 ];
                 this.transportDropType = 'infantry';
                 this.transportDropCount = 8;
-            } else if (stats.id === 'blackhawk') {
+            } else if (stats.id === 'blackhawk' || stats.id === 'uh60') {
                 this.transportDropType = 'infantry';
                 this.transportDropCount = 4;
             } else if (stats.id === 'apc') {
@@ -363,6 +372,89 @@ class Unit extends Entity {
         let scaled = Math.round(raw * 1.24);
         if (targetMin > 0) scaled = Math.max(scaled, targetMin);
         return Math.max(unitRange, scaled);
+    }
+
+    isRearTrackingAllowed() {
+        const id = String((this.stats && this.stats.id) || '');
+        return id === 'aa_tank';
+    }
+
+    shouldRestrictRearTargeting() {
+        if (this.commandMode === 'retreat' || this.returnToBase) return false;
+        return !this.isRearTrackingAllowed();
+    }
+
+    getRearCheckDirection() {
+        const stats = this.stats || {};
+        const id = String(stats.id || '');
+        const category = String(stats.category || '');
+        const unitType = String(stats.type || '');
+        const isAirLike = (category === 'air' || unitType === 'air');
+
+        if (isAirLike) {
+            const isFixedRunAir = (id === 'fighter' || id === 'recon' || id === 'bomber');
+            if (isFixedRunAir) {
+                const fixedDir = (this.team === 'player') ? 1 : -1;
+                this._rearCheckDir = fixedDir;
+                return fixedDir;
+            }
+
+            const vx = Number(this.vx);
+            if (Number.isFinite(vx) && Math.abs(vx) > 0.03) {
+                const dirByVx = vx >= 0 ? 1 : -1;
+                this._rearCheckDir = dirByVx;
+                return dirByVx;
+            }
+
+            const targetX = Number(this.targetX);
+            if (Number.isFinite(targetX)) {
+                const dx = targetX - Number(this.x);
+                if (Math.abs(dx) > 2) {
+                    const dirByTarget = dx >= 0 ? 1 : -1;
+                    this._rearCheckDir = dirByTarget;
+                    return dirByTarget;
+                }
+            }
+
+            const commandTargetX = Number(this.commandTargetX);
+            if (Number.isFinite(commandTargetX)) {
+                const cdx = commandTargetX - Number(this.x);
+                if (Math.abs(cdx) > 2) {
+                    const dirByCommand = cdx >= 0 ? 1 : -1;
+                    this._rearCheckDir = dirByCommand;
+                    return dirByCommand;
+                }
+            }
+
+            const cachedDir = Number(this._rearCheckDir);
+            if (Number.isFinite(cachedDir) && cachedDir !== 0) {
+                return cachedDir >= 0 ? 1 : -1;
+            }
+
+            const fallbackAirDir = (this.team === 'player') ? 1 : -1;
+            this._rearCheckDir = fallbackAirDir;
+            return fallbackAirDir;
+        }
+
+        const facing = Number(this.facing);
+        if (Number.isFinite(facing) && facing !== 0) return facing >= 0 ? 1 : -1;
+        return (this.team === 'player') ? 1 : -1;
+    }
+
+    isTargetBehindX(targetX, margin = 20) {
+        const tx = Number(targetX);
+        if (!Number.isFinite(tx)) return false;
+        const selfX = Number(this.x);
+        if (!Number.isFinite(selfX)) return false;
+        const facing = (typeof this.getRearCheckDirection === 'function')
+            ? this.getRearCheckDirection()
+            : (Number.isFinite(Number(this.facing))
+                ? Number(this.facing)
+                : ((this.team === 'player') ? 1 : -1));
+        const backMargin = Number.isFinite(Number(margin)) ? Math.max(0, Number(margin)) : 20;
+        return (facing >= 0)
+            ? (tx < (selfX - backMargin))
+            : (tx > (selfX + backMargin));
     }
 
     shouldFeetSnap() {
@@ -618,18 +710,14 @@ class Unit extends Entity {
 
         if (this.stats && this.stats.invulnerable) return;
 
-        const isDrone = (this.stats?.id && this.stats.id.includes('drone'));
-        const evade = isDrone ? (Number(this.stats?.mobility || 0) / 100) : 0;
-        if (evade > 0 && Math.random() < evade) {
-            if (game && game.createParticles) game.createParticles(this.x, this.y, 3, '#94a3b8');
-            return;
-        }
-
         const cleanAttackType = (typeof attackType === 'string' && attackType) ? attackType : null;
         const cleanHitX = Number.isFinite(hitX) ? hitX : null;
         const cleanHitY = Number.isFinite(hitY) ? hitY : null;
         const cleanHitVx = Number.isFinite(hitVx) ? hitVx : null;
         const cleanHitVy = Number.isFinite(hitVy) ? hitVy : null;
+
+        // Drone hit chance is already handled in projectile collision logic.
+        // Do not add another random dodge layer here, otherwise drones can feel invulnerable.
 
         // [NEW] 마지막 피격 정보 기록 (총맞음 판정/혈흔용)
         this.lastHitInfo = {
@@ -703,8 +791,16 @@ class Unit extends Entity {
             const deathType = String(this.stats?.type || '').trim().toLowerCase();
             const isDroneDeath = deathUnitId.includes('drone');
             const isAirDeath = (deathType === 'air' && !isDroneDeath);
-            const isAirCrashCandidate = (deathType === 'air' && (deathUnitId === 'fighter' || isDroneDeath));
+            // Any air unit should enter crash descent before impact death.
+            const isAirCrashCandidate = (deathType === 'air');
             const forceDirectDeath = (this._forceDirectDeath === true);
+
+            // Keep falling until impact if already in crash state.
+            if (this.crashState && !forceDirectDeath && cleanAttackType !== 'crash_impact') {
+                this.hp = 1;
+                return;
+            }
+
             if (!forceDirectDeath && isAirCrashCandidate) {
                 if (this._beginCrashDescent(cleanHitVx, cleanHitVy)) return;
             }
@@ -900,10 +996,18 @@ class Unit extends Entity {
     }
 
     _canUseCrashDescent() {
-        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
         if (!this.stats || this.stats.type !== 'air') return false;
-        if (id === 'fighter') return true;
-        return id.includes('drone');
+        if (this.dead || this.crashState || this._forceDirectDeath) return false;
+
+        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
+        if (!id) return false;
+
+        // Drones should die on lethal hit immediately (no prolonged crash-state HP hold).
+        const category = String((this.stats && this.stats.category) || '').trim().toLowerCase();
+        if (category === 'drone' || id.includes('drone')) return false;
+
+        // Airframes (jets/helis/etc) use crash descent.
+        return true;
     }
 
     _beginCrashDescent(hitVx = null, hitVy = null) {
@@ -911,21 +1015,50 @@ class Unit extends Entity {
         if (!this._canUseCrashDescent()) return false;
 
         const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
-        const kind = (id === 'fighter') ? 'fighter' : 'drone';
+        const isDrone = id.includes('drone');
+        const isFighter = id === 'fighter';
+        const isHeli = (id === 'apache' || id === 'blackhawk' || id === 'chinook' || id === 'uh60');
+        const kind = isDrone ? 'drone' : (isFighter ? 'fighter' : (isHeli ? 'heli' : 'aircraft'));
         const speed = Math.max(0.6, Number(this.stats?.speed) || 0.6);
         const facing = Number.isFinite(Number(this.facing)) ? Number(this.facing) : ((this.team === 'player') ? 1 : -1);
         const dir = (facing >= 0) ? 1 : -1;
         const inertiaVx = Number.isFinite(Number(hitVx)) ? Number(hitVx) * 0.07 : 0;
         const inertiaVy = Number.isFinite(Number(hitVy)) ? Math.abs(Number(hitVy)) * 0.05 : 0;
-        const baseVx = dir * Math.max(0.95, speed * (kind === 'fighter' ? 0.46 : 0.4));
+
+        // Per-airframe tuning: readable falling without changing gameplay too much.
+        let baseVx = dir * Math.max(0.95, speed * 0.46);
+        let baseVy = 0.9;
+        let gravity = 0.2;
+        if (kind === 'drone') {
+            baseVx = dir * Math.max(0.75, speed * 0.34);
+            baseVy = 0.75;
+            gravity = 0.26;
+        } else if (kind === 'heli') {
+            baseVx = dir * Math.max(0.8, speed * 0.33);
+            baseVy = 0.85;
+            gravity = 0.23;
+        } else if (kind === 'aircraft') {
+            baseVx = dir * Math.max(1.1, speed * 0.44);
+            baseVy = 0.9;
+            gravity = 0.21;
+        } else if (kind === 'fighter') {
+            baseVx = dir * Math.max(1.25, speed * 0.52);
+            baseVy = 0.95;
+            gravity = 0.2;
+        }
+
+        const spinBase = (kind === 'aircraft') ? 0.045 : (kind === 'heli' ? 0.07 : 0.06);
+        const spin = (Math.random() * spinBase + spinBase * 0.55) * dir;
 
         this.crashState = {
             kind,
             vx: baseVx + inertiaVx,
-            vy: Math.max(0.8, inertiaVy + (kind === 'fighter' ? 0.9 : 0.75)),
-            gravity: (kind === 'fighter') ? 0.2 : 0.26,
-            spin: (Math.random() * 0.06 + 0.03) * dir,
-            sparkTick: 0
+            vy: Math.max(0.8, inertiaVy + baseVy),
+            gravity,
+            spin,
+            sparkTick: 0,
+            rollVisual: dir * 0.24,
+            burnLevel: 0.18
         };
 
         this.hp = Math.max(1, Number(this.hp) || 1);
@@ -944,7 +1077,7 @@ class Unit extends Entity {
         this.recallPhase = null;
 
         if (typeof game !== 'undefined' && game && typeof game.createParticles === 'function') {
-            const burst = (kind === 'fighter') ? 4 : 2;
+            const burst = (kind === 'fighter') ? 4 : (kind === 'aircraft' ? 4 : (kind === 'heli' ? 3 : 2));
             game.createParticles(this.x, this.y, burst, '#6b7280');
         }
         return true;
@@ -975,6 +1108,23 @@ class Unit extends Entity {
         state.vy = (Number(state.vy) || 0) + (Number(state.gravity) || 0.2);
         state.vx *= 0.992;
         this.rotorAngle += Number(state.spin) || 0;
+        if (Math.abs(Number(state.vx) || 0) > 0.04) {
+            this.facing = (Number(state.vx) >= 0) ? 1 : -1;
+        }
+
+        const vxNow = Number(state.vx) || 0;
+        const vyNow = Number(state.vy) || 0;
+        const noseDir = (Math.abs(vxNow) > 0.03)
+            ? (vxNow >= 0 ? 1 : -1)
+            : ((Number(this.facing) || 1) >= 0 ? 1 : -1);
+        const noseDown = Math.min(1.1, 0.22 + Math.max(0, vyNow) * 0.07);
+        const frameNow = (typeof game !== 'undefined' && Number.isFinite(Number(game.frame))) ? Number(game.frame) : 0;
+        const wobble = Math.sin((frameNow * 0.32) + ((Number(state.sparkTick) || 0) * 0.17)) * 0.12;
+        const targetRoll = (noseDown * noseDir) + wobble;
+        const rollNow = Number(state.rollVisual) || 0;
+        state.rollVisual = rollNow + ((targetRoll - rollNow) * 0.08) + ((Number(state.spin) || 0) * 0.015);
+        state.rollVisual = Math.max(-1.25, Math.min(1.25, Number(state.rollVisual) || 0));
+        state.burnLevel = Math.min(0.65, (Number(state.burnLevel) || 0.18) + 0.0035 + (Math.max(0, vyNow) * 0.0018));
 
         const mapWidth = Number((typeof CONFIG !== 'undefined' && CONFIG) ? CONFIG.mapWidth : NaN);
         if (Number.isFinite(mapWidth) && mapWidth > 20) {
@@ -995,7 +1145,7 @@ class Unit extends Entity {
 
     isAirTransport() {
         const id = this.stats && this.stats.id;
-        return id === 'blackhawk' || id === 'chinook';
+        return id === 'blackhawk' || id === 'chinook' || id === 'uh60';
     }
 
     isGroundTransport() {
@@ -1160,30 +1310,68 @@ class Unit extends Entity {
             return false;
         }
 
-        const speed = this.stats.speed || 2.5;
+        const speed = Math.max(2.0, Number(this.stats && this.stats.speed) || 2.5);
         const cruiseY = this.getPreferredAirCruiseY();
         this.cruiseY = cruiseY;
-        const gy = (typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
-            ? Number(game.groundY)
-            : Number(this.y);
-        const landY = gy - 80;
+
+        // IMPORTANT: landing Y must be inside the ground lane band.
+        // Using `game.groundY - 80` looks like "still in air" instead of a landing.
+        let groundBaseY = NaN;
+        if (typeof game !== 'undefined' && game) {
+            if (typeof game.getGroundLaneBaseY === 'function') {
+                groundBaseY = Number(game.getGroundLaneBaseY());
+            } else if (typeof game.getGroundLaneBounds === 'function') {
+                const bounds = game.getGroundLaneBounds();
+                groundBaseY = Number(bounds && bounds.base);
+            }
+
+            if (!Number.isFinite(groundBaseY) && Number.isFinite(Number(game.groundY))) {
+                groundBaseY = Number(game.groundY);
+                if (typeof game.clampGroundLaneY === 'function') {
+                    groundBaseY = Number(game.clampGroundLaneY(groundBaseY));
+                }
+            }
+        }
+
+        if (!Number.isFinite(groundBaseY)) {
+            const gy = (typeof game !== 'undefined' && Number.isFinite(Number(game.groundY)))
+                ? Number(game.groundY)
+                : Number(this.y);
+            groundBaseY = Number.isFinite(gy) ? gy : Number(this.y);
+        }
+
+        // Model origin is above wheels; offset so touchdown reads as "on ground".
+        const landingOffset = 34;
+        let landY = groundBaseY - landingOffset;
+        if (typeof game !== 'undefined' && game && typeof game.clampGroundLaneY === 'function') {
+            landY = Number(game.clampGroundLaneY(landY));
+        }
+
+        const clampStep = (v, maxStep) => Math.max(-maxStep, Math.min(maxStep, v));
 
         if (this.dropState === 'approach') {
             const dx = this.dropTargetX - this.x;
-            if (Math.abs(dx) <= speed) {
+            const distX = Math.abs(dx);
+            if (distX <= speed) {
                 this.x = this.dropTargetX;
                 this.dropState = 'landing';
             } else {
                 this.x += Math.sign(dx) * speed;
             }
             this.facing = dx >= 0 ? 1 : -1;
-            const dy = cruiseY - this.y;
-            this.y += Math.max(-2.2, Math.min(2.2, dy));
+
+            // Start descending as transport closes in; makes landing readable.
+            const near = Math.max(0, Math.min(1, 1 - (distX / 360)));
+            const desiredY = (cruiseY * (1 - near)) + (landY * near);
+            const maxYStep = 2.2 + near * 6.2;
+            this.y += clampStep(desiredY - this.y, maxYStep);
             return true;
         }
 
         if (this.dropState === 'landing') {
-            this.y += 2.6;
+            const dy = landY - this.y;
+            const step = Math.max(4.2, Math.min(14, dy * 0.18));
+            this.y += step;
             if (this.y >= landY) {
                 this.y = landY;
                 this.dropState = 'dropping';
@@ -1216,7 +1404,9 @@ class Unit extends Entity {
         }
 
         if (this.dropState === 'takeoff') {
-            this.y -= 2.6;
+            const dy = this.y - cruiseY;
+            const step = Math.max(4.0, Math.min(14, dy * 0.18));
+            this.y -= step;
             if (this.y <= cruiseY) {
                 this.y = cruiseY;
                 this.targetY = null;
@@ -1240,6 +1430,8 @@ class Unit extends Entity {
         if (this.dead) return false;
         if (!this.isIcbmLauncherUnit()) return false;
         if (this.stunTimer > 0) return false;
+        const ammoLeft = Number(this.icbmAmmoLeft);
+        if (Number.isFinite(ammoLeft) && ammoLeft <= 0) return false;
         if (this.stats && this.stats.id === 'icbm_enemy') {
             if (!this.isEnemyIcbmAnchoredReady()) return false;
         }
@@ -1876,7 +2068,7 @@ class Unit extends Entity {
         }
 
         // 怨듭쨷 ?좊떅 留??댄깉 泥섎━ (洹??
-        if (this.stats.type === 'air' && !this.stats.id.startsWith('drone') && !['blackhawk', 'chinook'].includes(this.stats.id)) {
+        if (this.stats.type === 'air' && !this.stats.id.startsWith('drone') && !['blackhawk', 'chinook', 'uh60'].includes(this.stats.id)) {
             const isOut = (this.team === 'player' && this.x > CONFIG.mapWidth + 100) || (this.team === 'enemy' && this.x < -100);
             if (isOut) {
                 this.dead = true;
@@ -1981,22 +2173,34 @@ class Unit extends Entity {
         if (this.stats.id === 'fighter') {
             const dir = this.team === 'player' ? 1 : -1;
             this.x += this.stats.speed * dir;
-            this.updateFacing();
+            this.facing = dir;
+            this._rearCheckDir = dir;
+            this._lastX = this.x;
             const fighterRange = Math.max(450, Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 600);
             const fighterMissileRange = Math.max(fighterRange, Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : fighterRange) || fighterRange);
             const fighterLoseRange = fighterRange + 50;
             const fighterScanRange = Math.max(420, Math.round(fighterRange * 0.92));
+            const fighterRestrictRear = (typeof this.shouldRestrictRearTargeting === 'function')
+                ? this.shouldRestrictRearTargeting()
+                : true;
 
-        if (this.attackTarget && (this.attackTarget.dead ||
-            (this.attackTarget.stats && this.attackTarget.stats.invulnerable) ||
-            Math.abs(this.attackTarget.x - this.x) > fighterLoseRange)) {
-            this.attackTarget = null;
-        }
+            if (this.attackTarget) {
+                const fighterTargetBehind = fighterRestrictRear
+                    && (typeof this.isTargetBehindX === 'function')
+                    && this.isTargetBehindX(this.attackTarget.x, 20);
+                if (this.attackTarget.dead ||
+                    fighterTargetBehind ||
+                    (this.attackTarget.stats && this.attackTarget.stats.invulnerable) ||
+                    Math.abs(this.attackTarget.x - this.x) > fighterLoseRange) {
+                    this.attackTarget = null;
+                }
+            }
             if (!this.attackTarget) {
                 this.attackTarget = enemies.find(e =>
                     !e.dead && e.stats && !e.stats.invulnerable &&
                     (e.stats.type === 'air' || e.stats.id === 'aa_tank') &&
                     e.stats.category !== 'drone' &&
+                    (!(fighterRestrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(e.x, 20))) &&
                     Math.abs(e.x - this.x) < fighterScanRange
                 );
             }
@@ -2074,10 +2278,13 @@ class Unit extends Entity {
             ? game.civilians
             : null;
         const onlyAir = !!this.stats.onlyAir;
-        const restrictForward = (this.stats.type === 'air' && ['apache', 'fighter'].includes(this.stats.id)
-            && this.commandMode !== 'retreat' && !this.returnToBase);
+        const restrictForward = (typeof this.shouldRestrictRearTargeting === 'function')
+            ? this.shouldRestrictRearTargeting()
+            : (this.commandMode !== 'retreat' && !this.returnToBase && String((this.stats && this.stats.id) || '') !== 'aa_tank');
         const facing = Number.isFinite(this.facing) ? this.facing : (this.team === 'player' ? 1 : -1);
-        const isBehind = (x) => (facing >= 0) ? (x < this.x - 20) : (x > this.x + 20);
+        const isBehind = (x) => (typeof this.isTargetBehindX === 'function')
+            ? this.isTargetBehindX(x, 20)
+            : ((facing >= 0) ? (x < this.x - 20) : (x > this.x + 20));
 
         if (this.attackTarget) {
             const dist = Math.abs(this.attackTarget.x - this.x);
@@ -2413,14 +2620,25 @@ class Unit extends Entity {
             this.autoDeploy = (droneControlMode !== 'manual');
         }
 
-        // Battle-only policy: operator drones are always available with fixed base charges.
+        // Hard cap: each operator can launch at most 2 drones per battle.
         const fixedDroneCharges = 2;
-        if (!Number.isFinite(Number(this.maxDroneCharges)) || Number(this.maxDroneCharges) < fixedDroneCharges) {
-            this.maxDroneCharges = fixedDroneCharges;
+        const launchLimitRaw = Number(this.droneLaunchLimit);
+        const launchLimit = Number.isFinite(launchLimitRaw)
+            ? Math.max(1, Math.min(fixedDroneCharges, Math.floor(launchLimitRaw)))
+            : fixedDroneCharges;
+        this.droneLaunchLimit = launchLimit;
+        if (!Number.isFinite(Number(this.maxDroneCharges)) || Number(this.maxDroneCharges) !== launchLimit) {
+            this.maxDroneCharges = launchLimit;
         }
-        if (!Number.isFinite(Number(this.droneChargesLeft)) || Number(this.droneChargesLeft) < fixedDroneCharges) {
-            this.droneChargesLeft = this.maxDroneCharges;
-        }
+        const launchCountRaw = Number(this.droneLaunchCount);
+        this.droneLaunchCount = Number.isFinite(launchCountRaw)
+            ? Math.max(0, Math.min(launchLimit, Math.floor(launchCountRaw)))
+            : 0;
+        const remainingByCount = Math.max(0, launchLimit - this.droneLaunchCount);
+        const chargesRaw = Number(this.droneChargesLeft);
+        this.droneChargesLeft = Number.isFinite(chargesRaw)
+            ? Math.max(0, Math.min(remainingByCount, Math.floor(chargesRaw)))
+            : remainingByCount;
 
         // === RIFLE: 소총 모드 (기본 상태) - 전진/사격 + 발진 트리거 ===
         if (this.opState === 'rifle') {
@@ -2596,7 +2814,12 @@ class Unit extends Entity {
                             if (!this.ownedDrones.includes(drone)) this.ownedDrones.push(drone);
                             this.opState = 'laptop';
                         }
-                        this.droneChargesLeft = Math.max(1, Number(this.maxDroneCharges) || 2);
+                        const launchLimitNow = Math.max(1, Math.min(2, Math.floor(Number(this.droneLaunchLimit) || Number(this.maxDroneCharges) || 2)));
+                        const nextLaunchCount = Math.max(0, Math.min(launchLimitNow, (Math.floor(Number(this.droneLaunchCount) || 0) + 1)));
+                        this.droneLaunchLimit = launchLimitNow;
+                        this.maxDroneCharges = launchLimitNow;
+                        this.droneLaunchCount = nextLaunchCount;
+                        this.droneChargesLeft = Math.max(0, launchLimitNow - nextLaunchCount);
                         spawned = true;
 
                         if (typeof ChatPanel !== 'undefined' && this.team === 'player') {
@@ -2612,12 +2835,16 @@ class Unit extends Entity {
             // 3. 일반 보병처럼 전진/사격
             // 타겟 찾기
             const canHitAir = stats.antiAir || stats.type === 'air';
+            const restrictRear = (typeof this.shouldRestrictRearTargeting === 'function')
+                ? this.shouldRestrictRearTargeting()
+                : (this.commandMode !== 'retreat' && !this.returnToBase && String((this.stats && this.stats.id) || '') !== 'aa_tank');
             if (this.attackTarget) {
                 const t = this.attackTarget;
                 if (t.dead ||
                     t.team === this.team ||
                     t.team === 'neutral' ||
                     (t.stats && (t.stats.stealth || t.stats.invulnerable)) ||
+                    (restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(t.x, 20)) ||
                     (!canHitAir && t.stats && t.stats.type === 'air')) {
                     this.attackTarget = null;
                 }
@@ -2630,6 +2857,7 @@ class Unit extends Entity {
                     if (!e || e.dead) continue;
                     if (e.stats && (e.stats.stealth || e.stats.invulnerable)) continue;
                     if (!canHitAir && e.stats && e.stats.type === 'air') continue;
+                    if (restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(e.x, 20)) continue;
                     const d = Math.abs(e.x - this.x);
                     if (d < bestDist) { bestDist = d; this.attackTarget = e; }
                 }
@@ -2693,6 +2921,27 @@ class Unit extends Entity {
         const category = String((this.stats && this.stats.category) || '');
         const unitType = String((this.stats && this.stats.type) || '');
         const isArmoredLike = (category === 'armored' || unitType === 'mech');
+
+        // Armored reverse-retreat: keep hull facing the threat while moving away.
+        if (this.commandMode === 'retreat'
+            && isArmoredLike
+            && !this.returnToBase) {
+            if (this.facing == null) {
+                this.facing = (this.team === 'player') ? 1 : -1;
+            }
+            let retreatThreatX = Number(this._retreatThreatX);
+            if (!Number.isFinite(retreatThreatX) && this._retreatThreatRef && !this._retreatThreatRef.dead) {
+                retreatThreatX = Number(this._retreatThreatRef.x);
+            }
+            if (Number.isFinite(retreatThreatX)) {
+                const dtx = retreatThreatX - this.x;
+                if (Math.abs(dtx) > 3) {
+                    this.facing = dtx >= 0 ? 1 : -1;
+                }
+            }
+            this._lastX = this.x;
+            return;
+        }
 
         var combatTarget = null;
         if (this.attackTarget && !this.attackTarget.dead) {
@@ -2792,6 +3041,8 @@ class Unit extends Entity {
         // Fast fixed-route aircraft and strategic launchers are excluded.
         if (id === 'fighter' || id === 'recon' || id === 'bomber' || id === 'stealth_drone') return false;
         if (id === 'icbm' || id === 'icbm_enemy') return false;
+        // Light wheeled vehicles look unnatural when repeatedly auto-retreating at low HP.
+        if (id === 'humvee' || id === 'apc') return false;
         return true;
     }
 
@@ -2830,6 +3081,8 @@ class Unit extends Entity {
         this.retreatUntilFrame = 0;
         this.retreatMinHoldUntil = 0;
         this.retreatCooldownUntil = Math.max(Number(this.retreatCooldownUntil) || 0, fNow + 240);
+        this._retreatThreatRef = null;
+        this._retreatThreatX = null;
         this.attackTarget = null;
         this.targetX = null;
         this.commandTargetX = null;
@@ -2871,6 +3124,9 @@ class Unit extends Entity {
         const pressureRange = Math.max(130, effRange * 0.92);
         if (dist > pressureRange && hpRatio > hpThreshold) return false;
 
+        this._retreatThreatRef = threat;
+        this._retreatThreatX = tx;
+
         this.commandMode = 'retreat';
         this.returnToBase = false;
         this.attackTarget = null;
@@ -2903,29 +3159,44 @@ class Unit extends Entity {
             return true;
         }
 
+        const threatX = (threat && Number.isFinite(Number(threat.x))) ? Number(threat.x) : NaN;
+        if (Number.isFinite(threatX)) {
+            this._retreatThreatRef = threat;
+            this._retreatThreatX = threatX;
+        } else {
+            this._retreatThreatRef = null;
+            this._retreatThreatX = null;
+        }
+
         let awayDir = 0;
-        if (threat && Number.isFinite(Number(threat.x))) {
-            awayDir = (Number(threat.x) >= this.x) ? -1 : 1;
+        if (Number.isFinite(threatX)) {
+            awayDir = (threatX >= this.x) ? -1 : 1;
         } else {
             awayDir = ((Number(this.facing) || 1) >= 0) ? -1 : 1;
         }
 
         const category = String((this.stats && this.stats.category) || '');
         const unitType = String((this.stats && this.stats.type) || '');
+        const isArmoredLike = (category === 'armored' || unitType === 'mech');
         let retreatSpeedMul = 1.0;
         if (category === 'infantry') retreatSpeedMul = 1.15;
-        else if (category === 'armored' || unitType === 'mech') retreatSpeedMul = 0.95;
+        else if (isArmoredLike) retreatSpeedMul = 0.95;
         else if (unitType === 'air') retreatSpeedMul = 1.05;
 
         this.x += awayDir * speed * retreatSpeedMul;
-        this.facing = awayDir;
+        if (!isArmoredLike) {
+            this.facing = awayDir;
+        } else if (Number.isFinite(threatX)) {
+            const dtx = threatX - this.x;
+            if (Math.abs(dtx) > 3) this.facing = dtx >= 0 ? 1 : -1;
+        }
 
         const minHoldDone = frameNow >= (Number(this.retreatMinHoldUntil) || 0);
         const hardTimeout = frameNow >= (Number(this.retreatUntilFrame) || 0);
 
         let safeEnough = false;
-        if (threat && Number.isFinite(Number(threat.x))) {
-            const dist = Math.abs(Number(threat.x) - this.x);
+        if (Number.isFinite(threatX)) {
+            const dist = Math.abs(threatX - this.x);
             const safeDist = Math.max(180, (Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 0) * 1.20);
             safeEnough = dist >= safeDist;
         } else {
@@ -2938,14 +3209,19 @@ class Unit extends Entity {
         return true;
     }
 
-    findNearestEnemy(enemies, buildings) {
+    findNearestEnemy(enemies, buildings, options = null) {
         let t = null; let min = 9999;
         const x = this.x;
         const team = this.team;
+        const ignoreRearPolicy = !!(options && options.ignoreRearPolicy);
+        const restrictRear = (!ignoreRearPolicy && typeof this.shouldRestrictRearTargeting === 'function')
+            ? this.shouldRestrictRearTargeting()
+            : false;
         // [P0-3] spread 배열 생성 제거 - 순차적 for loop으로 GC 할당 제거
         for (let i = 0; i < enemies.length; i++) {
             const e = enemies[i];
             if (e && !e.dead && e.team !== team && e.team !== 'neutral') {
+                if (restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(e.x, 20)) continue;
                 const dx = e.x - x;
                 const d = dx < 0 ? -dx : dx;
                 if (d < min) { min = d; t = e; }
@@ -2954,6 +3230,7 @@ class Unit extends Entity {
         for (let i = 0; i < buildings.length; i++) {
             const e = buildings[i];
             if (e && !e.dead && e.team !== team && e.team !== 'neutral') {
+                if (restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(e.x, 20)) continue;
                 const dx = e.x - x;
                 const d = dx < 0 ? -dx : dx;
                 if (d < min) { min = d; t = e; }
@@ -3340,7 +3617,7 @@ class Unit extends Entity {
         } catch (e) { return false; }
 
         if (typeof AudioSystem !== 'undefined') {
-            AudioSystem.playGun('self', this.x);
+            AudioSystem.playSFX('tank_fire', this.x);
         }
         this.recoil = Math.max(this.recoil || 0, 6);
         if (game && game.createParticles) {
@@ -3372,7 +3649,7 @@ class Unit extends Entity {
 
     _getSpgFireReadyAngleDeg() {
         const deg = Number(this._spgFireReadyAngleDeg);
-        return Number.isFinite(deg) ? deg : -12;
+        return Number.isFinite(deg) ? deg : -45;
     }
 
     _isSpgMovingForPosture() {
@@ -3411,22 +3688,46 @@ class Unit extends Entity {
 
         const facingRaw = Number(this.facing);
         const facing = (Number.isFinite(facingRaw) && facingRaw < 0) ? -1 : 1;
+        const baseRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 900;
+        const maxDistance = Math.max(900, baseRange);
+        const minDistance = 260;
+
+        let aimX = tx;
+        let aimY = ty;
+        const minForwardX = this.x + (facing * minDistance);
+        const maxForwardX = this.x + (facing * maxDistance);
+        if (facing > 0) {
+            if (aimX < minForwardX) aimX = minForwardX;
+            if (aimX > maxForwardX) aimX = maxForwardX;
+        } else {
+            if (aimX > minForwardX) aimX = minForwardX;
+            if (aimX < maxForwardX) aimX = maxForwardX;
+        }
+
+        const travelDist = Math.abs(aimX - this.x);
+        const arcHeight = Math.max(90, Math.min(260, Math.round(travelDist * 0.20)));
+        const grav = 0.33;
 
         const weaponApi = (typeof UnitRenderV2Weapons_spg !== 'undefined' && UnitRenderV2Weapons_spg)
             ? UnitRenderV2Weapons_spg
             : null;
-        let angle = -Math.PI / 3.4;
-        if (weaponApi && typeof weaponApi.computeAimAngleFromPoint === 'function') {
-            angle = Number(weaponApi.computeAimAngleFromPoint(this, tx, ty));
+        let angle = -Math.PI / 4;
+        if (weaponApi && typeof weaponApi.computeBallisticAimAngleFromPoint === 'function') {
+            angle = Number(weaponApi.computeBallisticAimAngleFromPoint(this, aimX, aimY, {
+                arcHeight: arcHeight,
+                grav: grav
+            }));
+        } else if (weaponApi && typeof weaponApi.computeAimAngleFromPoint === 'function') {
+            angle = Number(weaponApi.computeAimAngleFromPoint(this, aimX, aimY));
         } else {
-            const dx = tx - this.x;
-            const dy = ty - this.y;
+            const dx = aimX - this.x;
+            const dy = aimY - this.y;
             angle = Math.atan2(dy, dx * facing);
         }
         if (weaponApi && typeof weaponApi.clampGunAngle === 'function') {
             angle = Number(weaponApi.clampGunAngle(angle));
         }
-        if (!Number.isFinite(angle)) angle = -Math.PI / 3.4;
+        if (!Number.isFinite(angle)) angle = -Math.PI / 4;
 
         const stateStore = (this._renderV2State && this._renderV2State.spg) ? this._renderV2State.spg : null;
         let muzzleX = this.x + (facing * 20);
@@ -3439,20 +3740,14 @@ class Unit extends Entity {
             }
         }
 
-        const dirX = facing * Math.cos(angle);
-        const dirY = Math.sin(angle);
-        const baseRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats && this.stats.range)) || 900;
-        const maxDistance = Math.max(900, baseRange);
-        const minDistance = 260;
-        const forward = ((tx - muzzleX) * dirX) + ((ty - muzzleY) * dirY);
-        const distance = Math.max(minDistance, Math.min(maxDistance, forward));
-
         return {
             angle: angle,
             muzzleX: muzzleX,
             muzzleY: muzzleY,
-            targetX: muzzleX + (dirX * distance),
-            targetY: muzzleY + (dirY * distance)
+            targetX: aimX,
+            targetY: aimY,
+            arcHeight: arcHeight,
+            grav: grav
         };
     }
 
@@ -3476,18 +3771,31 @@ class Unit extends Entity {
 
         const dmg = Number(this.stats.damage) || 0;
         const dist = Math.abs(aim.targetX - aim.muzzleX);
+        const shotArcHeight = Number.isFinite(Number(aim.arcHeight))
+            ? Math.max(28, Number(aim.arcHeight))
+            : Math.max(90, Math.min(260, Math.round(dist * 0.20)));
+        const shotGrav = Number.isFinite(Number(aim.grav))
+            ? Math.max(0.05, Number(aim.grav))
+            : 0.33;
         const shotOpts = {
             source: this,
             targetX: aim.targetX,
             targetY: aim.targetY,
-            arcHeight: Math.max(180, Math.min(460, Math.round(dist * 0.34))),
-            grav: 0.28,
+            arcHeight: shotArcHeight,
+            grav: shotGrav,
             hitRadius: 24
         };
 
         try {
             game.projectiles.push(new Projectile(aim.muzzleX, aim.muzzleY, null, dmg, this.team, 'artillery', shotOpts));
         } catch (e) { return false; }
+
+        this._spgLastShotAimX = shotOpts.targetX;
+        this._spgLastShotAimY = shotOpts.targetY;
+        this._spgLastShotFrame = frameNow;
+        this._spgLastShotArcHeight = shotOpts.arcHeight;
+        this._spgLastShotGrav = shotOpts.grav;
+        this._spgLastShotAngle = Number.isFinite(Number(aim.angle)) ? Number(aim.angle) : null;
 
         this.recoil = Math.max(this.recoil || 0, 5);
         if (typeof AudioSystem !== 'undefined') {
@@ -3758,10 +4066,17 @@ class Unit extends Entity {
         this._combatSideSign = side;
 
         const tier = this._getCombatSlotTier(target);
-        const slotStep = isAir ? 32 : 24;
-        let desiredDist = holdBase + (tier * slotStep);
+        const baseSlotStep = isAir ? 32 : 24;
         const minFront = isAir ? 48 : 62;
+        const range = Math.max(0, Number(effectiveRange) || 0);
+        const rangeMargin = isAir ? 18 : 12;
+        const maxFireDist = Math.max(minFront, range - rangeMargin);
+        const maxExtra = Math.max(0, maxFireDist - holdBase);
+        const slotStep = (maxExtra > 0) ? Math.min(baseSlotStep, maxExtra / 4) : 0;
+
+        let desiredDist = holdBase + (tier * slotStep);
         if (desiredDist < minFront) desiredDist = minFront;
+        if (desiredDist > maxFireDist) desiredDist = maxFireDist;
 
         let desiredX = targetX + (side * desiredDist);
 
@@ -3803,11 +4118,16 @@ class Unit extends Entity {
             }
         }
 
-        if (side < 0) desiredX = Math.min(desiredX, targetX - minFront);
-        else desiredX = Math.max(desiredX, targetX + minFront);
+        if (side < 0) {
+            desiredX = Math.min(desiredX, targetX - minFront);
+            desiredX = Math.max(desiredX, targetX - maxFireDist);
+        } else {
+            desiredX = Math.max(desiredX, targetX + minFront);
+            desiredX = Math.min(desiredX, targetX + maxFireDist);
+        }
 
         const dxMove = desiredX - this.x;
-        const deadZone = isAir ? 8 : (isInfantry ? 14 : 6);
+        const deadZone = isAir ? 12 : (isInfantry ? 14 : 8);
         if (Math.abs(dxMove) <= deadZone) return;
 
         const step = Math.min(Math.max(speed * 0.8, 0.2), Math.abs(dxMove));
@@ -4014,6 +4334,7 @@ class Unit extends Entity {
         let shotExtras = null;
         let artilleryAimX = null;
         let artilleryAimY = null;
+        let artilleryShotAngle = null;
         if (id === 'spg' && type === 'artillery') {
             const facingRaw = Number(this.facing);
             const facingDir = Number.isFinite(facingRaw) && facingRaw !== 0
@@ -4082,13 +4403,25 @@ class Unit extends Entity {
             }
 
             const travelDist = Math.abs(artilleryAimX - this.x);
+            const shotArcHeight = Math.max(180, Math.min(460, Math.round(travelDist * 0.34)));
+            const shotGrav = 0.33;
             shotExtras = {
                 targetX: artilleryAimX,
                 targetY: artilleryAimY,
-                arcHeight: Math.max(180, Math.min(460, Math.round(travelDist * 0.34))),
-                grav: 0.28,
+                arcHeight: shotArcHeight,
+                grav: shotGrav,
                 hitRadius: 24
             };
+            if (typeof UnitRenderV2Weapons_spg !== 'undefined'
+                && UnitRenderV2Weapons_spg
+                && typeof UnitRenderV2Weapons_spg.computeBallisticAimAngleFromPoint === 'function'
+                && Number.isFinite(artilleryAimX)
+                && Number.isFinite(artilleryAimY)) {
+                artilleryShotAngle = Number(UnitRenderV2Weapons_spg.computeBallisticAimAngleFromPoint(this, artilleryAimX, artilleryAimY, {
+                    arcHeight: shotArcHeight,
+                    grav: shotGrav
+                }));
+            }
             projectileTarget = null;
         }
 
@@ -4109,7 +4442,8 @@ class Unit extends Entity {
             else if (id === 'humvee') AudioSystem.playGun('machine_gun', this.x);
             else if (id === 'apc') AudioSystem.playGun('flak', this.x);
             else if (id === 'aa_tank') AudioSystem.playGun('flak', this.x);
-            else if (id === 'spg' || id === 'apache' || id === 'mbt') AudioSystem.playGun('self', this.x);
+            else if (id === 'mbt') AudioSystem.playSFX('tank_fire', this.x);
+            else if (id === 'spg' || id === 'apache') AudioSystem.playGun('self', this.x);
             else AudioSystem.playSFX('shoot', this.x);
         }
 
@@ -4223,6 +4557,7 @@ class Unit extends Entity {
                     const muzzle = UnitRenderV2Weapons_spg.computeMuzzleWorld(this, {
                         targetX: targetX,
                         targetY: targetY,
+                        angle: Number.isFinite(artilleryShotAngle) ? artilleryShotAngle : NaN,
                         state: stateStore
                     });
                     if (muzzle && Number.isFinite(muzzle.x) && Number.isFinite(muzzle.y)) {
@@ -4237,6 +4572,19 @@ class Unit extends Entity {
             }
             const finalOpts = Object.assign({ source: this }, shotOpts || {}, shotExtras || {});
             game.projectiles.push(new Projectile(spawnX, spawnY, projectileTarget, dmg, this.team, type, finalOpts));
+            if (id === 'spg' && type === 'artillery') {
+                const nowFrame = (game && Number.isFinite(game.frame)) ? game.frame : 0;
+                const finalTargetX = Number(finalOpts && finalOpts.targetX);
+                const finalTargetY = Number(finalOpts && finalOpts.targetY);
+                const finalArcHeight = Number(finalOpts && finalOpts.arcHeight);
+                const finalGrav = Number(finalOpts && finalOpts.grav);
+                if (Number.isFinite(finalTargetX)) this._spgLastShotAimX = finalTargetX;
+                if (Number.isFinite(finalTargetY)) this._spgLastShotAimY = finalTargetY;
+                this._spgLastShotFrame = nowFrame;
+                if (Number.isFinite(finalArcHeight)) this._spgLastShotArcHeight = finalArcHeight;
+                if (Number.isFinite(finalGrav)) this._spgLastShotGrav = finalGrav;
+                if (Number.isFinite(artilleryShotAngle)) this._spgLastShotAngle = artilleryShotAngle;
+            }
             if (id === 'humvee' && type === 'humvee_burst' && game && typeof game.createParticles === 'function') {
                 game.createParticles(spawnX, spawnY, 3, '#ffcc55');
             }
@@ -4310,8 +4658,64 @@ class Unit extends Entity {
                 ctx.restore();
             }
         };
+        const crashVisualState = (this.crashState && this.stats && this.stats.type === 'air')
+            ? this.crashState
+            : null;
+        const applyCrashVisualTransform = () => {
+            if (!crashVisualState) return;
+            const vx = Number(crashVisualState.vx) || 0;
+            const vy = Number(crashVisualState.vy) || 0;
+            const dir = (Math.abs(vx) > 0.03)
+                ? (vx >= 0 ? 1 : -1)
+                : ((Number(this.facing) || 1) >= 0 ? 1 : -1);
+            const noseDown = Math.min(1.05, Math.max(0.24, 0.2 + (Math.max(0, vy) * 0.07)));
+            let tilt = Number(crashVisualState.rollVisual);
+            if (!Number.isFinite(tilt)) tilt = noseDown * dir;
+            tilt = Math.max(-1.2, Math.min(1.2, tilt));
+            ctx.rotate(tilt);
+
+            // Slight squash while falling to make impact trajectory readable.
+            const squashY = Math.max(0.74, 1 - Math.min(0.24, Math.max(0, vy) * 0.03));
+            ctx.scale(1, squashY);
+        };
+        const drawCrashDamageOverlay = () => {
+            if (!crashVisualState) return;
+            const burn = Math.min(0.68, 0.2 + Math.max(0, Number(crashVisualState.burnLevel) || 0.2));
+            const w = Math.max(58, Number(this.width) || 58);
+            const h = Math.max(30, Number(this.height) || 30);
+            const ember = 0.35 + Math.sin((Number(this.rotorAngle) || 0) * 0.8) * 0.15;
+            ctx.save();
+            // Avoid source-atop on the shared world canvas: it can tint the background as a black rectangle.
+            // Draw compact burn marks directly on/near the fuselage instead.
+            ctx.globalAlpha = Math.min(0.95, 0.35 + burn * 0.75);
+            ctx.fillStyle = `rgba(36, 16, 10, ${Math.min(0.7, 0.22 + burn * 0.78)})`;
+            ctx.beginPath();
+            ctx.ellipse(-w * 0.08, -h * 0.18, w * 0.34, h * 0.22, -0.12, 0, Math.PI * 2);
+            ctx.ellipse(w * 0.2, -h * 0.06, w * 0.24, h * 0.17, 0.18, 0, Math.PI * 2);
+            ctx.fill();
+
+            ctx.globalAlpha = Math.min(0.75, 0.2 + burn * 0.5);
+            ctx.strokeStyle = 'rgba(248, 113, 38, 0.7)';
+            ctx.lineWidth = Math.max(1, w * 0.018);
+            ctx.beginPath();
+            ctx.moveTo(-w * 0.18, -h * 0.3);
+            ctx.lineTo(-w * 0.03, -h * 0.12);
+            ctx.lineTo(w * 0.1, -h * 0.2);
+            ctx.moveTo(w * 0.03, -h * 0.02);
+            ctx.lineTo(w * 0.16, h * 0.08);
+            ctx.stroke();
+
+            ctx.globalAlpha = Math.min(0.65, 0.18 + burn * 0.45);
+            ctx.fillStyle = `rgba(255, 144, 66, ${Math.min(0.6, ember)})`;
+            ctx.beginPath();
+            ctx.arc(w * 0.03, -h * 0.1, Math.max(1.2, w * 0.03), 0, Math.PI * 2);
+            ctx.arc(-w * 0.11, -h * 0.04, Math.max(1, w * 0.022), 0, Math.PI * 2);
+            ctx.fill();
+            ctx.restore();
+        };
         ctx.save();
         ctx.translate(this.x, renderY + snapDy);
+        applyCrashVisualTransform();
         const ARMORED_RENDER_BOOST = {
             humvee: 1.18,
             apc: 1.16,
@@ -4354,6 +4758,7 @@ class Unit extends Entity {
             ? UnitRenderUtils.renderSkinLayers(this, ctx, skin)
             : false;
         if (renderedWithSkin) {
+            drawCrashDamageOverlay();
             ctx.restore();
             drawHpBar();
             return;
@@ -4387,6 +4792,7 @@ class Unit extends Entity {
                 }) === true;
             } catch (_) { }
             if (renderedWithV2) {
+                drawCrashDamageOverlay();
                 ctx.restore();
                 drawHpBar();
                 return;
@@ -5425,7 +5831,6 @@ class Unit extends Entity {
             // 메인 로터
             ctx.fillStyle = '#000';
             ctx.fillRect(-35, -12, 70, 2);
-            ctx.fillRect(-2, -14, 4, 4);
             // 팀 마킹
             ctx.fillStyle = teamColor; ctx.fillRect(-5, -2, 20, 2);
 
@@ -5945,6 +6350,7 @@ class Unit extends Entity {
             ctx.restore();
         }
 
+        drawCrashDamageOverlay();
         ctx.restore();
         drawHpBar();
     }

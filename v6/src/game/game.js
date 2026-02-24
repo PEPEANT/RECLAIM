@@ -33,6 +33,7 @@ function getGameTeamColor(team, variant = 'primary') {
 
 const MAP_SELECT_BGM_FILE = 'bgm/ost/dunebuggydubai01.mp3';
 const DEFAULT_BATTLE_MAP_ID = 'skirmish_kabul';
+const ENEMY_ICBM_SPAWN_UNLOCK_DELAY_FRAMES = 60 * 120; // 2 minutes
 
 // 퀘스트 미션 로직은 별도 모듈로 분리됨.
 
@@ -191,6 +192,7 @@ const game = {
     playerVeteransById: {}, playerVeteranStock: {}, playerVeteranOrder: [],
     skillCharges: { emp: 1, nuke: 1, tactical: 1 },
     enemyIcbmNextAllowedFrame: 0,
+    enemyIcbmSpawnUnlockFrame: ENEMY_ICBM_SPAWN_UNLOCK_DELAY_FRAMES,
     enemyLastIcbmFrame: -999999,
     enemyLastEmpLaunchFrame: -999999,
     empTimer: 0, targetingType: null, killCount: 0,
@@ -484,6 +486,8 @@ const game = {
     getReadyIcbmLauncher(team = 'player') {
         const isReady = (u) => {
             if (!u || u.dead || !this.isIcbmLauncherUnit(u, team)) return false;
+            const ammoLeft = Number(u.icbmAmmoLeft);
+            if (Number.isFinite(ammoLeft) && ammoLeft <= 0) return false;
             if (typeof u.isIcbmReady === 'function') return u.isIcbmReady();
             return (u.icbmLaunchState || 'idle') === 'idle' && !u.icbmLaunchRequest;
         };
@@ -604,22 +608,33 @@ const game = {
             shotOpts.arcHeight = 520;
             shotOpts.grav = 0.16;
             shotOpts.hitRadius = 44;
+            shotOpts.icbmRiseFrames = 30;
         } else if (payloadKey === 'tactical_missile') {
             projectileType = 'icbm_tactical_missile';
             damage = 350;
             shotOpts.arcHeight = 340;
             shotOpts.grav = 0.23;
             shotOpts.hitRadius = 30;
+            shotOpts.icbmRiseFrames = 24;
         } else {
             projectileType = 'icbm_emp_missile';
             shotOpts.arcHeight = 390;
             shotOpts.grav = 0.20;
             shotOpts.hitRadius = 42;
+            shotOpts.icbmRiseFrames = 26;
         }
 
         const p = new Projectile(startX, startY, null, damage, team, projectileType, shotOpts);
         if (payloadKey === 'tactical_missile') p._tactical = true;
         this.projectiles.push(p);
+        if (this.isIcbmLauncherUnit(launcher)) {
+            const currentAmmo = Number(launcher.icbmAmmoLeft);
+            if (Number.isFinite(currentAmmo)) {
+                launcher.icbmAmmoLeft = Math.max(0, Math.floor(currentAmmo) - 1);
+            } else {
+                launcher.icbmAmmoLeft = 0;
+            }
+        }
 
         if (team === 'player' && typeof ChatPanel !== 'undefined') {
             const skillDef = CONFIG.units[payloadKey];
@@ -1670,6 +1685,14 @@ const game = {
     showMapSelect() {
         document.getElementById('loading-screen')?.classList.add('hidden');
         document.getElementById('map-select-screen')?.classList.remove('hidden');
+        if (typeof AudioSystem !== 'undefined' && AudioSystem) {
+            if (typeof AudioSystem.stopBattleMovementAmbience === 'function') {
+                try { AudioSystem.stopBattleMovementAmbience(); } catch (_) { }
+            }
+            if (typeof AudioSystem.stopIcbmRaise === 'function') {
+                try { AudioSystem.stopIcbmRaise(true); } catch (_) { }
+            }
+        }
         this.updateMapSelectLocks();
         this.playMapSelectBgm();
     },
@@ -1723,7 +1746,38 @@ const game = {
             app.markDirty();
             app.saveNow();
         }
+        this._clearFactionSelection();
         this.showMapSelect();
+        this._showFactionSelection();
+    },
+
+    _clearFactionSelection() {
+        try {
+            if (typeof TeamColors !== 'undefined'
+                && TeamColors
+                && typeof TeamColors.clearSelection === 'function') {
+                TeamColors.clearSelection();
+            }
+        } catch (err) {
+            console.warn('[Faction] clear selection failed:', err);
+        }
+    },
+
+    _showFactionSelection() {
+        try {
+            const opener = (typeof window !== 'undefined')
+                ? window.__RECLAIM_SHOW_FACTION_SELECTION__
+                : null;
+            if (typeof opener !== 'function') return;
+            const result = opener({ force: true });
+            if (result && typeof result.catch === 'function') {
+                result.catch((err) => {
+                    console.warn('[Faction] open selection failed:', err);
+                });
+            }
+        } catch (err) {
+            console.warn('[Faction] open selection failed:', err);
+        }
     },
 
     _forceHideBattleUI() {
@@ -1929,14 +1983,22 @@ const game = {
         if (typeof AudioSystem !== 'undefined' && typeof AudioSystem.stopIcbmRaise === 'function') {
             AudioSystem.stopIcbmRaise(true);
         }
+        if (typeof AudioSystem !== 'undefined'
+            && AudioSystem
+            && typeof AudioSystem.stopBattleMovementAmbience === 'function') {
+            try { AudioSystem.stopBattleMovementAmbience(); } catch (_) { }
+        }
 
+        this._clearFactionSelection();
         this.showMapSelect();
+        this._showFactionSelection();
         try {
             history.replaceState({ page: 'map-select' }, "MapSelect", "#map-select");
         } catch (_) { }
     },
 
     backToLobby() {
+        const shouldReopenFaction = this.running === true || this.isGameOver === true;
         this.running = false;
         this.isGameOver = false;
         this._uiRecoverySuspendUntil = Date.now() + 1500;
@@ -1956,11 +2018,27 @@ const game = {
 
         try { this._cleanupSkirmishSession(); } catch (err) { console.warn('[backToLobby] skirmish cleanup failed:', err); }
         try { this._forceHideBattleUI(); } catch (err) { console.warn('[backToLobby] battle ui cleanup failed:', err); }
+        if (typeof AudioSystem !== 'undefined'
+            && AudioSystem
+            && typeof AudioSystem.stopBattleMovementAmbience === 'function') {
+            try { AudioSystem.stopBattleMovementAmbience(); } catch (err) { console.warn('[backToLobby] stop movement ambience failed:', err); }
+        }
+        if (typeof AudioSystem !== 'undefined'
+            && AudioSystem
+            && typeof AudioSystem.stopIcbmRaise === 'function') {
+            try { AudioSystem.stopIcbmRaise(true); } catch (err) { console.warn('[backToLobby] stop icbm raise failed:', err); }
+        }
 
         document.getElementById('unit-cmd-wrapper')?.classList.add('hidden');
         document.getElementById('unit-cmd-panel')?.classList.add('hidden');
 
+        if (shouldReopenFaction) {
+            this._clearFactionSelection();
+        }
         this.showMapSelect();
+        if (shouldReopenFaction) {
+            this._showFactionSelection();
+        }
     },
 
     startGame(mapType, options = {}) {
@@ -2205,6 +2283,16 @@ const game = {
         if (!unitDef) return true;
         if (unitDef.disabled === true) return true;
 
+        // Prevent enemy ICBM TEL from appearing in the opening phase.
+        if (String(key || '').trim().toLowerCase() === 'icbm_enemy') {
+            const nowFrame = Math.max(0, Number(this.frame) || 0);
+            const unlockFrame = Math.max(
+                0,
+                Math.floor(Number(this.enemyIcbmSpawnUnlockFrame) || ENEMY_ICBM_SPAWN_UNLOCK_DELAY_FRAMES)
+            );
+            if (nowFrame < unlockFrame) return true;
+        }
+
         const unitType = String(unitDef.type || '').trim().toLowerCase();
         const unitCategory = String(unitDef.category || '').trim().toLowerCase();
         if (unitType === 'civilian' || unitCategory === 'civilian') return true;
@@ -2235,7 +2323,9 @@ const game = {
         this.supply = CONFIG.startSupply; this.enemySupply = CONFIG.startSupply;
         this.empTimer = 0;
         this.skillCharges = { emp: 1, nuke: 1, tactical: 1 };
+        this._captureControlState = null;
         this.enemyIcbmNextAllowedFrame = 0;
+        this.enemyIcbmSpawnUnlockFrame = ENEMY_ICBM_SPAWN_UNLOCK_DELAY_FRAMES;
         this.enemyLastIcbmFrame = -999999;
         this.enemyLastEmpLaunchFrame = -999999;
         this.killCount = 0;
@@ -2336,6 +2426,11 @@ const game = {
                 AI.wave.wpIndex = 0;
                 AI.wave.holdUntil = 0;
                 AI.wave.retreatUntil = 0;
+                AI.wave.phaseLockUntil = 0;
+                AI.wave.stabilizeMeter = 0;
+                AI.wave.advanceMeter = 0;
+                AI.wave.fallbackMeter = 0;
+                AI.wave.lastThreat = null;
             }
             // 특수무기 상태 초기화
             AI._initSpecialState();
@@ -2355,11 +2450,8 @@ const game = {
 
         // [R 4.2] ChatPanel 초기화 및 표시
         if (typeof ChatPanel !== 'undefined') {
-            const keepIogOpen = true;
-            ChatPanel.init({ open: keepIogOpen });
-            ChatPanel.clear();
-            ChatPanel.show();
-            ChatPanel.push('작전 개시. 행운을 빌니다.', 'INFO');
+            ChatPanel.init({ open: false });
+            ChatPanel.hide();
         }
 
         // 국지전 모드: 배치 페이즈 시작
@@ -2678,7 +2770,7 @@ const game = {
         this.selectedUnits.forEach(u => {
             if (!u || u.dead || !u.stats) return;
             const id = u.stats.id;
-            if (id === 'blackhawk' || id === 'chinook') {
+            if (id === 'blackhawk' || id === 'chinook' || id === 'uh60') {
                 if ((u.transportDropsLeft || 0) > 0) hasAir = true;
             } else if (id === 'apc' || id === 'humvee') {
                 if ((u.transportDropsLeft || 0) > 0) {
@@ -2854,7 +2946,7 @@ const game = {
         this.selectedUnits.forEach(u => {
             if (!u || u.dead || !u.stats) return;
             const id = u.stats.id;
-            if (id !== 'blackhawk' && id !== 'chinook') return;
+            if (id !== 'blackhawk' && id !== 'chinook' && id !== 'uh60') return;
             if ((u.transportDropsLeft || 0) <= 0) return;
             if (typeof u.requestAirDrop === 'function') {
                 if (u.requestAirDrop(tx)) count++;
