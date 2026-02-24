@@ -114,6 +114,7 @@ const game = {
         corpseProfile: false,           // true: 시체 렌더링 시간 로그
         corpseProfileEvery: 120,        // N프레임마다 로그
         corpseSimpleRenderThreshold: 20,// 시체 단순 렌더링 전환 임계치
+        corpseCacheBuildBudget: 2,      // 프레임당 시체 캐시 생성 허용량
         corpseNoFilter: false,          // true: ctx.filter 비활성 (성능 테스트용)
         showUnitHitboxes: false         // true: unit touch/debug hitbox overlay 표시
     },

@@ -3,6 +3,17 @@
     'use strict';
 
     const rand = (min, max) => Math.random() * (max - min) + min;
+    const INFANTRY_CORPSE_IDS = new Set([
+        'infantry',
+        'bagpiper',
+        'engineer',
+        'rpg',
+        'sniper',
+        'special_ops',
+        'special_forces',
+        'drone_operator'
+    ]);
+    const DEFAULT_CACHE_BUILD_BUDGET = 2;
 
     /**
      * Corpse - 보병 사망 시 생성되는 시체 객체
@@ -71,6 +82,7 @@
             this._cacheReady = false;
             this._cacheKey = '';
             this._cacheSize = 140;
+            this._dummyUnit = null;
         }
 
         /**
@@ -246,6 +258,56 @@
             return true;
         }
 
+        _canBuildCacheThisFrame(debug) {
+            if (typeof game === 'undefined' || !Number.isFinite(game.frame)) return true;
+            const frame = Number(game.frame);
+            if (Corpse._cacheBuildFrame !== frame) {
+                Corpse._cacheBuildFrame = frame;
+                Corpse._cacheBuildCount = 0;
+            }
+            const rawBudget = (debug && Number.isFinite(debug.corpseCacheBuildBudget))
+                ? Number(debug.corpseCacheBuildBudget)
+                : DEFAULT_CACHE_BUILD_BUDGET;
+            const budget = Math.max(1, Math.floor(rawBudget || DEFAULT_CACHE_BUILD_BUDGET));
+            if (Corpse._cacheBuildCount >= budget) return false;
+            Corpse._cacheBuildCount += 1;
+            return true;
+        }
+
+        _getDummyRenderUnit(renderId) {
+            if (!this._dummyUnit) {
+                this._dummyUnit = {
+                    x: 0,
+                    y: 0,
+                    vx: 0,
+                    facing: this.facing || 1,
+                    team: this.team,
+                    stats: {
+                        id: renderId || 'infantry',
+                        category: 'infantry',
+                        speed: 0.9,
+                        range: 260
+                    },
+                    hp: 100,
+                    maxHp: 100,
+                    dead: false,
+                    commandMode: 'stop',
+                    attackTarget: null,
+                    lastAttack: -1,
+                    lastDamagedFrame: -9999
+                };
+            }
+            const dummyUnit = this._dummyUnit;
+            dummyUnit.facing = this.facing || 1;
+            dummyUnit.team = this.team;
+            dummyUnit.stats.id = renderId || 'infantry';
+            dummyUnit.commandMode = 'stop';
+            dummyUnit._forcedInfantryStance = undefined;
+            dummyUnit.opState = undefined;
+            dummyUnit.engineerMode = undefined;
+            return dummyUnit;
+        }
+
         _drawUnitRenderV2Corpse(ctx, applyFilter) {
             const sourceId = String(this.typeKey || '').trim();
             if (!sourceId) return false;
@@ -254,40 +316,9 @@
 
             // Use a single infantry corpse renderer path for infantry-family units.
             // This avoids unknown placeholder fallbacks and keeps death poses consistent.
-            const infantryCorpseIds = new Set([
-                'infantry',
-                'bagpiper',
-                'engineer',
-                'rpg',
-                'sniper',
-                'special_ops',
-                'special_forces',
-                'drone_operator'
-            ]);
-            const renderId = infantryCorpseIds.has(sourceId) ? 'infantry' : sourceId;
-
-            const dummyUnit = {
-                x: 0,
-                y: 0,
-                vx: 0,
-                facing: this.facing || 1,
-                team: this.team,
-                stats: {
-                    id: renderId,
-                    category: 'infantry',
-                    speed: 0.9,
-                    range: 260
-                },
-                hp: 100,
-                maxHp: 100,
-                dead: false,
-                commandMode: 'stop',
-                attackTarget: null,
-                lastAttack: -1,
-                lastDamagedFrame: -9999
-            };
+            const renderId = INFANTRY_CORPSE_IDS.has(sourceId) ? 'infantry' : sourceId;
+            const dummyUnit = this._getDummyRenderUnit(renderId);
             if (renderId === 'infantry') {
-                dummyUnit.commandMode = 'stop';
                 dummyUnit._forcedInfantryStance = this.isExplosion ? 'prone' : 'crouching';
             }
 
@@ -549,7 +580,8 @@
             const debug = (typeof game !== 'undefined') ? game.debug : null;
             const corpseCount = (typeof game !== 'undefined' && Array.isArray(game.corpses)) ? game.corpses.length : 0;
             const threshold = (debug && Number.isFinite(debug.corpseSimpleRenderThreshold)) ? debug.corpseSimpleRenderThreshold : 30;
-            const simpleRender = corpseCount >= threshold;
+            const isAnimating = !this.fallen || this.knockbackFrame < this.knockbackFrames;
+            const simpleRender = isAnimating || corpseCount >= threshold;
 
             const allowFilter = !simpleRender && !(debug && debug.corpseNoFilter);
             const canCache = !simpleRender && this.fallen && this.knockbackFrame >= this.knockbackFrames;
@@ -559,7 +591,7 @@
                     this._cacheKey = key;
                     this._cacheReady = false;
                 }
-                if (!this._cacheReady) {
+                if (!this._cacheReady && this._canBuildCacheThisFrame(debug)) {
                     this._buildCache(allowFilter);
                 }
                 if (this._cacheReady && this._cacheCanvas) {
@@ -570,6 +602,13 @@
                     ctx.restore();
                     return;
                 }
+                // 캐시 빌드 대기 중에는 단순 폴백으로 드로우 부하를 낮춘다.
+                ctx.save();
+                ctx.globalAlpha = this.opacity;
+                ctx.translate(this.x, this.y);
+                this._drawCorpseBody(ctx, true, false);
+                ctx.restore();
+                return;
             }
 
             ctx.save();
@@ -607,6 +646,9 @@
             ctx.fillRect(1, -4, 4, 8);
         }
     }
+
+    Corpse._cacheBuildFrame = -1;
+    Corpse._cacheBuildCount = 0;
 
     // 전역 노출
     window.Corpse = Corpse;
