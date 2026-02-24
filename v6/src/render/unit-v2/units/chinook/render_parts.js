@@ -26,24 +26,27 @@
         var h = 4 * SCALE;
 
         // Back depth strip.
+        // Keep a strong minimum width so the strip never collapses into a "dot".
+        var flipBackRaw = Math.abs(Math.cos(rotorAngle));
         ctx.save();
         ctx.translate(cx, cy);
-        var flipBack = clamp(Math.abs(Math.cos(rotorAngle)), 0.12, 1);
+        var flipBack = clamp(flipBackRaw, 0.62, 1);
         ctx.scale(flipBack, 1);
-        ctx.globalAlpha = alphaBack;
+        ctx.globalAlpha = alphaBack * (0.55 + (flipBackRaw * 0.45));
         ctx.fillStyle = rotorColor;
         ctx.fillRect(-half, -h * 0.5, half * 2, h);
         ctx.restore();
 
         // Front strip.
+        // Same rule as back strip; never allow extreme narrow width.
+        var flipFrontRaw = Math.abs(Math.cos(rotorAngle + 0.8));
         ctx.save();
         ctx.translate(cx, cy + (2 * SCALE));
-        var flipFront = clamp(Math.abs(Math.cos(rotorAngle + 0.8)), 0.12, 1);
+        var flipFront = clamp(flipFrontRaw, 0.66, 1);
         ctx.scale(flipFront, 1);
-        ctx.globalAlpha = alphaFront;
+        ctx.globalAlpha = alphaFront * (0.55 + (flipFrontRaw * 0.45));
         ctx.fillStyle = rotorColor;
         ctx.fillRect(-half, -h * 0.5, half * 2, h);
-
         ctx.restore();
     }
 
@@ -59,6 +62,8 @@
 
         drawRotorStrip(ctx, sx(220), sy(145), frontAngle, palette, backAlpha, frontAlpha);
         drawRotorStrip(ctx, sx(620), sy(85), rearAngle, palette, backAlpha, frontAlpha);
+
+        // No top mast marker: avoids "two black dots" artifact on rotor top.
     }
 
     globalScope.UnitRenderV2Parts_chinook = {

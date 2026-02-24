@@ -69,6 +69,10 @@
         var palette = resolvePalette(unit, opts);
 
         ctx.save();
+        if (!iconMode) {
+            var bodyBank = Number(state.bodyBank) || 0;
+            if (Math.abs(bodyBank) > 0.0005) ctx.rotate(bodyBank);
+        }
         // Source CH-47 profile is left-facing.
         if (facing > 0) ctx.scale(-1, 1);
 

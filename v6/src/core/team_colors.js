@@ -7,15 +7,15 @@
     const FACTIONS = Object.freeze({
         usa: Object.freeze({
             id: 'usa',
-            name: 'US 미군',
-            player: '#3b82f6',
+            name: '신미합중국 US',
+            player: '#8b7a5a',
             enemy: '#6b8e23'
         }),
         russia: Object.freeze({
             id: 'russia',
-            name: 'RS 러시아',
+            name: '러시아연방권 RS',
             player: '#6b8e23',
-            enemy: '#3b82f6'
+            enemy: '#8b7a5a'
         })
     });
 
@@ -166,6 +166,20 @@
         }
     }
 
+    function clearSelection() {
+        state = {
+            faction: null,
+            player: DEFAULTS.player,
+            enemy: DEFAULTS.enemy,
+            neutral: DEFAULTS.neutral
+        };
+        applyRuntime();
+        try {
+            localStorage.removeItem(STORAGE_KEY);
+        } catch (_) { }
+        return { ...state };
+    }
+
     function setFaction(factionId, persist = true) {
         const key = String(factionId || '').trim().toLowerCase();
         const f = Object.prototype.hasOwnProperty.call(FACTIONS, key) ? FACTIONS[key] : FACTIONS.usa;
@@ -230,6 +244,7 @@
         ensure,
         load,
         save,
+        clearSelection,
         setColors,
         setFaction,
         get,

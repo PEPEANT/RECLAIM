@@ -23,15 +23,21 @@
         spawnFamilyCooldownUntil: {},
         globalAliveCaps: {},
         wave: {
-            phase: 'HOLD',          // 'HOLD' | 'PUSH' | 'ASSAULT'
+            phase: 'HOLD',          // 'HOLD' | 'ENGAGE' | 'FALLBACK' | 'ASSAULT'
             wpIndex: 0,
             holdUntil: 0,
             retreatUntil: 0,
             lastCommandFrame: 0,
-            lastThreatCheck: 0
+            lastThreatCheck: 0,
+            phaseLockUntil: 0,
+            stabilizeMeter: 0,
+            advanceMeter: 0,
+            fallbackMeter: 0,
+            lastThreat: null
         },
         _totalWarIssued: false,
         special: null,
+        massSpawnResponse: null,
 
     setDifficulty(diff) {
         try {
@@ -55,6 +61,7 @@
             this.armoredWaveTankCount = 0;
             this.recentSpawnIds = [];
             this.spawnFamilyCooldownUntil = {};
+            this.massSpawnResponse = null;
 
             // [NEW] 난이도 변경 시 즉시 저장
             if (typeof app !== 'undefined' && app.markDirty) {
@@ -66,6 +73,105 @@
             this.difficulty = 'elite';
             this._initSpecialState();
         }
+    },
+
+    _ensureMassSpawnResponseState(frame = 0) {
+        const now = Math.max(0, Number(frame) || 0);
+        const currentCount = Array.isArray(game?.players) ? game.players.length : 0;
+        if (!this.massSpawnResponse || typeof this.massSpawnResponse !== 'object') {
+            this.massSpawnResponse = {
+                activeUntil: 0,
+                lastTriggerFrame: -999999,
+                lastSampleFrame: now,
+                lastPlayerCount: currentCount,
+                boostLevel: 0,
+                samples: [{ frame: now, count: currentCount }]
+            };
+            return this.massSpawnResponse;
+        }
+        const state = this.massSpawnResponse;
+        if (!Array.isArray(state.samples)) state.samples = [];
+        if (!Number.isFinite(Number(state.activeUntil))) state.activeUntil = 0;
+        if (!Number.isFinite(Number(state.lastTriggerFrame))) state.lastTriggerFrame = -999999;
+        if (!Number.isFinite(Number(state.lastSampleFrame))) state.lastSampleFrame = now;
+        if (!Number.isFinite(Number(state.lastPlayerCount))) state.lastPlayerCount = currentCount;
+        if (!Number.isFinite(Number(state.boostLevel))) state.boostLevel = 0;
+        if (state.samples.length <= 0) {
+            state.samples.push({ frame: now, count: currentCount });
+        }
+        return state;
+    },
+
+    _getMassSpawnCountAgo(state, targetFrame) {
+        if (!state || !Array.isArray(state.samples) || state.samples.length <= 0) return 0;
+        for (let i = state.samples.length - 1; i >= 0; i--) {
+            const row = state.samples[i];
+            if (!row) continue;
+            const f = Number(row.frame);
+            if (!Number.isFinite(f)) continue;
+            if (f <= targetFrame) return Math.max(0, Math.floor(Number(row.count) || 0));
+        }
+        return Math.max(0, Math.floor(Number(state.samples[0].count) || 0));
+    },
+
+    _getMassSpawnResponseBoost(frame = 0) {
+        const state = this._ensureMassSpawnResponseState(frame);
+        const now = Math.max(0, Number(frame) || 0);
+        const activeUntil = Math.max(0, Number(state.activeUntil) || 0);
+        const active = now <= activeUntil;
+        const level = active
+            ? Math.max(0, Math.min(1, Number(state.boostLevel) || 0))
+            : 0;
+
+        return {
+            active,
+            level,
+            spawnRateMul: active ? (1 - (0.18 + (0.16 * level))) : 1,
+            supportChanceBonus: active ? (0.14 + (0.16 * level)) : 0,
+            supportDelayMul: active ? (0.76 - (0.18 * level)) : 1
+        };
+    },
+
+    _isMassSpawnResponseActive(frame = 0) {
+        const boost = this._getMassSpawnResponseBoost(frame);
+        return !!(boost && boost.active);
+    },
+
+    _updateMassSpawnResponse(frame = 0) {
+        const state = this._ensureMassSpawnResponseState(frame);
+        const now = Math.max(0, Number(frame) || 0);
+        const currentCount = Array.isArray(game?.players) ? game.players.length : 0;
+
+        const sampleEvery = 15; // 0.25s at 60fps
+        if (state.samples.length <= 0 || now >= (Number(state.lastSampleFrame) || 0) + sampleEvery) {
+            state.samples.push({ frame: now, count: currentCount });
+            state.lastSampleFrame = now;
+        }
+
+        const keepFrames = 60 * 12; // keep ~12s history
+        const minFrame = now - keepFrames;
+        while (state.samples.length > 1 && Number(state.samples[0]?.frame) < minFrame) {
+            state.samples.shift();
+        }
+
+        const shortAgoCount = this._getMassSpawnCountAgo(state, now - (60 * 3));
+        const longAgoCount = this._getMassSpawnCountAgo(state, now - (60 * 6));
+        const shortDelta = Math.max(0, currentCount - shortAgoCount);
+        const longDelta = Math.max(0, currentCount - longAgoCount);
+        const burstDelta = Math.max(shortDelta, longDelta);
+
+        const cooldownFrames = 60 * 6;
+        const canTrigger = now >= ((Number(state.lastTriggerFrame) || -999999) + cooldownFrames);
+        const detectedMassSpawn = (shortDelta >= 4) || (longDelta >= 6);
+        if (canTrigger && detectedMassSpawn) {
+            const duration = 60 * (10 + Math.floor(Math.random() * 11)); // 10~20 sec
+            state.activeUntil = Math.max(Number(state.activeUntil) || 0, now + duration);
+            state.lastTriggerFrame = now;
+            state.boostLevel = Math.max(0.25, Math.min(1, (burstDelta - 3) / 6));
+        }
+
+        state.lastPlayerCount = currentCount;
+        return this._getMassSpawnResponseBoost(now);
     },
 
     update(frame) {
@@ -99,6 +205,15 @@
         if (playerUnitCount > 10) {
             const reduction = Math.min(currentRate * 0.5, (playerUnitCount - 10) * 2);
             currentRate -= reduction;
+        }
+
+        const massSpawnBoost = this._updateMassSpawnResponse(frame);
+        if (massSpawnBoost && massSpawnBoost.active) {
+            currentRate = Math.max(24, currentRate * Math.max(0.45, Number(massSpawnBoost.spawnRateMul) || 1));
+            const soonerSpawnAt = frame + currentRate;
+            if (Number.isFinite(this.nextSpawnAt) && this.nextSpawnAt > soonerSpawnAt) {
+                this.nextSpawnAt = soonerSpawnAt;
+            }
         }
 
         if (!Number.isFinite(this.nextSpawnAt) || this.nextSpawnAt <= 0) {

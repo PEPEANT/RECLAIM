@@ -207,15 +207,8 @@
         ctx.arc(sx(560), sy(290), 4 * SCALE, 0, Math.PI * 2);
         ctx.fill();
 
-        // Rotor mast bases.
-        ctx.fillStyle = gear;
-        ctx.fillRect(sx(216), sy(145), 8 * SCALE, 15 * SCALE);
-        ctx.fillRect(sx(616), sy(85), 8 * SCALE, 20 * SCALE);
-        ctx.fillStyle = dark;
-        polySvg(ctx, [205, 155, 235, 155, 225, 145, 215, 145]);
-        ctx.fill();
-        polySvg(ctx, [605, 100, 635, 100, 625, 85, 615, 85]);
-        ctx.fill();
+        // Rotor mast top markers intentionally removed.
+        // These read as two dark dots at gameplay zoom.
 
         // Team accent.
         ctx.fillStyle = enemyPattern ? accent : accent2;

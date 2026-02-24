@@ -11,9 +11,19 @@
     var BATTLE_BASE_DRAW_SCALE = 1.4 * 1.16;
     var BATTLE_WORLD_SCALE = BATTLE_BASE_DRAW_SCALE * BATTLE_MODEL_SCALE;
     var MANUAL_AIM_STALE_FRAMES = 45;
+    var SPG_SHOT_AIM_STALE_FRAMES = 25;
     var DEG_TO_RAD = Math.PI / 180;
-    var SPG_MOVE_DOWN_TARGET = Math.PI * 0.97;
-    var SPG_FIRE_READY_ANGLE_DEG = -12;
+    // Move posture: keep a mild raised angle (do not point to ground while moving).
+    var SPG_MOVE_DOWN_TARGET = (-10 * Math.PI) / 180;
+    var SPG_FIRE_READY_ANGLE_DEG = -16; // fire gate: must be raised above this
+
+    function normalizeAngleRad(value) {
+        var v = Number(value);
+        if (!Number.isFinite(v)) return 0;
+        while (v <= -Math.PI) v += Math.PI * 2;
+        while (v > Math.PI) v -= Math.PI * 2;
+        return v;
+    }
 
     function stepAngleToward(current, target, maxStep) {
         var c = Number(current);
@@ -23,7 +33,7 @@
         if (!Number.isFinite(c)) return t;
         if (!Number.isFinite(s) || s <= 0) return t;
 
-        var diff = t - c;
+        var diff = normalizeAngleRad(t - c);
         if (Math.abs(diff) <= s) return t;
         return c + (diff > 0 ? s : -s);
     }
@@ -132,7 +142,17 @@
         if (!state) return false;
         deps.stateApi.updateRuntimeState(unit, state);
 
-        var moving = Math.abs(Number(unit.vx) || 0) > 0.08;
+        var speedX = Math.abs(Number(unit.vx) || 0);
+        var wasMoving = state._spgWasMoving === true;
+        var cmd = String(unit.commandMode || '').trim().toLowerCase();
+        var moving = wasMoving ? (speedX > 0.05) : (speedX > 0.14);
+        // Keep gun stowed whenever SPG is explicitly in move/retreat travel modes.
+        if (cmd === 'move' || cmd === 'retreat' || unit.returnToBase === true) {
+            moving = true;
+        }
+        if (!moving && speedX > 0.04 && cmd !== 'stop') {
+            moving = true;
+        }
 
         var tx = null;
         var ty = null;
@@ -149,32 +169,59 @@
             && Number.isFinite(manualX)
             && Number.isFinite(manualY)
             && (!Number.isFinite(frameNow) || !Number.isFinite(manualFrame) || (frameNow - manualFrame) <= MANUAL_AIM_STALE_FRAMES);
+        var shotAimX = Number(unit._spgLastShotAimX);
+        var shotAimY = Number(unit._spgLastShotAimY);
+        var shotAimFrame = Number(unit._spgLastShotFrame);
+        var hasRecentShotAim = Number.isFinite(shotAimX)
+            && Number.isFinite(shotAimY)
+            && Number.isFinite(frameNow)
+            && Number.isFinite(shotAimFrame)
+            && ((frameNow - shotAimFrame) <= SPG_SHOT_AIM_STALE_FRAMES);
+
+        var liveTarget = (unit.attackTarget && !unit.attackTarget.dead) ? unit.attackTarget : null;
 
         if (hasManualAim) {
             tx = manualX;
             ty = manualY;
+        } else if (hasRecentShotAim) {
+            tx = shotAimX;
+            ty = shotAimY;
         } else {
-            var target = unit.attackTarget;
-            if (target && !target.dead) {
-                tx = Number(target.x);
-                ty = Number(target.y) - (Number(target.height) || 0) * 0.25;
+            if (liveTarget) {
+                tx = Number(liveTarget.x);
+                ty = Number(liveTarget.y) - (Number(liveTarget.height) || 0) * 0.25;
             }
         }
 
         var hasAimTarget = Number.isFinite(tx) && Number.isFinite(ty);
-        var wasMoving = state._spgWasMoving === true;
+        var allowCombatElevation = !!liveTarget
+            || hasRecentShotAim
+            || (hasManualAim && unit.isDirectControl === true);
         if (moving) {
-            // Move posture first: when the vehicle starts moving, barrel goes down and stays down.
-            if (!wasMoving) state.gunAngle = SPG_MOVE_DOWN_TARGET;
-            state.gunAngle = stepAngleToward(state.gunAngle, SPG_MOVE_DOWN_TARGET, 0.8 * DEG_TO_RAD);
-        } else if (hasAimTarget) {
-            var next = deps.weaponApi.computeAimAngleFromPoint(unit, tx, ty);
-            // Combat posture: keep barrel generally above horizontal.
-            var combatMaxDown = 0.20;
-            if (next > combatMaxDown) next = combatMaxDown;
-            state.gunAngle = stepAngleToward(state.gunAngle, next, 1.0 * DEG_TO_RAD);
+            state.gunAngle = stepAngleToward(state.gunAngle, SPG_MOVE_DOWN_TARGET, 0.9 * DEG_TO_RAD);
+        } else if (hasAimTarget && allowCombatElevation) {
+            var arcRaw = Number(unit._spgLastShotArcHeight);
+            var gravRaw = Number(unit._spgLastShotGrav);
+            var arcHeight = Number.isFinite(arcRaw)
+                ? Math.max(28, arcRaw)
+                : Math.max(90, Math.min(260, Math.round(Math.abs(tx - (Number(unit.x) || 0)) * 0.20)));
+            var grav = Number.isFinite(gravRaw) ? Math.max(0.05, gravRaw) : 0.33;
+            var next = -Math.PI / 4;
+            if (deps.weaponApi && typeof deps.weaponApi.computeBallisticAimAngleFromPoint === 'function') {
+                next = deps.weaponApi.computeBallisticAimAngleFromPoint(unit, tx, ty, {
+                    arcHeight: arcHeight,
+                    grav: grav
+                });
+            } else if (deps.weaponApi && typeof deps.weaponApi.computeAimAngleFromPoint === 'function') {
+                next = deps.weaponApi.computeAimAngleFromPoint(unit, tx, ty);
+            }
+            var combatReadyAngleRad = SPG_FIRE_READY_ANGLE_DEG * DEG_TO_RAD;
+            if (next > combatReadyAngleRad) next = combatReadyAngleRad;
+            state.gunAngle = stepAngleToward(state.gunAngle, next, 1.05 * DEG_TO_RAD);
         } else {
-            var idleTarget = (unit.team === 'enemy') ? (-Math.PI / 3.6) : (-Math.PI / 3.2);
+            var idleTarget = (unit.team === 'enemy')
+                ? ((-20 * Math.PI) / 180)
+                : ((-18 * Math.PI) / 180);
             state.gunAngle = stepAngleToward(state.gunAngle, idleTarget, 0.7 * DEG_TO_RAD);
         }
         state._spgWasMoving = moving;

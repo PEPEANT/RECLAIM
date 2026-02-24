@@ -188,7 +188,7 @@
     </script>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
-    <link rel="stylesheet" href="src/styles/style.css?v=20260224s55">
+    <link rel="stylesheet" href="src/styles/style.css?v=20260224s62">
     <link rel="stylesheet" href="src/styles/skirmish.css?v=20260216sc2">
     <!-- Google Fonts for Cyberpunk/Sci-fi look -->
     <link
@@ -340,14 +340,19 @@
         </div>
 
         <div id="hud-top-actions" class="hidden" aria-label="Top Actions">
-            <button id="hud-all-retreat-btn" class="hud-top-btn hidden" data-hud-top-action="all_retreat" aria-label="All Retreat">
-                <i class="fa-solid fa-arrow-left"></i>
-            </button>
-            <button id="hud-all-attack-btn" class="hud-top-btn hidden" data-hud-top-action="all_stop" aria-label="All Stop">
-                <i class="fa-solid fa-pause"></i>
-            </button>
-            <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_attack" aria-label="All Attack">
-                <i class="fa-solid fa-arrow-right"></i>
+            <div class="hud-top-actions-row">
+                <button id="hud-all-retreat-btn" class="hud-top-btn hidden" data-hud-top-action="all_retreat" aria-label="All Retreat">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <button id="hud-all-attack-btn" class="hud-top-btn hidden" data-hud-top-action="all_stop" aria-label="All Stop">
+                    <i class="fa-solid fa-pause"></i>
+                </button>
+                <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_attack" aria-label="All Attack">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+            <button id="hud-cancel-btn" class="hud-top-btn hidden" data-hud-top-action="cancel" aria-label="Cancel Commands">
+                <i class="fa-solid fa-xmark"></i>
             </button>
         </div>
 
@@ -537,7 +542,7 @@
                             <img src="png/gonfalon/Us.png" alt="US flag" class="w-full h-full object-contain">
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-base font-bold text-white">US 미군</span>
+                            <span class="text-base font-bold text-white">신미합중국 US</span>
                             <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#8b7a5a"></span>
                         </div>
                     </button>
@@ -547,7 +552,7 @@
                             <img src="png/gonfalon/Rs.png" alt="Russia flag" class="w-full h-full object-contain">
                         </div>
                         <div class="flex items-center justify-between">
-                            <span class="text-base font-bold text-white">RS 러시아</span>
+                            <span class="text-base font-bold text-white">러시아연방권 RS</span>
                             <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#6b8e23"></span>
                         </div>
                     </button>
@@ -592,7 +597,7 @@
     <!-- Cinematic Modal -->
     <div id="cinematic-modal" class="hidden fixed inset-0 z-[100] bg-black">
         <!-- Video Logo (plays first) -->
-        <video id="cinematic-video" class="hidden absolute" muted playsinline preload="auto">
+        <video id="cinematic-video" class="hidden absolute" muted playsinline preload="metadata">
             <source src="assets/tutorial/videos/grok_video.mp4" type="video/mp4">
         </video>
 
@@ -609,13 +614,18 @@
 
     <!-- Map Intro Modal -->
     <div id="map-intro-modal" class="hidden fixed inset-0 z-[110] bg-black">
-        <video id="map-intro-video" class="absolute inset-0 w-full h-full object-contain bg-black" playsinline preload="auto"></video>
+        <video id="map-intro-video" class="absolute inset-0 w-full h-full object-contain bg-black" playsinline preload="metadata"></video>
         <button id="map-intro-skip-btn"
             class="absolute px-4 py-2 bg-slate-800/85 hover:bg-slate-700 text-white rounded-lg border border-slate-600 hover:border-white transition-all duration-200 text-sm font-bold"
             style="top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px));">
             스킵하기
         </button>
     </div>
+
+    <button id="global-settings-btn" type="button" class="global-settings-btn hidden" aria-label="설정"
+        onclick="if(typeof game!=='undefined'&&game&&game.running===true&&typeof ui!=='undefined'&&ui&&typeof ui.openOptions==='function'){ui.openOptions({ context: 'ingame', source: 'global-gear' });}">
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+    </button>
 
     <!-- Option Modal -->
     <div id="option-modal" class="modal-overlay" onclick="if(event.target===this){ui.closeOptions();}">
@@ -640,10 +650,10 @@
                         <div class="opt-info-card">
                             <div class="opt-info-title">게임방법</div>
                             <ul class="opt-info-list">
-                                <li>거점/생산 건물을 선택하면 유닛 생성 패널이 열립니다.</li>
-                                <li>지형 터치: 이동 명령, 적 터치: 공격 명령.</li>
-                                <li>명령바에서 스킬/상호작용을 사용합니다.</li>
-                                <li>국지전 프리배치 종료 후 전투 시작 시 생성 패널이 숨겨집니다.</li>
+                                <li>PC: 좌클릭으로 유닛/건물 선택, 우클릭으로 이동/공격 명령.</li>
+                                <li>PC: 휠로 확대/축소, ESC로 설정/취소 메뉴를 엽니다.</li>
+                                <li>PC: Q / E 키로 카메라 좌우 이동이 가능합니다.</li>
+                                <li>모바일: 화면 터치로 유닛 선택, 빈 지면 터치로 이동, 적 유닛 터치로 공격.</li>
                             </ul>
                         </div>
                     </div>
@@ -685,31 +695,17 @@
 
                     <div id="opt-tab-audio" class="opt-tab-panel mb-5">
                         <div class="mb-4">
-                            <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio_settings">AUDIO</h3>
+                            <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio_settings">오디오</h3>
                             <div class="space-y-3">
                                 <div>
-                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>Master Volume</span><span
-                                            id="vol-master-val">50%</span></div>
-                                    <input type="range" min="0" max="100" value="50" oninput="ui.setVolume('master', this.value)">
-                                </div>
-                                <div>
-                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM</span><span
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>배경음</span><span
                                             id="vol-bgm-val">40%</span></div>
-                                    <input type="range" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
+                                    <input type="range" data-volume="bgm" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
                                 </div>
                                 <div>
-                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>SFX</span><span
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>효과음</span><span
                                             id="vol-sfx-val">60%</span></div>
-                                    <input type="range" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
-                                </div>
-                                <div id="opt-bgm-select-row">
-                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>BGM Select</span></div>
-                                    <select id="opt-bgm-select" onchange="ui.changeBGM(this.value)"
-                                        class="w-full bg-slate-900 border border-slate-600 text-white p-2 rounded text-xs">
-                                        <option value="0">BGM 0 (Default)</option>
-                                        <option value="1">BGM 1</option>
-                                        <option value="2">BGM 2</option>
-                                    </select>
+                                    <input type="range" data-volume="sfx" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
                                 </div>
                             </div>
                         </div>
@@ -732,7 +728,10 @@
                             <p class="opt-info-text">훈서기</p>
                             <ul class="opt-info-list">
                                 <li>최초 제작일: 2025.12.09 21:15:48</li>
-                                <li>생성형 AI: 제미나이3 제작</li>
+                                <li>메인제작 : 코덱스 5.3</li>
+                                <li>그래픽 : 제미나이 3.1</li>
+                                <li>메인보조 : 클로드 오퍼스 4.6</li>
+                                <li>영상제작 : 그록 4.1</li>
                             </ul>
                         </div>
                     </div>
@@ -848,6 +847,7 @@
                 <div id="mobile-dc-stick-knob" class="mobile-direct-stick-knob"></div>
             </div>
         </div>
+        <div id="pc-direct-wasd-hint" class="pc-direct-wasd-hint hidden" aria-hidden="true">WASD 이동</div>
         <div class="mobile-direct-attack-wrap">
             <button id="mobile-dc-stance" class="mobile-direct-action-btn mobile-direct-action-stance hidden" type="button" aria-label="Stance">
                 <span id="mobile-dc-stance-label" class="mobile-direct-stance-label">앉</span>
@@ -887,12 +887,12 @@
     </div>
 
     <script src="src/data/data.js?v=20260223d3"></script>
-    <script src="src/core/team_colors.js?v=20260224tc3"></script>
+    <script src="src/core/team_colors.js?v=20260224tc4"></script>
     <script src="src/render/unit-params.js?v=20260223up2"></script>
     <!-- [ADD] IngameRenderer for unit wreckage rendering -->
     <script src="unit-editor/js/ingame-renderer.js"></script>
-    <script src="src/entities/unit-render-utils.js?v=20260223ur4"></script>
-    <script src="src/entities/classes.js?v=20260224air32"></script>
+    <script src="src/entities/unit-render-utils.js?v=20260223ur5"></script>
+    <script src="src/entities/classes.js?v=20260224air40"></script>
     <script src="src/combat/projectile-designs.js?v=20260223pd2"></script>
     <!-- VFX (explosions / particles) -->
     <script src="src/vfx/explosion.js?v=20260223ex1"></script>
@@ -917,12 +917,12 @@
     <script src="src/ai/special/special_logic.js"></script>
     <script src="src/ai/tactics/orders.js"></script>
     <script src="src/ai/tactics/wave_controller.js"></script>
-    <script src="src/audio/audio.js?v=20260224a13"></script>
+    <script src="src/audio/audio.js?v=20260224a14"></script>
     <script src="src/i18n/lang.js?v=20260223l6"></script>
     <script src="src/core/version.js?v=20260223v3"></script>
     <script src="src/units/drone/drone-behavior.js?v=20260224d4"></script>
     <script src="src/core/spatial.js?v=20260223sp2"></script>
-    <script src="src/core/camera.js"></script>
+    <script src="src/core/camera.js?v=20260224c1"></script>
     <script src="src/game/corpse.js"></script>
     <script src="src/render/unit-v2/registry.js"></script>
     <script src="src/render/unit-v2/common/scale.js"></script>
@@ -935,9 +935,9 @@
     <script src="src/render/unit-v2/units/humvee/fx.js"></script>
     <script src="src/render/unit-v2/units/humvee/index.js?v=20260222hv1"></script>
     <script src="src/render/unit-v2/units/apc/state.js"></script>
-    <script src="src/render/unit-v2/units/apc/weapons.js"></script>
+    <script src="src/render/unit-v2/units/apc/weapons.js?v=20260224apw1"></script>
     <script src="src/render/unit-v2/units/apc/render_body.js"></script>
-    <script src="src/render/unit-v2/units/apc/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/apc/render_parts.js?v=20260224apr1"></script>
     <script src="src/render/unit-v2/units/apc/fx.js"></script>
     <script src="src/render/unit-v2/units/apc/index.js?v=20260222ap1"></script>
     <script src="src/render/unit-v2/units/aa_tank/state.js?v=20260222aa1"></script>
@@ -1023,22 +1023,22 @@
     <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260224uh60a6"></script>
     <script src="src/render/unit-v2/index.js"></script>
     <script src="src/game/battle_economy.js"></script>
-    <script src="src/game/game.js?v=20260224g36"></script>
+    <script src="src/game/game.js?v=20260224g42"></script>
     <script src="src/units/drone/drone-manager.js?v=20260224dm2"></script>
     <script src="src/units/drone/drone-commands.js?v=20260224dc2"></script>
     <script src="src/units/drone/drone-control.js"></script>
-    <script src="src/game/runtime_loop.js?v=20260223r6"></script>
+    <script src="src/game/runtime_loop.js?v=20260224r10"></script>
     <script src="src/game/app_persistence.js?v=20260224ap8"></script>
     <script src="src/game/app_runtime.js"></script>
-    <script src="src/game/input.js?v=20260224dc19"></script>
+    <script src="src/game/input.js?v=20260224dc40"></script>
     <script src="src/game/camera_controls.js"></script>
-    <script src="src/game/victory.js?v=20260223v3"></script>
+    <script src="src/game/victory.js?v=20260224v6"></script>
     <script src="src/game/map_setup.js?v=20260223ms2"></script>
     <script src="src/game/news.js"></script>
     <!-- Patch Modules (load order fixed) -->
     <!-- /Patch Modules -->
-    <script src="src/ui/hud.js?v=20260224h21"></script>
-    <script src="src/game/unit_commands.js?v=20260224uc15"></script>
+    <script src="src/ui/hud.js?v=20260224h26"></script>
+    <script src="src/game/unit_commands.js?v=20260224uc30"></script>
     <script src="src/render/news/news_intro.js"></script>
     <script src="src/render/news/news_overlay.js"></script>
 
@@ -1181,6 +1181,9 @@
 
                         const render = () => {
                             if (typeof api.setFaction === 'function') api.setFaction(selectedFaction, false);
+                            if (typeof ui !== 'undefined' && ui && typeof ui.refreshUnitButtonIconTheme === 'function') {
+                                ui.refreshUnitButtonIconTheme(true);
+                            }
 
                             usaBtn.style.borderColor = (selectedFaction === 'usa') ? '#b89b6e' : '#334155';
                             russiaBtn.style.borderColor = (selectedFaction === 'russia') ? '#a3e635' : '#334155';
@@ -1198,6 +1201,9 @@
                         confirmBtn.onclick = () => {
                             if (typeof api.setFaction === 'function') {
                                 api.setFaction(selectedFaction, true);
+                            }
+                            if (typeof ui !== 'undefined' && ui && typeof ui.refreshUnitButtonIconTheme === 'function') {
+                                ui.refreshUnitButtonIconTheme(true);
                             }
                             screen.classList.add('hidden');
                             pending = null;

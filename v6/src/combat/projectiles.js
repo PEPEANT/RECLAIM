@@ -13,8 +13,6 @@ class EmpShockwaveFX {
         if (this.game) {
             if (typeof this.game.addFlash === 'function') this.game.addFlash(0.42);
             else this.game.flash = Math.max(Number(this.game.flash) || 0, 0.42);
-            if (typeof this.game.addShake === 'function') this.game.addShake(8);
-            else this.game.shake = Math.max(Number(this.game.shake) || 0, 8);
         }
     }
 
@@ -163,7 +161,7 @@ class Projectile {
             this.icbmPendingBallistic = ballisticCfg;
             this.icbmLaunchRiseFrames = (opts && opts.icbmRiseFrames != null)
                 ? Math.max(0, Math.floor(Number(opts.icbmRiseFrames) || 0))
-                : 14;
+                : 24;
             const riseSpeedRaw = (opts && opts.icbmRiseSpeed != null) ? Number(opts.icbmRiseSpeed) : 8;
             this.icbmLaunchRiseSpeed = -Math.max(3, Math.abs(riseSpeedRaw || 8));
             this.vx = 0;
@@ -356,6 +354,91 @@ class Projectile {
         this.speed = Math.sqrt(this.vx * this.vx + this.vy * this.vy);
     }
 
+    _stopRocketLoopSound() {
+        if (!this.rocketSound) return;
+        try {
+            this.rocketSound.pause();
+            this.rocketSound.currentTime = 0;
+        } catch (e) { }
+        this.rocketSound = null;
+    }
+
+    _isIcbmPayloadProjectile() {
+        return (
+            this.type === 'icbm_nuke_missile'
+            || this.type === 'icbm_tactical_missile'
+            || this.type === 'icbm_emp_missile'
+        );
+    }
+
+    // ICBM payloads can be intercepted by enemy aa_tank.
+    // Single aa_tank has modest interception odds; multiple aa_tanks increase reliability.
+    _tryAATankInterceptIcbm() {
+        if (!this._isIcbmPayloadProjectile()) return false;
+        if (typeof game === 'undefined' || !game) return false;
+
+        const frameNow = Number(game.frame) || 0;
+        const nextCheck = Number(this._aaInterceptNextCheckFrame) || 0;
+        if (frameNow < nextCheck) return false;
+        this._aaInterceptNextCheckFrame = frameNow + 9;
+
+        const defenders = (this.team === 'player') ? game.enemies : game.players;
+        if (!Array.isArray(defenders) || defenders.length === 0) return false;
+
+        const missileX = Number(this.x) || 0;
+        const missileY = Number(this.y) || 0;
+        const baseRange = 560;
+        let nearCount = 0;
+        let weightedCoverage = 0;
+
+        for (let i = 0; i < defenders.length; i++) {
+            const u = defenders[i];
+            if (!u || u.dead || !u.stats) continue;
+            if (String(u.stats.id || '') !== 'aa_tank') continue;
+            if ((Number(u.stunTimer) || 0) > 0) continue;
+
+            const ux = Number(u.x);
+            if (!Number.isFinite(ux)) continue;
+            const dx = Math.abs(ux - missileX);
+            if (dx > baseRange) continue;
+
+            const uyRaw = (typeof u.getRenderY === 'function') ? Number(u.getRenderY()) : Number(u.y);
+            const uy = Number.isFinite(uyRaw) ? uyRaw : missileY;
+            const dy = Math.abs(uy - missileY);
+            const xFactor = Math.max(0, 1 - (dx / baseRange));
+            const altitudeFactor = Math.max(0.45, Math.min(1, 1 - (Math.max(0, dy - 220) / 700)));
+            const weight = xFactor * altitudeFactor;
+            if (weight <= 0.01) continue;
+
+            nearCount += 1;
+            weightedCoverage += weight;
+        }
+
+        if (nearCount <= 0) return false;
+
+        const coverage = Math.max(0, Math.min(1.6, weightedCoverage));
+        let chance = 0.0038 + (coverage * 0.0042);
+        if (nearCount >= 2) chance += 0.004 + ((nearCount - 2) * 0.0018);
+        if (this.type === 'icbm_nuke_missile') chance *= 0.92;
+        chance = Math.max(0.004, Math.min(0.032, chance));
+
+        if (Math.random() >= chance) return false;
+
+        this.dead = true;
+        this._stopRocketLoopSound();
+
+        if (typeof VFX !== 'undefined') {
+            VFX.spawn(game, 'airburst', missileX, missileY, { anchorGround: false, noShake: true });
+        } else if (typeof game.createParticles === 'function') {
+            game.createParticles(missileX, missileY, 7, '#e5e7eb');
+        }
+        if (typeof AudioSystem !== 'undefined') {
+            if (typeof AudioSystem.playGun === 'function') AudioSystem.playGun('flak', missileX);
+            if (typeof AudioSystem.playBoom === 'function') AudioSystem.playBoom('death_exp2', missileX);
+        }
+        return true;
+    }
+
     update() {
         if (this.dead) return;
         const isTacticalLike = (this.type === 'tactical_missile' || this.type === 'icbm_tactical_missile');
@@ -369,6 +452,8 @@ class Projectile {
                 this.rocketSound.volume = Math.max(0, Math.min(1, AudioSystem.volume.sfx * AudioSystem.volume.master * 0.7 * audibility));
             } catch (e) { }
         }
+
+        if (isIcbmPayload && this._tryAATankInterceptIcbm()) return;
 
         // ICBM 발사 직후는 수직 상승만 수행하고, 이후 탄도로 전환한다.
         if (isIcbmPayload && (this.icbmLaunchRiseFrames || 0) > 0) {
@@ -521,10 +606,7 @@ class Projectile {
 
     hit() {
         this.dead = true;
-        if (this.rocketSound) {
-            try { this.rocketSound.pause(); this.rocketSound.currentTime = 0; } catch (e) { }
-            this.rocketSound = null;
-        }
+        this._stopRocketLoopSound();
         let artilleryKilled = false;
         const targetIsEnemyInfantry = !!(this.target && this.target.team !== this.team && this.target.stats && this.target.stats.category === 'infantry');
         const skipDefaultHitVfx = this.impactVfxOnly === true;

@@ -22,8 +22,12 @@
         'infantry', 'engineer', 'special_ops', 'sniper', 'rpg', 'drone_operator',
         'fighter', 'bomber', 'recon'
     ]);
+    const DIRECT_CONTROL_INFANTRY_IDS = new Set([
+        'infantry', 'engineer', 'special_ops', 'sniper', 'rpg', 'drone_operator', 'recon'
+    ]);
     const DIRECT_CONTROL_BLOCKED_IDS = new Set(['icbm', 'icbm_enemy', 'cameraman', 'worker']);
     const DIRECT_CONTROL_TRANSPORT_IDS = new Set(['blackhawk', 'uh60', 'chinook']);
+    const DIRECT_CONTROL_AIM_LOCK_RADIUS = 220;
 
     function ensureDirectControlState() {
         if (!game.directControl || typeof game.directControl !== 'object') {
@@ -32,6 +36,7 @@
         const state = game.directControl;
         if (typeof state.active !== 'boolean') state.active = false;
         if (!Object.prototype.hasOwnProperty.call(state, 'unit')) state.unit = null;
+        if (!Object.prototype.hasOwnProperty.call(state, 'cancelSuppressedUnit')) state.cancelSuppressedUnit = null;
         if (!state.keys || typeof state.keys !== 'object') state.keys = {};
         if (state.weaponMode !== 'sub') state.weaponMode = 'main';
 
@@ -46,6 +51,7 @@
         if (typeof keys.arrowRight !== 'boolean') keys.arrowRight = false;
         if (typeof keys.arrowUp !== 'boolean') keys.arrowUp = false;
         if (typeof keys.arrowDown !== 'boolean') keys.arrowDown = false;
+        if (typeof keys.shift !== 'boolean') keys.shift = false;
         return state;
     }
 
@@ -62,6 +68,7 @@
         keys.arrowRight = false;
         keys.arrowUp = false;
         keys.arrowDown = false;
+        keys.shift = false;
     }
 
     function isDirectControlEligibleUnit(unit) {
@@ -132,19 +139,70 @@
         return { enemies, enemyBuildings };
     }
 
-    function resolveDirectControlAutoTarget(unit) {
-        if (!unit || unit.dead || typeof unit.findNearestEnemy !== 'function') return null;
-        const pools = getDirectControlEnemyPools(unit);
-        const target = unit.findNearestEnemy(pools.enemies, pools.enemyBuildings);
-        if (!target || target.dead) return null;
-
+    function getDirectControlActiveRange(unit) {
+        if (!unit || !unit.stats) return 0;
         const id = String((unit.stats && unit.stats.id) || '');
         const unitRange = Number(unit.getEffectiveRange ? unit.getEffectiveRange() : (unit.stats && unit.stats.range)) || 0;
         const missileRange = Number(unit.getEffectiveMissileRange ? unit.getEffectiveMissileRange() : unitRange) || unitRange;
         const usesExtendedMissileRange = (id === 'apc' || id === 'engineer' || id === 'rpg');
-        const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
-        const dist = Math.abs((Number(target.x) || 0) - (Number(unit.x) || 0));
-        if (dist > Math.max(140, activeRange)) return null;
+        return usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
+    }
+
+    function isDirectControlTargetInRange(unit, target, maxRange) {
+        if (!unit || !target || target.dead) return false;
+        const tx = Number(target.x);
+        const ux = Number(unit.x);
+        if (!Number.isFinite(tx) || !Number.isFinite(ux)) return false;
+        return Math.abs(tx - ux) <= Math.max(140, Number(maxRange) || 0);
+    }
+
+    function resolveDirectControlAutoTarget(unit, aim = null) {
+        if (!unit || unit.dead || typeof unit.findNearestEnemy !== 'function') return null;
+        const pools = getDirectControlEnemyPools(unit);
+        const activeRange = getDirectControlActiveRange(unit);
+        const maxRange = Math.max(140, activeRange);
+        const restrictRear = (typeof unit.shouldRestrictRearTargeting === 'function')
+            ? unit.shouldRestrictRearTargeting()
+            : (String((unit.stats && unit.stats.id) || '') !== 'aa_tank');
+        const aimX = Number(aim && aim.x);
+        const aimY = Number(aim && aim.y);
+        const hasAim = Number.isFinite(aimX) && Number.isFinite(aimY);
+
+        if (hasAim) {
+            let bestTarget = null;
+            let bestAimDist = Infinity;
+            const candidates = []
+                .concat(Array.isArray(pools.enemies) ? pools.enemies : [])
+                .concat(Array.isArray(pools.enemyBuildings) ? pools.enemyBuildings : []);
+            for (let i = 0; i < candidates.length; i += 1) {
+                const candidate = candidates[i];
+                if (!candidate || candidate.dead) continue;
+                if (!isDirectControlTargetInRange(unit, candidate, maxRange)) continue;
+                if (restrictRear && typeof unit.isTargetBehindX === 'function' && unit.isTargetBehindX(candidate.x, 20)) continue;
+
+                const tx = Number(candidate.x);
+                let ty = Number(candidate.y);
+                if (!Number.isFinite(ty)) ty = Number(unit.y);
+                const height = Number(candidate.height);
+                if (Number.isFinite(height)) ty -= (height * 0.35);
+
+                const dx = tx - aimX;
+                const dy = ty - aimY;
+                const dist = Math.hypot(dx, dy);
+                if (!Number.isFinite(dist) || dist > DIRECT_CONTROL_AIM_LOCK_RADIUS) continue;
+
+                if (dist < bestAimDist) {
+                    bestAimDist = dist;
+                    bestTarget = candidate;
+                }
+            }
+            if (bestTarget) return bestTarget;
+        }
+
+        const target = unit.findNearestEnemy(pools.enemies, pools.enemyBuildings);
+        if (!target || target.dead) return null;
+        if (!isDirectControlTargetInRange(unit, target, maxRange)) return null;
+        if (restrictRear && typeof unit.isTargetBehindX === 'function' && unit.isTargetBehindX(target.x, 20)) return null;
         return target;
     }
 
@@ -176,9 +234,41 @@
         };
     }
 
+    function buildDirectControlBlindFireTarget(unit, aim) {
+        const tx = Number(aim && aim.x);
+        const ty = Number(aim && aim.y);
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return null;
+
+        const onlyAir = !!(unit && unit.stats && unit.stats.onlyAir);
+        const targetTeam = (unit && unit.team === 'player') ? 'enemy' : 'player';
+        return {
+            __directControlBlind: true,
+            x: tx,
+            y: ty,
+            width: onlyAir ? 26 : 20,
+            height: onlyAir ? 20 : 28,
+            team: targetTeam,
+            dead: true,
+            stats: {
+                id: 'direct_control_dummy',
+                type: onlyAir ? 'air' : 'mech',
+                category: onlyAir ? 'air' : 'armored',
+                invulnerable: false
+            },
+            takeDamage: () => { }
+        };
+    }
+
     function unitHasDirectSubWeapon(unit) {
         const id = String((unit && unit.stats && unit.stats.id) || '');
         return id === 'mbt';
+    }
+
+    function isDirectControlInfantryUnit(unit) {
+        if (!unit || unit.dead || !unit.stats) return false;
+        const id = String(unit.stats.id || '').trim();
+        const category = String(unit.stats.category || '').trim().toLowerCase();
+        return DIRECT_CONTROL_INFANTRY_IDS.has(id) || category === 'infantry';
     }
 
     function getDirectControlWeaponMode(unit = null) {
@@ -234,6 +324,53 @@
         };
     }
 
+    function getDirectControlInfantryStanceInfo() {
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!unit || unit.dead || !isDirectControlInfantryUnit(unit)) {
+            return {
+                enabled: false,
+                current: 'standing',
+                next: 'crouching',
+                currentLabel: '서서쏴',
+                nextLabel: '앉아쏴',
+                active: false
+            };
+        }
+        const raw = String(unit._forcedInfantryStance || '').trim().toLowerCase();
+        const current = (raw === 'crouching') ? 'crouching' : 'standing';
+        const next = (current === 'crouching') ? 'standing' : 'crouching';
+        const currentLabel = (current === 'crouching') ? '앉아쏴' : '서서쏴';
+        const nextLabel = (next === 'crouching') ? '앉아쏴' : '서서쏴';
+        return {
+            enabled: true,
+            current,
+            next,
+            currentLabel,
+            nextLabel,
+            active: current === 'crouching'
+        };
+    }
+
+    function toggleDirectControlInfantryStance() {
+        const info = getDirectControlInfantryStanceInfo();
+        if (!info.enabled) return false;
+        const unit = (typeof game.getDirectControlUnit === 'function') ? game.getDirectControlUnit() : null;
+        if (!unit || unit.dead) return false;
+        unit._forcedInfantryStance = info.next;
+
+        if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+            ui.showToast(`자세 전환: ${info.nextLabel}`);
+        }
+        if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+        if (typeof app !== 'undefined' && app && typeof app.markUiDirty === 'function') app.markUiDirty();
+        if (typeof window !== 'undefined'
+            && window.MobileDirectControlUI
+            && typeof window.MobileDirectControlUI.refresh === 'function') {
+            window.MobileDirectControlUI.refresh();
+        }
+        return true;
+    }
+
     function toggleDirectControlWeaponMode() {
         const info = getDirectControlWeaponToggleInfo();
         if (!info.enabled) return false;
@@ -255,7 +392,25 @@
     function fireDirectControlAuto(unit, opts = null) {
         if (!unit || unit.dead) return false;
         const id = String((unit.stats && unit.stats.id) || '');
-        const target = resolveDirectControlAutoTarget(unit);
+        const aimX = Number(unit.manualAimX);
+        const aimY = Number(unit.manualAimY);
+        let aim = (Number.isFinite(aimX) && Number.isFinite(aimY))
+            ? { x: aimX, y: aimY }
+            : null;
+        if (!aim) {
+            aim = resolveDirectControlAim(unit);
+            if (aim && Number.isFinite(aim.x) && Number.isFinite(aim.y)) {
+                unit.manualAimX = aim.x;
+                unit.manualAimY = aim.y;
+                if (Number.isFinite(game.frame)) unit.manualAimFrame = game.frame;
+            }
+        }
+
+        let target = resolveDirectControlAutoTarget(unit, aim);
+        const usedBlindTarget = !target;
+        if (!target) {
+            target = buildDirectControlBlindFireTarget(unit, aim);
+        }
         if (!target) return false;
 
         const frameNow = Number.isFinite(game.frame) ? game.frame : 0;
@@ -270,7 +425,7 @@
             unit.attack(target);
             unit.lastAttack = frameNow;
             unit[key] = frameNow;
-            unit.attackTarget = target;
+            unit.attackTarget = usedBlindTarget ? null : target;
             return true;
         } catch (_) {
             return false;
@@ -464,6 +619,7 @@
 
         state.active = true;
         state.unit = target;
+        state.cancelSuppressedUnit = null;
         clearDirectControlKeys();
         state.weaponMode = 'main';
 
@@ -498,6 +654,11 @@
         const unit = state.unit;
         state.active = false;
         state.unit = null;
+        if (reason !== 'internal') {
+            state.cancelSuppressedUnit = unit || null;
+        } else if (state.cancelSuppressedUnit === unit) {
+            state.cancelSuppressedUnit = null;
+        }
         clearDirectControlKeys();
         state.weaponMode = 'main';
 
@@ -509,8 +670,24 @@
             unit.commandTargetX = null;
             unit.lockedTarget = null;
             unit.attackTarget = null;
+            if (isDirectControlInfantryUnit(unit)) {
+                unit._forcedInfantryStance = null;
+            }
             if (unit.stats && unit.stats.id === 'mbt' && typeof unit.stopManualTankMG === 'function') {
                 unit.stopManualTankMG(true);
+            }
+        }
+
+        // Command cancel should also clear current selection marker.
+        if (reason === 'cancel' || reason === 'escape') {
+            if (game && typeof game.clearAllSelection === 'function') {
+                game.clearAllSelection();
+            } else if (game && game.selectedUnits && typeof game.selectedUnits.clear === 'function') {
+                game.selectedUnits.forEach((u) => {
+                    if (u) u.isSelected = false;
+                });
+                game.selectedUnits.clear();
+                game.selectedBuilding = null;
             }
         }
 
@@ -558,6 +735,8 @@
     game.setDirectControlWeaponMode = setDirectControlWeaponMode;
     game.toggleDirectControlWeaponMode = toggleDirectControlWeaponMode;
     game.getDirectControlWeaponToggleInfo = getDirectControlWeaponToggleInfo;
+    game.getDirectControlInfantryStanceInfo = getDirectControlInfantryStanceInfo;
+    game.toggleDirectControlInfantryStance = toggleDirectControlInfantryStance;
     game.directControlFireCurrentWeapon = directControlFireCurrentWeapon;
     game.getDirectControlMobileProfile = function (unit) {
         const target = unit || ((typeof this.getDirectControlUnit === 'function') ? this.getDirectControlUnit() : null);
@@ -598,6 +777,16 @@
         game.__cursor.clientY = clientY;
         game.__cursor.x = p.x;
         game.__cursor.y = p.y;
+        const wrapper = document.getElementById('game-wrapper');
+        if (wrapper) {
+            const rect = wrapper.getBoundingClientRect();
+            game.__cursor.inCanvas = (
+                clientX >= rect.left
+                && clientX <= rect.right
+                && clientY >= rect.top
+                && clientY <= rect.bottom
+            );
+        }
     }
 
     if (!game.__cursorListenersBound) {
@@ -605,12 +794,14 @@
 
         window.addEventListener('mousemove', (e) => __updateCursor(e.clientX, e.clientY));
         window.addEventListener('mousedown', (e) => {
+            __updateCursor(e.clientX, e.clientY);
             if (e.button === 0 || e.button === 2) {
                 game.__cursor.down = true;
                 game.__cursor.button = e.button;
             }
         });
         window.addEventListener('mouseup', (e) => {
+            __updateCursor(e.clientX, e.clientY);
             if (e.button === 0 || e.button === 2) {
                 game.__cursor.down = false;
             }
@@ -632,6 +823,23 @@
 
         // [FIX] Builder buildTask priority: allow construction movement even when selected
         if (this.stats.isBuilder && this.buildTask) {
+            __origUpdate.call(this, enemies, buildings);
+            return;
+        }
+
+        // [FIX] Crash descent must always run through base update.
+        // Otherwise player air units in wrapped stop/move branches can freeze mid-air on lethal hit.
+        if (this.crashState) {
+            __origUpdate.call(this, enemies, buildings);
+            return;
+        }
+
+        // [FIX] Keep transport heli drop state machine running even when command wrappers
+        // would otherwise early-return on move/stop/retreat.
+        if (typeof this.isAirTransport === 'function'
+            && typeof this.updateAirDrop === 'function'
+            && this.isAirTransport()
+            && this.dropState) {
             __origUpdate.call(this, enemies, buildings);
             return;
         }
@@ -677,7 +885,11 @@
             if (moveDepthAxis < -1) moveDepthAxis = -1;
 
             const baseSpeed = Math.max(0.45, Number(this.stats && this.stats.speed) || 0.45);
-            const moveSpeed = baseSpeed * ((this.stats && this.stats.type === 'air') ? 1.35 : 1.2);
+            const unitCategory = String((this.stats && this.stats.category) || '').trim().toLowerCase();
+            const unitType = String((this.stats && this.stats.type) || '').trim().toLowerCase();
+            const isArmoredLike = (unitCategory === 'armored' || unitType === 'mech');
+            const sprintMul = (keys.shift && isArmoredLike) ? 1.45 : 1.0;
+            const moveSpeed = baseSpeed * ((this.stats && this.stats.type === 'air') ? 1.35 : 1.2) * sprintMul;
             if (moveXAxis !== 0) {
                 this.x += moveXAxis * moveSpeed;
                 this.facing = (moveXAxis > 0) ? 1 : -1;
@@ -771,34 +983,9 @@
             }
             this._lastX = this.x;
 
-            const target = this.findNearestEnemy(enemies, buildings);
-            const unitRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats.range || 0));
-            const missileRange = Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : unitRange);
-            const usesExtendedMissileRange = (unitId === 'apc' || unitId === 'engineer' || unitId === 'rpg');
-            const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
-            let targetDirectionOk = true;
-            if (target && hasManualAim) {
-                const targetDx = Number(target.x) - Number(this.x);
-                if (Math.abs(targetDx) > 10) {
-                    targetDirectionOk = ((Number(this.facing) || 1) * targetDx) >= 0;
-                }
-            }
-            const canAttack = (target && targetDirectionOk && Math.abs(target.x - this.x) <= activeRange);
-
-            if (canAttack) {
-                this.attackTarget = target;
-                let rate = 60;
-                if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(unitId)) rate = 15;
-                else if (unitId === 'spg') rate = 300;
-                else if (unitId === 'sniper') rate = 210;
-
-                if (game.frame - this.lastAttack > rate) {
-                    if (unitId !== 'spg' || (typeof this._canSpgFireNow === 'function' ? this._canSpgFireNow() : true)) {
-                        this.attack(target);
-                        this.lastAttack = game.frame;
-                    }
-                }
-            } else if (this.attackTarget && (this.attackTarget.dead || Math.abs((Number(this.attackTarget.x) || 0) - this.x) > (activeRange + 80))) {
+            // Direct-control combat is manual-fire only (mobile ATK / PC click).
+            // Do not run nearest-enemy auto fire in this branch.
+            if (this.attackTarget && this.attackTarget.dead) {
                 this.attackTarget = null;
             }
             return;
@@ -815,21 +1002,15 @@
                 if (typeof this.updateFacing === 'function') this.updateFacing();
                 return;
             }
-            const enemy = this.findNearestEnemy(enemies, buildings);
-            const unitRange = Number(this.getEffectiveRange ? this.getEffectiveRange() : (this.stats.range || 0));
-            if (enemy && Math.abs(enemy.x - this.x) <= unitRange) {
-                this.commandMode = 'stop';
-                this.targetX = null;
-                this.targetY = null;
-                if (typeof this.updateFacing === 'function') this.updateFacing();
-                return;
-            }
-
-            let reachedX = (this.targetX === null || this.targetX === undefined);
+            const rawTargetX = this.targetX;
+            const moveTargetX = Number.isFinite(Number(this.commandTargetX))
+                ? Number(this.commandTargetX)
+                : ((rawTargetX === null || rawTargetX === undefined) ? NaN : Number(rawTargetX));
+            let reachedX = !Number.isFinite(moveTargetX);
             if (!reachedX) {
-                const dx = this.targetX - this.x;
+                const dx = moveTargetX - this.x;
                 if (Math.abs(dx) < 10) {
-                    this.x = Number(this.targetX);
+                    this.x = moveTargetX;
                     reachedX = true;
                 } else {
                     this.x += (Number(this.stats && this.stats.speed) || 0.5) * Math.sign(dx);
@@ -860,6 +1041,7 @@
             if (reachedX && reachedY) {
                 this.commandMode = 'stop';
                 this.targetX = null;
+                this.commandTargetX = null;
                 if (!isAirUnit) this.targetY = null;
             }
 
@@ -887,12 +1069,13 @@
                 const missileRange = Number(this.getEffectiveMissileRange ? this.getEffectiveMissileRange() : unitRange);
                 const usesExtendedMissileRange = (this.stats.id === 'apc' || this.stats.id === 'engineer' || this.stats.id === 'rpg');
                 const activeRange = usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
-                const canAttack = (target && Math.abs(target.x - this.x) <= activeRange);
+                const restrictRear = (typeof this.shouldRestrictRearTargeting === 'function')
+                    ? this.shouldRestrictRearTargeting()
+                    : (String((this.stats && this.stats.id) || '') !== 'aa_tank');
+                const targetBehind = !!(target && restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(target.x, 20));
+                const canAttack = (target && !targetBehind && Math.abs(target.x - this.x) <= activeRange);
                 if (canAttack) {
                     this.attackTarget = target;
-                    if (typeof this._applyCombatSpacing === 'function') {
-                        this._applyCombatSpacing(target, activeRange);
-                    }
                     let rate = 60;
                     if (['humvee', 'apc', 'aa_tank', 'turret', 'blackhawk'].includes(this.stats.id)) rate = 15;
                     else if (this.stats.id === 'spg') rate = 300;
@@ -904,7 +1087,11 @@
                     }
                 } else {
                     const sticky = this.attackTarget;
-                    if (sticky && (sticky.dead || Math.abs((Number(sticky.x) || 0) - this.x) > (activeRange + 80))) {
+                    if (sticky && (
+                        sticky.dead
+                        || (restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(sticky.x, 20))
+                        || Math.abs((Number(sticky.x) || 0) - this.x) > (activeRange + 80)
+                    )) {
                         this.attackTarget = null;
                     }
                 }
@@ -923,11 +1110,38 @@
                     this.attackTarget = null;
                     const speed = this.stats.speed || 0.5;
                     this.x -= speed;
-                    this.updateFacing();
+                    const category = String((this.stats && this.stats.category) || '');
+                    const unitType = String((this.stats && this.stats.type) || '');
+                    const isArmoredLike = (category === 'armored' || unitType === 'mech');
+                    if (isArmoredLike) {
+                        let threatX = Number(this._retreatThreatX);
+                        if (!Number.isFinite(threatX) && this._retreatThreatRef && !this._retreatThreatRef.dead) {
+                            threatX = Number(this._retreatThreatRef.x);
+                        }
+                        if (!Number.isFinite(threatX) && typeof this.findNearestEnemy === 'function') {
+                            const retreatThreat = this.findNearestEnemy(enemies || [], buildings || []);
+                            if (retreatThreat && !retreatThreat.dead && Number.isFinite(Number(retreatThreat.x))) {
+                                threatX = Number(retreatThreat.x);
+                                this._retreatThreatRef = retreatThreat;
+                                this._retreatThreatX = threatX;
+                            }
+                        }
+                        if (Number.isFinite(threatX)) {
+                            const dtx = threatX - this.x;
+                            if (Math.abs(dtx) > 3) this.facing = dtx >= 0 ? 1 : -1;
+                        } else if (this.facing == null) {
+                            this.facing = (this.team === 'player') ? 1 : -1;
+                        }
+                        this._lastX = this.x;
+                    } else {
+                        this.updateFacing();
+                    }
                 } else {
                     // 湲곗? ???꾨떖: ?먮룞 ?뺤?
                     this.commandMode = 'stop';
                     this.returnToBase = false;
+                    this._retreatThreatRef = null;
+                    this._retreatThreatX = null;
                 }
 
                 if (this.stats.type === 'air') this.rotorAngle += 0.8;
@@ -951,17 +1165,165 @@
         return Number.isFinite(renderYRaw) ? renderYRaw : Number(u.y || 0);
     }
 
-    function isUnitHit(u, wx, wy) {
+    function getUnitVisualY(u) {
+        const renderY = getUnitRenderY(u);
+        if (!u) return renderY;
+        let snapDy = 0;
+        try {
+            if (typeof u.computeFeetSnapDy === 'function') {
+                const snap = Number(u.computeFeetSnapDy());
+                if (Number.isFinite(snap)) snapDy = snap;
+            }
+        } catch (_) { }
+        return renderY + snapDy;
+    }
+
+    function isInfantryLikeUnit(u) {
+        if (!u || !u.stats) return false;
+        const unitCategory = String((u.stats && u.stats.category) || '').trim().toLowerCase();
+        const unitType = String((u.stats && u.stats.type) || '').trim().toLowerCase();
+        return (unitCategory === 'infantry' || unitType === 'bio');
+    }
+
+    function getUnitHitRenderScale(u) {
+        const id = String((u && u.stats && u.stats.id) || '').trim().toLowerCase();
+        const armoredBoost = {
+            humvee: 1.18,
+            apc: 1.16,
+            mbt: 1.16,
+            spg: 1.16,
+            aa_tank: 1.12,
+            icbm: 1.16,
+            icbm_enemy: 1.16
+        };
+        const boost = Number(armoredBoost[id]) || 1;
+        return 1.4 * boost;
+    }
+
+    function isCoarseLikePointer() {
+        let coarsePointer = false;
+        let touchCapable = false;
+        try {
+            coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        } catch (_) { }
+        try {
+            touchCapable = (typeof navigator !== 'undefined')
+                ? ((Number(navigator.maxTouchPoints) || 0) > 0)
+                : false;
+        } catch (_) { }
+        return !!(coarsePointer || touchCapable);
+    }
+
+    function isUnitHit(u, wx, wy, soft = false) {
         if (!u || u.dead) return false;
-        const unitY = getUnitRenderY(u);
+        const unitY = getUnitVisualY(u);
+        const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
+            ? Number(Camera.zoom)
+            : 1;
+        const coarseLike = isCoarseLikePointer();
+        const unitCategory = String((u.stats && u.stats.category) || '').trim().toLowerCase();
+        const unitType = String((u.stats && u.stats.type) || '').trim().toLowerCase();
+        const isAir = unitType === 'air';
+        const isInfantryLike = (unitCategory === 'infantry' || unitType === 'bio');
+        const isArmoredLike = (unitCategory === 'armored' || unitType === 'mech');
+        const renderScale = getUnitHitRenderScale(u);
+        const padPxX = coarseLike ? (soft ? 52 : 42) : 18;
+        const padPxY = coarseLike ? (soft ? 44 : 34) : 14;
+        const extraAirPadX = isAir ? (coarseLike ? (soft ? 30 : 24) : 12) : 0;
+        const extraAirPadY = isAir ? (coarseLike ? (soft ? 24 : 18) : 10) : 0;
+        const extraArmorPadX = isArmoredLike ? (coarseLike ? (soft ? 20 : 14) : 8) : 0;
+        const extraArmorPadY = isArmoredLike ? (coarseLike ? (soft ? 16 : 12) : 6) : 0;
+        const extraInfPadX = isInfantryLike ? (coarseLike ? (soft ? 40 : 30) : 12) : 0;
+        const extraInfPadY = isInfantryLike ? (coarseLike ? (soft ? 34 : 26) : 10) : 0;
+        const padX = (padPxX + extraAirPadX + extraArmorPadX + extraInfPadX) / zoom;
+        const padY = (padPxY + extraAirPadY + extraArmorPadY + extraInfPadY) / zoom;
+        const infWidthScale = isInfantryLike ? 1.35 : 1;
+        const infHeightScale = isInfantryLike ? 1.55 : 1;
+        const baseHalfW = (Number(u.width || 0) / 2) * renderScale * infWidthScale;
+        const baseH = Number(u.height || 0) * renderScale * infHeightScale;
+        const minInfHalfW = isInfantryLike
+            ? ((coarseLike ? (soft ? 60 : 52) : (soft ? 36 : 30)) / zoom)
+            : 0;
+        const minInfH = isInfantryLike
+            ? ((coarseLike ? (soft ? 82 : 70) : (soft ? 50 : 44)) / zoom)
+            : 0;
+        const halfW = Math.max(baseHalfW, minInfHalfW);
+        const bodyH = Math.max(baseH, minInfH);
+        const infBottomPad = isInfantryLike
+            ? ((coarseLike ? (soft ? 22 : 18) : (soft ? 12 : 9)) / zoom)
+            : 0;
+        const left = u.x - halfW - padX;
+        const right = u.x + halfW + padX;
+        const top = unitY - bodyH - padY;
+        const bottom = unitY + padY + infBottomPad;
+        const boxHit = (wx >= left && wx <= right && wy >= top && wy <= bottom);
+        if (boxHit) return true;
+        if (!isInfantryLike) {
+            // Non-infantry fallback ellipse: improves armored/air tap reliability while preserving intent.
+            const cx = Number(u.x) || 0;
+            const cy = unitY - (bodyH * (isAir ? 0.48 : 0.44));
+            const dx = (Number(wx) || 0) - cx;
+            const dy = (Number(wy) || 0) - cy;
+            const rx = Math.max(
+                halfW * (isAir ? 1.05 : 0.95),
+                ((coarseLike ? (soft ? 96 : 82) : (soft ? 62 : 50)) / zoom)
+            );
+            const ry = Math.max(
+                bodyH * (isAir ? 0.82 : 0.74),
+                ((coarseLike ? (soft ? 84 : 72) : (soft ? 52 : 44)) / zoom)
+            );
+            const nx = dx / Math.max(1, rx);
+            const ny = dy / Math.max(1, ry);
+            return ((nx * nx) + (ny * ny)) <= 1.0;
+        }
 
-        const halfW = u.width / 2;
-        const left = u.x - halfW;
-        const right = u.x + halfW;
-        const top = unitY - u.height;
-        const bottom = unitY;
+        // Infantry fallback: prioritize head/torso proximity so small units stay reliably clickable.
+        const headY = unitY - (bodyH * 0.88);
+        const torsoY = unitY - (bodyH * 0.56);
+        const baseR = ((coarseLike ? (soft ? 68 : 58) : (soft ? 46 : 40)) / zoom);
+        const headDx = Math.abs((Number(wx) || 0) - (Number(u.x) || 0));
+        const headDy = Math.abs((Number(wy) || 0) - headY);
+        if (headDx <= (baseR * 0.95) && headDy <= (baseR * 1.05)) return true;
+        const torsoDy = Math.abs((Number(wy) || 0) - torsoY);
+        if (headDx <= (baseR * 1.12) && torsoDy <= (baseR * 1.25)) return true;
+        return false;
+    }
 
-        return wx >= left && wx <= right && wy >= top && wy <= bottom;
+    function getUnitHitScore(u, wx, wy) {
+        if (!u || u.dead) return Number.POSITIVE_INFINITY;
+        const unitY = getUnitVisualY(u);
+        const cx = Number(u.x) || 0;
+        const unitCategory = String((u.stats && u.stats.category) || '').trim().toLowerCase();
+        const unitType = String((u.stats && u.stats.type) || '').trim().toLowerCase();
+        const isInfantryLike = (unitCategory === 'infantry' || unitType === 'bio');
+        const isAir = unitType === 'air';
+        const isArmoredLike = (unitCategory === 'armored' || unitType === 'mech');
+        const renderScale = getUnitHitRenderScale(u);
+        const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
+            ? Number(Camera.zoom)
+            : 1;
+        const h = Math.max(1, Number(u.height) || 1) * renderScale * (isInfantryLike ? 1.35 : 1);
+        const cy = isInfantryLike
+            ? (unitY - (h * 0.88))
+            : (isAir
+                ? (unitY - (h * 0.46))
+                : (isArmoredLike ? (unitY - (h * 0.44)) : (unitY - (h * 0.55))));
+        const dx = (Number(wx) || 0) - cx;
+        const dy = (Number(wy) || 0) - cy;
+        const score = (dx * dx) + (dy * dy);
+        if (!isInfantryLike) {
+            const sizeBias = Math.min(
+                2600,
+                Math.max(0, (Number(u.width) || 0) * (Number(u.height) || 0) * renderScale * 0.3)
+            );
+            return score - sizeBias;
+        }
+        const headLockR = (isCoarseLikePointer() ? 54 : 38) / zoom;
+        if (score <= (headLockR * headLockR)) {
+            // Strongly favor infantry when pointer is on/near head.
+            return (score * 0.35) - 2400;
+        }
+        return score - 420;
     }
 
     // ============================================
@@ -969,7 +1331,8 @@
     // ============================================
     function isUnitInRect(u, x1, y1, x2, y2) {
         if (!u || u.dead) return false;
-        const unitY = getUnitRenderY(u);
+        const unitY = getUnitVisualY(u);
+        const isInfantryLike = isInfantryLikeUnit(u);
 
         // ?ш컖???뺢퇋??
         const left = Math.min(x1, x2);
@@ -978,10 +1341,12 @@
         const bottom = Math.max(y1, y2);
 
         // ?좊떅 諛붿슫??諛뺤뒪
-        const uLeft = u.x - u.width / 2;
-        const uRight = u.x + u.width / 2;
-        const uTop = unitY - u.height;
-        const uBottom = unitY;
+        const bodyW = Number(u.width || 0) * (isInfantryLike ? 1.25 : 1);
+        const bodyH = Number(u.height || 0) * (isInfantryLike ? 1.45 : 1);
+        const uLeft = u.x - bodyW / 2;
+        const uRight = u.x + bodyW / 2;
+        const uTop = unitY - bodyH;
+        const uBottom = unitY + (isInfantryLike ? 8 : 0);
 
         // 援먯쭛??泥댄겕
         return !(uRight < left || uLeft > right || uBottom < top || uTop > bottom);
@@ -1002,47 +1367,158 @@
         return false;
     }
 
+    function getSelectionPickUid(u) {
+        if (!u || typeof u !== 'object') return 0;
+        const current = Number(u._selectionPickUid);
+        if (Number.isFinite(current) && current > 0) return current;
+        const seq = Number(game._selectionPickUidSeq);
+        const nextSeq = (Number.isFinite(seq) && seq > 0) ? (seq + 1) : 1;
+        game._selectionPickUidSeq = nextSeq;
+        u._selectionPickUid = nextSeq;
+        return nextSeq;
+    }
+
     // ============================================
     // F) game.checkUnitClick 援ы쁽 (?⑥씪 ?대┃ ?좉?)
     // ============================================
     game.checkUnitClick = function (wx, wy, opts = null) {
         const keepSelectedOnRepeatTap = !!(opts && opts.keepSelectedOnRepeatTap);
+        const preferNearestHit = !!(opts && opts.preferNearestHit);
+        const singleSelect = !!(opts && opts.singleSelect);
+        const forcedNearRadiusPxRaw = Number(opts && opts.forceNearRadiusPx);
+        const forcedNearRadiusPx = (Number.isFinite(forcedNearRadiusPxRaw) && forcedNearRadiusPxRaw > 0)
+            ? forcedNearRadiusPxRaw
+            : null;
         const hitCandidates = [];
         for (let i = 0; i < this.players.length; i++) {
             const u = this.players[i];
             if (!isUnitHit(u, wx, wy)) continue;
             hitCandidates.push(u);
         }
-        hitCandidates.sort((a, b) => getUnitRenderY(b) - getUnitRenderY(a));
+        const coarseLike = isCoarseLikePointer();
+        if (hitCandidates.length === 0 && coarseLike) {
+            for (let i = 0; i < this.players.length; i++) {
+                const u = this.players[i];
+                if (!isUnitHit(u, wx, wy, true)) continue;
+                hitCandidates.push(u);
+            }
+        }
+        // Near-click assist: even when pointer hover does not lock perfectly,
+        // pick the nearest player unit around the click radius.
+        if (hitCandidates.length === 0) {
+            const zoom = (typeof Camera !== 'undefined' && Number.isFinite(Number(Camera.zoom)) && Number(Camera.zoom) > 0)
+                ? Number(Camera.zoom)
+                : 1;
+            const nearPickRadius = ((forcedNearRadiusPx != null) ? forcedNearRadiusPx : (coarseLike ? 170 : 100)) / zoom;
+            const nearPickRadiusSq = nearPickRadius * nearPickRadius;
+            let nearest = null;
+            let nearestScore = Number.POSITIVE_INFINITY;
+            for (let i = 0; i < this.players.length; i++) {
+                const u = this.players[i];
+                if (!u || u.dead) continue;
+                const score = getUnitHitScore(u, wx, wy);
+                if (!Number.isFinite(score)) continue;
+                if (score < nearestScore) {
+                    nearestScore = score;
+                    nearest = u;
+                }
+            }
+            if (nearest && nearestScore <= nearPickRadiusSq) {
+                hitCandidates.push(nearest);
+            }
+        }
+        if (preferNearestHit || coarseLike) {
+            hitCandidates.sort((a, b) => {
+                const sa = getUnitHitScore(a, wx, wy);
+                const sb = getUnitHitScore(b, wx, wy);
+                if (Math.abs(sa - sb) > 0.01) return sa - sb;
+                return getUnitRenderY(b) - getUnitRenderY(a);
+            });
+        } else {
+            hitCandidates.sort((a, b) => getUnitRenderY(b) - getUnitRenderY(a));
+        }
 
+        // Overlap-cycle: repeated taps/clicks near the same stack cycle through candidates.
+        if (singleSelect && keepSelectedOnRepeatTap && hitCandidates.length > 1) {
+            const now = (typeof performance !== 'undefined' && performance.now)
+                ? performance.now()
+                : Date.now();
+            const state = (this._selectionCycleState && typeof this._selectionCycleState === 'object')
+                ? this._selectionCycleState
+                : null;
+            const cycleTol = coarseLike ? 58 : 36;
+            const cycleWindowMs = coarseLike ? 1600 : 1200;
+            const key = hitCandidates.map((u) => String(getSelectionPickUid(u))).join(',');
+
+            let pickIndex = 0;
+            if (
+                state
+                && state.key === key
+                && Math.abs((Number(wx) || 0) - (Number(state.wx) || 0)) <= cycleTol
+                && Math.abs((Number(wy) || 0) - (Number(state.wy) || 0)) <= cycleTol
+                && (now - (Number(state.at) || 0)) <= cycleWindowMs
+            ) {
+                pickIndex = ((Number(state.index) || 0) + 1) % hitCandidates.length;
+            }
+            this._selectionCycleState = {
+                key,
+                wx: Number(wx) || 0,
+                wy: Number(wy) || 0,
+                at: now,
+                index: pickIndex
+            };
+            if (pickIndex > 0 && pickIndex < hitCandidates.length) {
+                const picked = hitCandidates.splice(pickIndex, 1)[0];
+                if (picked) hitCandidates.unshift(picked);
+            }
+        } else {
+            // Reset cycle when target stack changes or non-single-select path is used.
+            this._selectionCycleState = null;
+        }
+
+        let lockedHit = false;
         for (let i = 0; i < hitCandidates.length; i++) {
             const u = hitCandidates[i];
-            if (!isUnitHit(u, wx, wy)) continue;
+            if (!isUnitHit(u, wx, wy) && !isUnitHit(u, wx, wy, true)) continue;
 
             if (isLockedUnit(u)) {
-                ui.showToast('목표가 지정된 유닛은 조작할 수 없습니다.');
-                return true;
+                lockedHit = true;
+                continue;
             }
 
-            const panel = document.getElementById('unit-cmd-panel');
             const clickedEligible = !!(
                 typeof this.isDirectControlEligible === 'function'
                 && this.isDirectControlEligible(u)
             );
             const keepOnRepeat = keepSelectedOnRepeatTap || clickedEligible;
 
-            // ?좉?: ?좏깮/?댁젣
-            if (this.selectedUnits.has(u)) {
+            if (singleSelect) {
+                const wasSingleSelected = this.selectedUnits.size === 1 && this.selectedUnits.has(u);
+                const wasSelected = this.selectedUnits.has(u);
+                this.selectedUnits.forEach((sel) => {
+                    if (sel && sel !== u) sel.isSelected = false;
+                });
+                if (!wasSingleSelected) {
+                    this.selectedUnits.clear();
+                    this.selectedUnits.add(u);
+                }
+                u.isSelected = true;
+                u.commandMode = 'stop';
+                u.returnToBase = false;
+                const uid = u.stats ? u.stats.id : null;
+                const heliIds = ['apache', 'blackhawk', 'uh60', 'chinook'];
+                if (!wasSelected && uid && heliIds.includes(uid) && typeof AudioSystem !== 'undefined') {
+                    AudioSystem.playSFX('helicopter_select', u.x);
+                }
+            } else if (this.selectedUnits.has(u)) {
                 if (!keepOnRepeat) {
                     this.selectedUnits.delete(u);
                     u.isSelected = false;
-                    u.commandMode = 'attack'; // ?댁젣 ??怨듦꺽 紐⑤뱶 蹂듦?
-                    u.returnToBase = false;
                 }
             } else {
                 this.selectedUnits.add(u);
                 u.isSelected = true;
-                u.commandMode = 'stop'; // ?좏깮 ??利됱떆 ?뺤?
+                u.commandMode = 'stop';
                 u.returnToBase = false;
                 const uid = u.stats ? u.stats.id : null;
                 const heliIds = ['apache', 'blackhawk', 'uh60', 'chinook'];
@@ -1068,6 +1544,11 @@
                 this.updateHUDSelection();
             }
 
+            return u;
+        }
+
+        if (lockedHit) {
+            ui.showToast('목표가 지정된 유닛은 조작할 수 없습니다.');
             return true;
         }
 
@@ -1507,6 +1988,17 @@
     const __origDraw = game.draw.bind(game);
 
     game.draw = function () {
+        // During battle on PC, suppress native cursor across wrapper to prevent pointer flicker.
+        const wrapper = document.getElementById('game-wrapper');
+        if (wrapper) {
+            let finePointer = false;
+            try {
+                finePointer = !!(window.matchMedia && window.matchMedia('(pointer: fine)').matches);
+            } catch (_) { }
+            const lockCursor = !!(finePointer && this.running && !this.isGameOver);
+            wrapper.classList.toggle('battle-cursor-lock', lockCursor);
+        }
+
         __origDraw();
 
         const ctx = this.ctx;
@@ -1623,33 +2115,39 @@
         }
 
         // Custom cursor (screen-space)
-        if (this.__cursor && this.__cursor.inCanvas) {
+        let coarsePointer = false;
+        try {
+            coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+        } catch (_) { }
+
+        if (this.__cursor && this.__cursor.inCanvas && !coarsePointer) {
             let isHovering = false;
             let hoverType = null;
+            let hoverUnit = null;
 
-            if (!this.__cursor.down) {
-                const p = Camera.screenToView ? Camera.screenToView(this, this.__cursor.clientX, this.__cursor.clientY) : { x: this.__cursor.x, y: this.__cursor.y };
-                const wx = p.x + this.cameraX;
-                const wy = p.y;
+            const p = Camera.screenToView ? Camera.screenToView(this, this.__cursor.clientX, this.__cursor.clientY) : { x: this.__cursor.x, y: this.__cursor.y };
+            const wx = p.x + this.cameraX;
+            const wy = p.y;
 
-                if (Array.isArray(this.players)) {
-                    for (let i = this.players.length - 1; i >= 0; i--) {
-                        const u = this.players[i];
-                        if (u && !u.dead && u.stats && u.stats.team === 'player' && isUnitHit(u, wx, wy)) {
-                            isHovering = true;
-                            hoverType = 'ally';
-                            break;
-                        }
+            if (Array.isArray(this.players)) {
+                for (let i = this.players.length - 1; i >= 0; i--) {
+                    const u = this.players[i];
+                    if (u && !u.dead && u.team === 'player' && isUnitHit(u, wx, wy)) {
+                        isHovering = true;
+                        hoverType = 'ally';
+                        hoverUnit = u;
+                        break;
                     }
                 }
-                if (!isHovering && Array.isArray(this.enemies)) {
-                    for (let i = this.enemies.length - 1; i >= 0; i--) {
-                        const u = this.enemies[i];
-                        if (u && !u.dead && u.stats && u.stats.team === 'enemy' && isUnitHit(u, wx, wy)) {
-                            isHovering = true;
-                            hoverType = 'enemy';
-                            break;
-                        }
+            }
+            if (!isHovering && Array.isArray(this.enemies)) {
+                for (let i = this.enemies.length - 1; i >= 0; i--) {
+                    const u = this.enemies[i];
+                    if (u && !u.dead && u.team === 'enemy' && isUnitHit(u, wx, wy)) {
+                        isHovering = true;
+                        hoverType = 'enemy';
+                        hoverUnit = u;
+                        break;
                     }
                 }
             }
@@ -1660,7 +2158,58 @@
             ctx.save();
             ctx.translate(mx, my);
 
-            if (this.__cursor.down && this.__cursor.button === 0 && this.selectDragActive) {
+            if (isHovering) {
+                // Hover cursor (ally/enemy)
+                const targetColor = (hoverType === 'ally') ? '#00ff00' : '#ff3333';
+                const infantryHover = !!(hoverUnit && isInfantryLikeUnit(hoverUnit));
+                ctx.strokeStyle = targetColor;
+                ctx.lineWidth = 2;
+                if (infantryHover) {
+                    // Infantry-specific cursor: circular lock + top chevron.
+                    const r = 10;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, r, 0, Math.PI * 2);
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(0, -r - 7);
+                    ctx.lineTo(6, -r - 1);
+                    ctx.lineTo(-6, -r - 1);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.moveTo(-r - 5, 0); ctx.lineTo(-r + 1, 0);
+                    ctx.moveTo(r - 1, 0); ctx.lineTo(r + 5, 0);
+                    ctx.moveTo(0, r - 1); ctx.lineTo(0, r + 5);
+                    ctx.stroke();
+
+                    ctx.fillStyle = targetColor;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 1.8, 0, Math.PI * 2);
+                    ctx.fill();
+                } else {
+                    const size = 12;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -size); ctx.lineTo(size, 0);
+                    ctx.lineTo(0, size); ctx.lineTo(-size, 0);
+                    ctx.closePath();
+                    ctx.stroke();
+
+                    const tickLen = 6;
+                    ctx.beginPath();
+                    ctx.moveTo(0, -size - tickLen); ctx.lineTo(0, -size);
+                    ctx.moveTo(0, size + tickLen); ctx.lineTo(0, size);
+                    ctx.moveTo(-size - tickLen, 0); ctx.lineTo(-size, 0);
+                    ctx.moveTo(size + tickLen, 0); ctx.lineTo(size, 0);
+                    ctx.stroke();
+
+                    ctx.fillStyle = targetColor;
+                    ctx.beginPath();
+                    ctx.arc(0, 0, 2, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+            } else if (this.__cursor.down && this.__cursor.button === 0 && this.selectDragActive) {
                 // Drag-select cursor
                 ctx.strokeStyle = '#ffcc00';
                 ctx.lineWidth = 2;
@@ -1675,31 +2224,6 @@
                 ctx.stroke();
 
                 ctx.fillStyle = '#ffcc00';
-                ctx.beginPath();
-                ctx.arc(0, 0, 2, 0, Math.PI * 2);
-                ctx.fill();
-            } else if (isHovering) {
-                // Hover cursor (ally/enemy)
-                const targetColor = (hoverType === 'ally') ? '#00ff00' : '#ff3333';
-                ctx.strokeStyle = targetColor;
-                ctx.lineWidth = 2;
-                const size = 12;
-
-                ctx.beginPath();
-                ctx.moveTo(0, -size); ctx.lineTo(size, 0);
-                ctx.lineTo(0, size); ctx.lineTo(-size, 0);
-                ctx.closePath();
-                ctx.stroke();
-
-                const tickLen = 6;
-                ctx.beginPath();
-                ctx.moveTo(0, -size - tickLen); ctx.lineTo(0, -size);
-                ctx.moveTo(0, size + tickLen); ctx.lineTo(0, size);
-                ctx.moveTo(-size - tickLen, 0); ctx.lineTo(-size, 0);
-                ctx.moveTo(size + tickLen, 0); ctx.lineTo(size, 0);
-                ctx.stroke();
-
-                ctx.fillStyle = targetColor;
                 ctx.beginPath();
                 ctx.arc(0, 0, 2, 0, Math.PI * 2);
                 ctx.fill();
@@ -1784,7 +2308,7 @@
                 if (this.selectedUnits) {
                     this.selectedUnits.forEach(u => {
                         if (!u || u.dead || !u.stats) return;
-                        if (['blackhawk', 'chinook', 'apc', 'humvee'].includes(u.stats.id)) {
+                        if (['blackhawk', 'chinook', 'uh60', 'apc', 'humvee'].includes(u.stats.id)) {
                             hasTransport = true;
                             if ((u.transportDropsLeft || 0) > 0) canDrop = true;
                         }

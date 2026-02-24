@@ -8,6 +8,7 @@
     var DEFAULT_STATE = {
         facing:          1,
         floatOffset:     0,
+        bodyBank:        0,
         thrustPhase:     0,
         rotorAngle:      0,
         tailRotorAngle:  0,
@@ -70,15 +71,24 @@
         // speed
         var xNow = Number(unit.x) || 0;
         var vx = Number(unit.vx);
+        var vy = Number(unit.vy);
         if (!Number.isFinite(vx) || Math.abs(vx) < 0.001) {
             vx = Number.isFinite(state.prevX) ? (xNow - Number(state.prevX)) : 0;
         }
+        if (!Number.isFinite(vy)) vy = 0;
         state.prevX = xNow;
-        state.speed = Math.abs(vx);
+        state.speed = Math.hypot(vx, vy * 0.7);
 
         // 호버링 부유 (헬기는 더 느리고 크게)
         state.thrustPhase = (Number(state.thrustPhase) + 0.042) % TAU;
         state.floatOffset = Math.sin(state.thrustPhase + state.phaseSeed) * 3.8;
+
+        // Body bank while maneuvering.
+        var bankTarget = clamp((vx * 0.11) + (vy * 0.025), -0.18, 0.18);
+        if (Math.abs(vx) < 0.02 && Math.abs(vy) < 0.02) bankTarget = 0;
+        state.bodyBank = Number(state.bodyBank) || 0;
+        state.bodyBank += (bankTarget - state.bodyBank) * 0.18;
+        state.bodyBank = clamp(state.bodyBank, -0.2, 0.2);
 
         // 메인 로터 (항상 회전)
         state.rotorAngle = (Number(state.rotorAngle) + 0.5) % TAU;
@@ -102,6 +112,7 @@
         state.rotorAngle     = state.rotorAngle     || 0;
         state.tailRotorAngle = state.tailRotorAngle || 0;
         state.floatOffset    = 0;
+        state.bodyBank       = 0;
         state.muzzleFlash    = 0;
     }
 

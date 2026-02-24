@@ -14,7 +14,8 @@
         phaseSeedReady: false,
         bodyShakeX: 0,
         bodyShakeY: 0,
-        hoverBob: 0
+        hoverBob: 0,
+        bodyBank: 0
     };
 
     function ensureState(unit) {
@@ -41,6 +42,7 @@
         if (!Number.isFinite(state.bodyShakeX)) state.bodyShakeX = 0;
         if (!Number.isFinite(state.bodyShakeY)) state.bodyShakeY = 0;
         if (!Number.isFinite(state.hoverBob)) state.hoverBob = 0;
+        if (!Number.isFinite(state.bodyBank)) state.bodyBank = 0;
         return state;
     }
 
@@ -56,11 +58,13 @@
 
         var xNow = Number(unit.x) || 0;
         var vx = Number(unit.vx);
+        var vy = Number(unit.vy);
         if (!Number.isFinite(vx)) {
             vx = Number.isFinite(state.prevX) ? (xNow - state.prevX) : 0;
         }
+        if (!Number.isFinite(vy)) vy = 0;
         state.prevX = xNow;
-        state.speed = Math.abs(vx);
+        state.speed = Math.hypot(vx, vy * 0.55);
 
         if (state.phaseSeedReady !== true) {
             var yNow = Number(unit.y) || 0;
@@ -78,6 +82,11 @@
         state.bodyShakeX = Math.sin((state.frontRotorAngle * 3.8) + state.phaseSeed) * vibe;
         state.bodyShakeY = Math.cos((state.rearRotorAngle * 4.5) + state.phaseSeed) * (vibe + 0.025);
         state.hoverBob = Math.sin((state.frontRotorAngle * 0.2) + state.phaseSeed) * 0.52;
+        var bankTarget = Math.max(-0.1, Math.min(0.1, (vx * 0.055) + (vy * 0.014)));
+        if (Math.abs(vx) < 0.02 && Math.abs(vy) < 0.02) bankTarget = 0;
+        state.bodyBank = Number(state.bodyBank) || 0;
+        state.bodyBank += (bankTarget - state.bodyBank) * 0.14;
+        if (Math.abs(state.bodyBank) < 0.0004) state.bodyBank = 0;
 
         return state;
     }
@@ -96,6 +105,7 @@
         state.bodyShakeX = 0;
         state.bodyShakeY = 0;
         state.hoverBob = 0;
+        state.bodyBank = 0;
         return state;
     }
 

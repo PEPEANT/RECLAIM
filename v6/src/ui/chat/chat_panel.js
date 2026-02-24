@@ -6,6 +6,8 @@
 // ============================================
 
 const ChatPanel = {
+    // Keep LOG panel disabled in-game.
+    enabled: false,
     maxLines: 80,
     autoScroll: true,
     isOpen: true,
@@ -35,6 +37,11 @@ const ChatPanel = {
             return;
         }
 
+        if (this.enabled !== true) {
+            this.hide();
+            return;
+        }
+
         if (!this._bound) {
             // 축소(접기) 버튼 이벤트
             if (this._clearBtn) {
@@ -59,6 +66,7 @@ const ChatPanel = {
      * @param {string} type - 'SYS' | 'WARN' | 'ERR' | 'INFO' (기본: 'SYS')
      */
     push(msg, type = 'SYS') {
+        if (this.enabled !== true) return;
         if (!this._list) return;
 
         // 타임스탬프 (선택적)
@@ -90,6 +98,10 @@ const ChatPanel = {
      * 패널 열기/닫기 토글
      */
     toggle() {
+        if (this.enabled !== true) {
+            this.hide();
+            return;
+        }
         this.setOpen(!this.isOpen);
     },
 
@@ -98,6 +110,10 @@ const ChatPanel = {
      * @param {boolean} open
      */
     setOpen(open) {
+        if (this.enabled !== true) {
+            this.hide();
+            return;
+        }
         this.isOpen = open;
         if (!this._panel) return;
 
@@ -131,6 +147,10 @@ const ChatPanel = {
      * 패널 표시
      */
     show() {
+        if (this.enabled !== true) {
+            this.hide();
+            return;
+        }
         if (this._panel) this._panel.classList.remove('hidden');
     },
 

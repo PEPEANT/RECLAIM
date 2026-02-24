@@ -784,11 +784,15 @@
             if (!game || !game.particles) return;
 
             const presetBase = PRESETS[kind] || PRESETS.drone;
+            const allowScreenShake = (kind === 'nuke' || kind === 'tactical');
             // Keep flash/wave only for nuke and tactical kinds.
             const keepFlashWave = (kind === 'nuke' || kind === 'tactical' || kind === 'emp');
             let preset = keepFlashWave
                 ? presetBase
                 : Object.assign({}, presetBase, { flash: 0, wave: null });
+            if (!allowScreenShake && preset.shake) {
+                preset = Object.assign({}, preset, { shake: 0 });
+            }
             const noShake = !!(opts && opts.noShake);
             if (noShake && preset.shake) {
                 preset = Object.assign({}, preset, { shake: 0 });
@@ -835,7 +839,7 @@
                     const maxX = (game.cameraX || 0) + viewW + pad;
                     if (x < minX || x > maxX) {
                         if (keepFlashWave) {
-                            if (presetBase.shake && !noShake) safeAddShake(game, presetBase.shake);
+                            if (allowScreenShake && presetBase.shake && !noShake) safeAddShake(game, presetBase.shake);
                             if (presetBase.flash) safeAddFlash(game, presetBase.flash);
                         }
                         return;

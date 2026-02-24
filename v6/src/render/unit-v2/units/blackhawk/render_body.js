@@ -251,9 +251,7 @@
         ctx.fillStyle = light;
         ctx.fillRect(sx(325), sy(145), 30 * SCALE, 5 * SCALE);
         ctx.fillStyle = gear;
-        ctx.beginPath();
-        ctx.arc(sx(340), sy(133), 6 * SCALE, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.fillRect(sx(336), sy(129), 8 * SCALE, 5 * SCALE);
 
         // Team accent
         ctx.fillStyle = enemyPattern ? accent : accent2;

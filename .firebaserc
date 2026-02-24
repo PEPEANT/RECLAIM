@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "dis-com-c1900"
+    "default": "reclaim-4c4af",
+    "v6": "dis-com-c1900",
+    "v7": "reclaim-4c4af"
   }
 }

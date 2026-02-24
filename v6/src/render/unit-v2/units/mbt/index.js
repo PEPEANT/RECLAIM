@@ -91,6 +91,12 @@
         if (Number.isFinite(iconScale) && iconScale > 0 && iconScale !== 1) {
             ctx.scale(iconScale, iconScale);
         }
+        if (!iconMode) {
+            var hullKick = Math.max(0, Number(state && state.hullKick) || 0);
+            if (hullKick > 0.0005) ctx.translate(-hullKick, 0);
+            var hullRoll = Number(state && state.hullRoll) || 0;
+            if (Math.abs(hullRoll) > 0.0005) ctx.rotate(hullRoll);
+        }
 
         deps.partsApi.drawTracksAndWheels(ctx, state, palette);
         deps.bodyApi.drawBody(unit, ctx, palette);

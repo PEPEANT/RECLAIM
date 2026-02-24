@@ -50,19 +50,9 @@
         ctx.fillRect(-halfBlade * 0.90, -bladeW * 0.40, halfBlade * 1.80, bladeW * 0.80);
         ctx.restore();
 
-        // Main rotor hub
-        ctx.fillStyle = '#0f0f11';
-        ctx.beginPath();
-        ctx.arc(mainCx, mainCyFront, 4.2 * SCALE, 0, TAU);
-        ctx.fill();
-
-        // Tail rotor hub (smaller cap)
+        // Tail rotor center reference
         var tx = sx(705);
         var ty = sy(145);
-        ctx.fillStyle = gear;
-        ctx.beginPath();
-        ctx.arc(tx, ty, 5 * SCALE, 0, TAU);
-        ctx.fill();
 
         // Tail rotor blades: visible shape without circular spinning.
         ctx.save();
@@ -74,10 +64,6 @@
         // Short cross-blade (to keep rotor visible)
         ctx.fillRect(-(28 * SCALE) / 2, -(4 * SCALE) / 2, 28 * SCALE, 4 * SCALE);
         ctx.globalAlpha = 1.0;
-        ctx.fillStyle = '#555';
-        ctx.beginPath();
-        ctx.arc(0, 0, 3 * SCALE, 0, TAU);
-        ctx.fill();
         ctx.restore();
     }
 

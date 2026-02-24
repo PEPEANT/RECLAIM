@@ -223,6 +223,23 @@ const DroneBehavior = {
         }
     },
 
+    playPreAttackCue(drone, worldX = null) {
+        if (!drone || drone.dead) return;
+        if (typeof AudioSystem === 'undefined' || !AudioSystem || typeof AudioSystem.playSFX !== 'function') return;
+        const frameNow = (typeof game !== 'undefined' && game && Number.isFinite(Number(game.frame)))
+            ? Number(game.frame)
+            : 0;
+        const last = Number(drone._preAttackCueFrame);
+        if (Number.isFinite(last) && (frameNow - last) < 90) return;
+        drone._preAttackCueFrame = frameNow;
+        const sx = Number.isFinite(Number(worldX)) ? Number(worldX) : Number(drone.x);
+        const droneId = String((drone.stats && drone.stats.id) || '').trim().toLowerCase();
+        let sfxKey = 'drone_pre_attack';
+        if (droneId === 'drone_suicide') sfxKey = 'drone_pre_attack_suicide';
+        else if (droneId === 'drone_at') sfxKey = 'drone_pre_attack_at';
+        AudioSystem.playSFX(sfxKey, sx);
+    },
+
     updateStealth(drone, enemies, buildings) {
         // 지?�된 ?�치�??�동(고고?? -> ?�각선 ?�강 -> 광역 ??��
         if (drone.targetX === null || drone.targetX === undefined) {
@@ -260,6 +277,7 @@ const DroneBehavior = {
 
             // 충분??가까우�?"?�각선 ?�강" ?�계 진입
             if (Math.abs(dx) <= Math.max(90, drone.stats.speed * 10)) {
+                this.playPreAttackCue(drone, tx);
                 drone.stealthPhase = 'dive';
             }
             return;
@@ -387,8 +405,16 @@ const DroneBehavior = {
             const dynamicRetargetMargin = Number.isFinite(dynamicRetargetMarginRaw)
                 ? Math.max(0, dynamicRetargetMarginRaw)
                 : 60;
-            if (drone.autoSeekTarget === true && dynamicRetargetEnabled && drone.attackPhase !== 'dive') {
-                const currentTarget = drone.lockedTarget;
+            const currentTarget = drone.lockedTarget;
+            const currentDistForRetarget = Math.abs((Number(currentTarget && currentTarget.x) || drone.x) - drone.x);
+            const retargetPhase = String(drone.attackPhase || '').trim().toLowerCase();
+            const retargetFrames = Number(drone.lockedPursuitFrames) || 0;
+            const retargetAllowedPhase = (retargetPhase === '' || retargetPhase === 'climb');
+            if (drone.autoSeekTarget === true
+                && dynamicRetargetEnabled
+                && retargetAllowedPhase
+                && retargetFrames < 110
+                && currentDistForRetarget > 320) {
                 const candidateTarget = this.findNearestEnemy(drone, enemies, buildings);
                 if (candidateTarget && candidateTarget !== currentTarget) {
                     const currentDist = Math.abs((Number(currentTarget.x) || drone.x) - drone.x);
@@ -409,8 +435,17 @@ const DroneBehavior = {
             drone.lockedPursuitFrames = (Number(drone.lockedPursuitFrames) || 0) + 1;
             drone.attackTarget = drone.lockedTarget;
             const tx = drone.lockedTarget.x;
-            const tH = drone.lockedTarget.height || 20;
-            const ty = drone.lockedTarget.y - tH / 2;
+            const ty = this.getTargetImpactY(
+                drone.lockedTarget,
+                (groundY !== null) ? (groundY - 8) : drone.y
+            );
+            const targetWidth = Math.max(24, Number(drone.lockedTarget.width) || 0);
+            const diveFloorY = this.getDiveFloorY(
+                (groundY !== null) ? groundY : drone.y,
+                drone.lockedTarget
+            );
+            const engageDistBase = Math.max(180, Number(drone.attackDiveTriggerRange) || 260);
+            const engageDist = Math.min(520, engageDistBase + Math.min(120, targetWidth * 0.85));
             if (String(drone.stats?.id || '').trim() === 'drone_suicide' && (drone.lockedPursuitFrames || 0) > 240) {
                 const dxRetry = Math.abs(tx - drone.x);
                 if (dxRetry > 320) {
@@ -436,8 +471,8 @@ const DroneBehavior = {
             const postLaunchHoverFrames = Number(drone.postLaunchHoverFrames);
             if (postLaunchHoverFrames > 0) {
                 drone.attackPhase = 'cruise';
-                if (groundY !== null && drone.y > groundY) {
-                    drone.y = groundY;
+                if (diveFloorY !== null && drone.y > diveFloorY) {
+                    drone.y = diveFloorY;
                 }
                 const settle = attackCruiseY - drone.y;
                 drone.y += Math.max(-1.1, Math.min(1.1, settle * 0.2));
@@ -450,16 +485,16 @@ const DroneBehavior = {
                 drone.attackPhase = highEnough ? 'cruise' : 'climb';
             }
 
-            if (groundY !== null && drone.y > groundY) {
-                drone.y = groundY;
+            if (diveFloorY !== null && drone.y > diveFloorY) {
+                drone.y = diveFloorY;
             }
 
             if (drone.attackPhase === 'climb') {
                 const climbSpeed = Math.max(0.6, Math.min(1.15, baseSpeed * 0.5));
-                const engageDist = Math.max(140, Number(drone.attackDiveTriggerRange) || 260);
                 const dxClimb = tx - drone.x;
                 if (Math.abs(dxClimb) <= engageDist) {
                     // Enter dive as soon as target enters the attack trigger range.
+                    this.playPreAttackCue(drone, tx);
                     drone.attackPhase = 'dive';
                 }
                 if (drone.y > attackCruiseY + 2) {
@@ -477,9 +512,9 @@ const DroneBehavior = {
 
             if (drone.attackPhase === 'cruise') {
                 const dxCruise = tx - drone.x;
-                const engageDist = Math.max(140, Number(drone.attackDiveTriggerRange) || 260);
-                const forceDive = (drone.lockedPursuitFrames || 0) >= 160;
-                if (Math.abs(dxCruise) > engageDist && !forceDive) {
+                const nearEnoughForDive = Math.abs(dxCruise) <= (engageDist * 1.15);
+                const forceDive = (drone.lockedPursuitFrames || 0) >= 130;
+                if (Math.abs(dxCruise) > engageDist && !nearEnoughForDive && !forceDive) {
                     const chaseSpeed = Math.max(baseSpeed * 1.8, baseSpeed + 1.8);
                     drone.x += Math.sign(dxCruise) * Math.min(chaseSpeed, Math.abs(dxCruise));
                     const settle = attackCruiseY - drone.y;
@@ -487,6 +522,7 @@ const DroneBehavior = {
                     return;
                 }
                 // ?�효 진입거리 ?�달 ??멈추지 ?�고 즉시 ?�각선 ?�입
+                this.playPreAttackCue(drone, tx);
                 drone.attackPhase = 'dive';
             }
 
@@ -494,6 +530,16 @@ const DroneBehavior = {
             const dy = ty - drone.y;
             const distSq = dx * dx + dy * dy;
             if (distSq < 2500) {
+                drone.explode(drone.lockedTarget);
+                return;
+            }
+            if (this.shouldDetonateOnLockedTarget(drone, drone.lockedTarget, dx, dy)) {
+                drone.explode(drone.lockedTarget);
+                return;
+            }
+            if (diveFloorY !== null
+                && drone.y >= (diveFloorY - 3)
+                && Math.abs(dx) <= Math.max(26, targetWidth * 0.85)) {
                 drone.explode(drone.lockedTarget);
                 return;
             }
@@ -506,8 +552,8 @@ const DroneBehavior = {
             const diveSpeed = Math.max(baseSpeed * 1.2, baseSpeed + 1.4);
             drone.x += Math.cos(angle) * diveSpeed;
             drone.y += Math.sin(angle) * diveSpeed;
-            if (groundY !== null && drone.y > groundY - 2) {
-                drone.y = groundY - 2;
+            if (diveFloorY !== null && drone.y > diveFloorY - 2) {
+                drone.y = diveFloorY - 2;
             }
             if (this.trySuicideImpactDetonation(drone, enemies)) return;
             return;
@@ -540,6 +586,11 @@ const DroneBehavior = {
                 } else if (drone.y > groundY) {
                     drone.y = groundY;
                 }
+                // Fallback: if target was lost at high altitude, keep drifting forward while descending.
+                if (drone.noTargetFrames > 45 && drone.y < groundY - 60) {
+                    const sweepDir = (drone.team === 'player') ? 1 : -1;
+                    drone.x += Math.max(0.8, baseSpeed * 0.9) * sweepDir;
+                }
             }
             if (String(drone.stats?.id || '').trim() === 'drone_suicide' && drone.noTargetFrames > 120) {
                 const sweepDir = (drone.team === 'player') ? 1 : -1;
@@ -548,6 +599,53 @@ const DroneBehavior = {
             if (this.trySuicideImpactDetonation(drone, enemies)) return;
             return;
         }
+    },
+    getTargetImpactY(target, fallbackY = null) {
+        const fallback = Number(fallbackY);
+        if (!target) return Number.isFinite(fallback) ? fallback : 0;
+        const tyRaw = Number(target.y);
+        if (!Number.isFinite(tyRaw)) {
+            return Number.isFinite(fallback) ? fallback : 0;
+        }
+        const targetStats = target.stats || {};
+        const targetHeight = Math.max(10, Number(target.height || targetStats.height || 20));
+        const impactOffset = Math.max(6, targetHeight * 0.35);
+        return tyRaw - impactOffset;
+    },
+    getDiveFloorY(baseY, target = null) {
+        const base = Number(baseY);
+        let floorY = Number.isFinite(base) ? base : 0;
+        if (typeof game !== 'undefined' && game && typeof game.getGroundLaneBounds === 'function') {
+            const laneBounds = game.getGroundLaneBounds();
+            const laneMax = Number(laneBounds && laneBounds.max);
+            if (Number.isFinite(laneMax)) {
+                floorY = Math.max(floorY, laneMax);
+            }
+        }
+        if (target) {
+            const targetY = Number(target.y);
+            if (Number.isFinite(targetY)) {
+                floorY = Math.max(floorY, targetY + 2);
+            }
+        }
+        return floorY;
+    },
+    shouldDetonateOnLockedTarget(drone, target, dx, dy) {
+        if (!drone || !target || target.dead) return false;
+        const absDx = Math.abs(Number(dx));
+        const absDy = Math.abs(Number(dy));
+        if (!Number.isFinite(absDx) || !Number.isFinite(absDy)) return false;
+        const droneStats = drone.stats || {};
+        const targetStats = target.stats || {};
+        const droneWidth = Math.max(10, Number(drone.width || droneStats.width || 16));
+        const droneHeight = Math.max(6, Number(drone.height || droneStats.height || 8));
+        const targetWidth = Math.max(12, Number(target.width || targetStats.width || 32));
+        const targetHeight = Math.max(10, Number(target.height || targetStats.height || 20));
+        const radiusX = Math.max(20, (droneWidth + targetWidth) * 0.55);
+        const radiusY = Math.max(16, (droneHeight + targetHeight) * 0.72);
+        const nx = absDx / Math.max(1, radiusX);
+        const ny = absDy / Math.max(1, radiusY);
+        return ((nx * nx) + (ny * ny)) <= 1;
     },
     trySuicideImpactDetonation(drone, enemies) {
         if (!drone || drone.dead) return false;
@@ -690,5 +788,6 @@ const DroneBehavior = {
         return bestArmored || bestInfantry || bestBuilding || null;
     }
 };
+
 
 

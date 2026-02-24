@@ -6,8 +6,8 @@
     // 헬파이어/로켓 발사 위치 (로컬, facing=1 기준)
     var MUZZLE_LOCAL = { x: 38, y: 27 };
 
-    // APACHE_SCALE = 0.62 (index.js와 동일해야 함)
-    var APACHE_SCALE = 0.62;
+    // APACHE_SCALE must match apache/index.js
+    var APACHE_SCALE = 0.57;
 
     function getMuzzlePosition(unit, state) {
         if (!unit) return null;

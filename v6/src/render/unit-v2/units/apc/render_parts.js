@@ -117,7 +117,8 @@
         var towFlash = Math.max(0, Number(state && state.towFlash) || 0);
 
         ctx.save();
-        ctx.translate(-5, -27);
+        // Lift turret anchor so the turret sits clearly above hull deck.
+        ctx.translate(-5, -33);
         ctx.rotate(angle);
 
         // Main 25mm gun with recoil.

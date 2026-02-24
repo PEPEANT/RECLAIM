@@ -79,12 +79,24 @@
         spawnDroneForOperator(op, droneKey) {
             if (!op || op.dead || op.stats?.operator !== true) return null;
             const fixedDroneCharges = 2;
-            if (!Number.isFinite(Number(op.maxDroneCharges)) || Number(op.maxDroneCharges) < fixedDroneCharges) {
-                op.maxDroneCharges = fixedDroneCharges;
-            }
-            if (!Number.isFinite(Number(op.droneChargesLeft)) || Number(op.droneChargesLeft) < 1) {
-                op.droneChargesLeft = op.maxDroneCharges;
-            }
+            const launchLimitRaw = Number(op.droneLaunchLimit);
+            const launchLimit = Number.isFinite(launchLimitRaw)
+                ? Math.max(1, Math.min(fixedDroneCharges, Math.floor(launchLimitRaw)))
+                : fixedDroneCharges;
+            op.droneLaunchLimit = launchLimit;
+            op.maxDroneCharges = launchLimit;
+
+            const launchCountRaw = Number(op.droneLaunchCount);
+            const launchCount = Number.isFinite(launchCountRaw)
+                ? Math.max(0, Math.min(launchLimit, Math.floor(launchCountRaw)))
+                : 0;
+            op.droneLaunchCount = launchCount;
+
+            const remainingByCount = Math.max(0, launchLimit - launchCount);
+            const chargesRaw = Number(op.droneChargesLeft);
+            op.droneChargesLeft = Number.isFinite(chargesRaw)
+                ? Math.max(0, Math.min(remainingByCount, Math.floor(chargesRaw)))
+                : remainingByCount;
             if ((op.droneChargesLeft || 0) <= 0) return null;
 
             const aliveOwned = (typeof this.getAliveOperatorDrones === 'function')
@@ -181,8 +193,9 @@
                 drone.ownerRef = op;
             }
 
-            // Battle-only policy: operator drone launch does not consume fixed base charges.
-            op.droneChargesLeft = Math.max(1, Number(op.maxDroneCharges) || fixedDroneCharges);
+            const nextLaunchCount = Math.max(0, Math.min(launchLimit, launchCount + 1));
+            op.droneLaunchCount = nextLaunchCount;
+            op.droneChargesLeft = Math.max(0, launchLimit - nextLaunchCount);
             op.manualDeployRequested = false;
             op.manualDeployType = null;
             return drone;

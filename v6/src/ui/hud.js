@@ -3,9 +3,9 @@
  * hud.js - Fixed Bottom HUD (StarCraft-style)
  *
  * ??????????
- * - HUD??"??筌?六?+ ?類?????嶺뚮ㅎ遊뉔걡酉멥??癲??????
- * - ???源놁졆 ???⑤벡彛?? ??れ삀?????筌?痢??game, unit_commands)?????얜Ŧ類?
- * - ???ャ뀕?????獒??game 1?? HUD????筌?六ｏ┼?
+ * - HUD??"??嶺?筌?+ ?筌??????癲ル슢?롩걡?붽괌?됰ı?????????
+ * - ???繹먮냱議?????ㅻ깹壤?? ???뚯??????嶺?筌??game, unit_commands)??????쑩?쭚?
+ * - ????ｋ????????game 1?? HUD????嶺?筌묕퐦??
  */
 
 function getHudTeamColor(team, variant = 'primary') {
@@ -14,9 +14,33 @@ function getHudTeamColor(team, variant = 'primary') {
         if (key === 'neutral') return (variant === 'minimap') ? '#eab308' : '#64748b';
         return TeamColors.get(key, variant === 'light' ? 'light' : 'primary');
     }
-    if (key === 'player') return (variant === 'light') ? '#60a5fa' : '#3b82f6';
+    if (key === 'player') return (variant === 'light') ? '#b89b6e' : '#8b7a5a';
     if (key === 'enemy') return (variant === 'light') ? '#8cab43' : '#6b8e23';
     return (variant === 'minimap') ? '#eab308' : '#64748b';
+}
+
+function normalizeHudHexColor(raw, fallback = '#4A8522') {
+    const fallbackHex = String(fallback || '#4A8522').trim();
+    const source = String(raw || '').trim();
+    if (/^#[0-9a-fA-F]{6}$/.test(source)) return source.toLowerCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(source)) {
+        const r = source[1], g = source[2], b = source[3];
+        return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+    }
+    if (/^#[0-9a-fA-F]{6}$/.test(fallbackHex)) return fallbackHex.toLowerCase();
+    return '#4a8522';
+}
+
+function getHudUnitIconBgColor() {
+    const fallback = (typeof UnitProfileIcons !== 'undefined' && UnitProfileIcons && UnitProfileIcons.DEFAULT_BG_COLOR)
+        ? UnitProfileIcons.DEFAULT_BG_COLOR
+        : '#4A8522';
+    try {
+        if (typeof TeamColors !== 'undefined' && TeamColors && typeof TeamColors.get === 'function') {
+            return normalizeHudHexColor(TeamColors.get('player', 'primary'), fallback);
+        }
+    } catch (_) { }
+    return normalizeHudHexColor(fallback, '#4A8522');
 }
 const HUD = {
     // State
@@ -53,7 +77,7 @@ const HUD = {
         topActions: null,
         allMoveBtn: null,
         allRetreatBtn: null,
-        allDefenseBtn: null,
+        allAttackBtn: null,
         cameraBtn: null,
         optionBtn: null,
         cancelBtn: null
@@ -79,7 +103,7 @@ const HUD = {
         this.elements.topActions = document.getElementById('hud-top-actions');
         this.elements.allMoveBtn = document.getElementById('hud-all-move-btn');
         this.elements.allRetreatBtn = document.getElementById('hud-all-retreat-btn');
-        this.elements.allDefenseBtn = document.getElementById('hud-all-defense-btn');
+        this.elements.allAttackBtn = document.getElementById('hud-all-attack-btn');
         this.elements.cameraBtn = document.getElementById('hud-camera-btn');
         this.elements.optionBtn = document.getElementById('hud-option-btn');
         this.elements.cancelBtn = document.getElementById('hud-cancel-btn');
@@ -264,14 +288,19 @@ const HUD = {
 
                 let changed = false;
                 switch (action) {
+                    case 'all_stop':
+                        changed = this.executeAllStopCommand() === true;
+                        break;
                     case 'all_move':
-                        changed = this.executeAllMoveCommand() === true;
+                        // Backward compatibility: old markup/action should behave as STOP.
+                        changed = this.executeAllStopCommand() === true;
                         break;
                     case 'all_retreat':
                         changed = this.executeAllRetreatCommand() === true;
                         break;
+                    case 'all_attack':
                     case 'all_defense':
-                        changed = this.executeAllDefenseCommand() === true;
+                        changed = this.executeAllAttackCommand() === true;
                         break;
                     case 'options':
                         if (typeof ui !== 'undefined' && ui && typeof ui.openOptions === 'function') {
@@ -302,15 +331,52 @@ const HUD = {
         });
     },
 
-    getAllCommandablePlayerUnits() {
-        if (!game || !Array.isArray(game.players)) return [];
-        return game.players.filter((u) => (
+    isCommandablePlayerUnit(u) {
+        return !!(
             u
             && !u.dead
             && u.team === 'player'
             && u.stats
-            && typeof u.commandMode === 'string'
-        ));
+            && !u.stats.civilian
+            && !u.isCameraman
+        );
+    },
+
+    getAllCommandablePlayerUnits() {
+        if (!game || !Array.isArray(game.players)) return [];
+        return game.players.filter((u) => this.isCommandablePlayerUnit(u));
+    },
+
+    getSelectedCommandablePlayerUnits() {
+        if (!game || !game.selectedUnits || game.selectedUnits.size <= 0) return [];
+        const units = [];
+        game.selectedUnits.forEach((u) => {
+            if (this.isCommandablePlayerUnit(u)) units.push(u);
+        });
+        return units;
+    },
+
+    // Top command target priority:
+    // 1) direct-control unit
+    // 2) currently selected units
+    // 3) all commandable units
+    getTopActionTargetContext() {
+        const directUnit = (typeof game !== 'undefined'
+            && game
+            && typeof game.getDirectControlUnit === 'function')
+            ? game.getDirectControlUnit()
+            : null;
+
+        if (this.isCommandablePlayerUnit(directUnit)) {
+            return { scope: 'direct', units: [directUnit] };
+        }
+
+        const selectedUnits = this.getSelectedCommandablePlayerUnits();
+        if (selectedUnits.length > 0) {
+            return { scope: 'selected', units: selectedUnits };
+        }
+
+        return { scope: 'all', units: this.getAllCommandablePlayerUnits() };
     },
 
     executeAllMoveCommand() {
@@ -322,7 +388,7 @@ const HUD = {
         const units = this.getAllCommandablePlayerUnits();
         if (units.length === 0) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-                ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
+                ui.showToast('吏??媛?ν븳 ?꾧뎔 ?좊떅???놁뒿?덈떎.');
             }
             return false;
         }
@@ -332,12 +398,14 @@ const HUD = {
         let issued = 0;
 
         units.forEach((u) => {
+            if (typeof u.commandMode !== 'string') u.commandMode = 'attack';
             u.returnToBase = false;
             u.attackTarget = null;
             u.lockedTarget = null;
             if (targetX !== null) {
                 u.commandMode = 'move';
                 u.targetX = targetX;
+                u.commandTargetX = targetX;
                 if (u.stats && u.stats.type !== 'air') {
                     const baseY = Number.isFinite(Number(u.y))
                         ? Number(u.y)
@@ -350,35 +418,39 @@ const HUD = {
                 }
             } else {
                 u.commandMode = 'attack';
+                u.commandTargetX = null;
                 u.targetY = null;
             }
             issued++;
         });
 
         if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            ui.showToast(`전군 이동 명령 (${issued})`);
+            ui.showToast(`?꾧뎔 ?대룞 紐낅졊 (${issued})`);
         }
         return issued > 0;
     },
 
     executeAllRetreatCommand() {
-        if (typeof game.isDirectControlActive === 'function'
+        const targetCtx = this.getTopActionTargetContext();
+        const units = targetCtx.units;
+        if (units.length === 0) {
+            if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+                ui.showToast('吏??媛?ν븳 ?꾧뎔 ?좊떅???놁뒿?덈떎.');
+            }
+            return false;
+        }
+        if (targetCtx.scope === 'direct'
+            && typeof game.isDirectControlActive === 'function'
             && game.isDirectControlActive()
             && typeof game.stopDirectControl === 'function') {
             game.stopDirectControl('internal');
-        }
-        const units = this.getAllCommandablePlayerUnits();
-        if (units.length === 0) {
-            if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-                ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
-            }
-            return false;
         }
 
         let issued = 0;
         let recalled = 0;
 
         units.forEach((u) => {
+            if (typeof u.commandMode !== 'string') u.commandMode = 'attack';
             const id = String(u.stats?.id || '').trim();
             const isDroneUnit = (id === 'drone_suicide' || id === 'drone_at' || String(u.stats?.category || '').trim() === 'drone');
 
@@ -402,45 +474,167 @@ const HUD = {
             u.commandMode = 'retreat';
             u.returnToBase = true;
             u.targetX = null;
+            u.commandTargetX = null;
             u.targetY = null;
             u.attackTarget = null;
             issued++;
         });
 
         if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            const recallSuffix = recalled > 0 ? ` / 드론 복귀 ${recalled}` : '';
-            ui.showToast(`전군 후퇴 명령 (${issued}${recallSuffix})`);
+            const recallSuffix = recalled > 0 ? ` / ?쒕줎 蹂듦? ${recalled}` : '';
+            const scopeText = (targetCtx.scope === 'all') ? '?꾧뎔' : '?좏깮 ?좊떅';
+            ui.showToast(`${scopeText} ?꾪눜 紐낅졊 (${issued}${recallSuffix})`);
         }
         return issued > 0;
     },
 
-    executeAllDefenseCommand() {
-        if (typeof game.isDirectControlActive === 'function'
-            && game.isDirectControlActive()
-            && typeof game.stopDirectControl === 'function') {
-            game.stopDirectControl('internal');
-        }
-        const units = this.getAllCommandablePlayerUnits();
+    executeAllStopCommand() {
+        const targetCtx = this.getTopActionTargetContext();
+        const units = targetCtx.units;
         if (units.length === 0) {
             if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
                 ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
             }
             return false;
         }
+        if (targetCtx.scope === 'direct'
+            && typeof game.isDirectControlActive === 'function'
+            && game.isDirectControlActive()
+            && typeof game.stopDirectControl === 'function') {
+            game.stopDirectControl('internal');
+        }
 
         let issued = 0;
         units.forEach((u) => {
+            if (typeof u.commandMode !== 'string') u.commandMode = 'attack';
             u.commandMode = 'stop';
             u.returnToBase = false;
             u.targetX = null;
+            u.commandTargetX = null;
             u.targetY = null;
+            u.attackTarget = null;
+            u.lockedTarget = null;
             issued++;
         });
 
         if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            ui.showToast(`전군 방어 명령 (${issued})`);
+            const scopeText = (targetCtx.scope === 'all') ? '전군' : '선택 유닛';
+            ui.showToast(`${scopeText} 정지 명령 (${issued})`);
         }
         return issued > 0;
+    },
+
+    executeAllAttackCommand() {
+        const targetCtx = this.getTopActionTargetContext();
+        const units = targetCtx.units;
+        if (units.length === 0) {
+            if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+                ui.showToast('지휘 가능한 아군 유닛이 없습니다.');
+            }
+            return false;
+        }
+        if (targetCtx.scope === 'direct'
+            && typeof game.isDirectControlActive === 'function'
+            && game.isDirectControlActive()
+            && typeof game.stopDirectControl === 'function') {
+            game.stopDirectControl('internal');
+        }
+
+        let issued = 0;
+        units.forEach((u) => {
+            if (typeof u.commandMode !== 'string') u.commandMode = 'attack';
+            u.commandMode = 'attack';
+            u.returnToBase = false;
+            u.targetX = null;
+            u.commandTargetX = null;
+            u.targetY = null;
+            u.attackTarget = null;
+            u.lockedTarget = null;
+            issued++;
+        });
+
+        if (issued > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+            const scopeText = (targetCtx.scope === 'all') ? '전군' : '선택 유닛';
+            ui.showToast(`${scopeText} 공격 명령 (${issued})`);
+        }
+        return issued > 0;
+    },
+
+    executeAllCancelCommand() {
+        let changed = false;
+
+        if (typeof game.isDirectControlActive === 'function'
+            && game.isDirectControlActive()
+            && typeof game.stopDirectControl === 'function') {
+            changed = game.stopDirectControl('cancel') === true || changed;
+        }
+
+        if (game.targetingType && typeof game.cancelTargeting === 'function') {
+            game.cancelTargeting();
+            changed = true;
+        }
+
+        if (game.buildMode && game.buildMode.active && typeof game.cancelBuildMode === 'function') {
+            game.cancelBuildMode();
+            changed = true;
+        }
+
+        const units = this.getAllCommandablePlayerUnits();
+        let canceled = 0;
+        units.forEach((u) => {
+            const hadOrder = (
+                u.commandMode === 'move'
+                || u.commandMode === 'retreat'
+                || u.returnToBase === true
+                || Number.isFinite(Number(u.targetX))
+                || Number.isFinite(Number(u.commandTargetX))
+                || Number.isFinite(Number(u.targetY))
+                || !!u.attackTarget
+                || !!u.lockedTarget
+            );
+
+            if (typeof u.commandMode !== 'string') u.commandMode = 'attack';
+            u.commandMode = 'attack';
+            u.returnToBase = false;
+            u.targetX = null;
+            u.commandTargetX = null;
+            u.targetY = null;
+            u.attackTarget = null;
+            u.lockedTarget = null;
+
+            if (u.manualMgHeld === true) {
+                u.manualMgHeld = false;
+                if (typeof u.stopManualTankMG === 'function') {
+                    u.stopManualTankMG(false);
+                } else if (typeof u._stopTankMGSound === 'function') {
+                    u._stopTankMGSound();
+                }
+            }
+
+            if (hadOrder) canceled++;
+        });
+
+        if (canceled > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+            ui.showToast(`전군 명령 취소 (${canceled})`);
+        }
+        // X(cancel) acts as "cancel control/selection" as requested.
+        if (game && typeof game.clearAllSelection === 'function') {
+            game.clearAllSelection();
+            changed = true;
+        } else if (game && game.selectedUnits && typeof game.selectedUnits.clear === 'function') {
+            game.selectedUnits.forEach((u) => {
+                if (u) u.isSelected = false;
+            });
+            game.selectedUnits.clear();
+            game.selectedBuilding = null;
+            if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
+            changed = true;
+        }
+        return changed || canceled > 0;
+    },
+
+    executeAllDefenseCommand() {
+        return this.executeAllAttackCommand();
     },
 
     getLangText(key, fallback) {
@@ -590,23 +784,25 @@ const HUD = {
     getUnitCommandIcon(unitKey) {
         const key = String(unitKey || '').trim();
         if (!key) return '';
+        const iconBgColor = getHudUnitIconBgColor();
+        const cacheKey = `${key}|${iconBgColor}`;
         if (!this._unitCommandIconCache || typeof this._unitCommandIconCache !== 'object') {
             this._unitCommandIconCache = {};
         }
-        if (Object.prototype.hasOwnProperty.call(this._unitCommandIconCache, key)) {
-            return this._unitCommandIconCache[key] || '';
+        if (Object.prototype.hasOwnProperty.call(this._unitCommandIconCache, cacheKey)) {
+            return this._unitCommandIconCache[cacheKey] || '';
         }
         if (typeof document === 'undefined' || typeof CONFIG === 'undefined' || !CONFIG?.units?.[key]) {
-            this._unitCommandIconCache[key] = '';
+            this._unitCommandIconCache[cacheKey] = '';
             return '';
         }
 
         const unitDef = CONFIG.units[key];
         const svgIcons = (typeof UnitProfileIcons !== 'undefined') ? UnitProfileIcons : null;
         if (svgIcons && typeof svgIcons.getDataUrl === 'function') {
-            const svgDataUrl = svgIcons.getDataUrl(key, unitDef, { bgColor: '#4A8522' });
+            const svgDataUrl = svgIcons.getDataUrl(key, unitDef, { bgColor: iconBgColor });
             if (svgDataUrl) {
-                this._unitCommandIconCache[key] = svgDataUrl;
+                this._unitCommandIconCache[cacheKey] = svgDataUrl;
                 return svgDataUrl;
             }
         }
@@ -615,7 +811,7 @@ const HUD = {
         canvas.height = 48;
         const ctx = canvas.getContext('2d');
         if (!ctx) {
-            this._unitCommandIconCache[key] = '';
+            this._unitCommandIconCache[cacheKey] = '';
             return '';
         }
 
@@ -639,7 +835,7 @@ const HUD = {
         }
 
         const dataUrl = canvas.toDataURL('image/png');
-        this._unitCommandIconCache[key] = dataUrl;
+        this._unitCommandIconCache[cacheKey] = dataUrl;
         return dataUrl;
     },
 
@@ -657,6 +853,23 @@ const HUD = {
             : ((typeof game.isCameraLocked === 'function') ? !!game.isCameraLocked() : !!game.cameraLockActive);
         btn.classList.toggle('active', locked);
         btn.setAttribute('aria-pressed', locked ? 'true' : 'false');
+    },
+
+    updateTopCancelButton(ctx = null) {
+        const btn = this.elements.cancelBtn || document.getElementById('hud-cancel-btn');
+        if (!btn) return;
+        const state = ctx || this.getCommandContext();
+        const show = !!(
+            state
+            && (
+                state.directControlActive
+                || state.targetingType
+                || state.buildModeActive
+            )
+        );
+        btn.classList.toggle('hidden', !show);
+        btn.setAttribute('aria-hidden', show ? 'false' : 'true');
+        btn.disabled = !show;
     },
 
     getSkirmishPhase() {
@@ -823,9 +1036,9 @@ const HUD = {
             const id = stats.id;
 
             if (id === 'recon') hasRecon = true;
-            // [ITEM] ?곕쭑?? special_forces 湲곕낯 ?쒓굅, smokeChargesLeft > 0??紐⑤뱺 ?좊떅 吏??
+            // [ITEM] ?怨뺤춵?? special_forces 疫꿸퀡????볤탢, smokeChargesLeft > 0??筌뤴뫀諭??醫딅뻺 筌왖??
             if ((u.smokeChargesLeft || 0) > 0) hasSmokeCharge = true;
-            // [ITEM] ?섎즺 ?ㅽ듃: medkitChargesLeft > 0??踰좏뀒???좊떅
+            // [ITEM] ??롮┷ ??쎈뱜: medkitChargesLeft > 0??甕곗쥚????醫딅뻺
             if ((u.medkitChargesLeft || 0) > 0) hasMedkitCharge = true;
             if (id === 'bagpiper') {
                 hasBagpiperSelection = true;
@@ -978,7 +1191,8 @@ const HUD = {
             case 'control_start': return false;
             case 'control_cancel': return false;
             case 'direct_fire': return !!ctx.directControlActive && !!ctx.directControlUnit && !ctx.directControlUnit.dead;
-            case 'weapon_toggle': return !!ctx.directControlActive && !!ctx.canDirectWeaponToggle;
+            // Hide direct weapon-toggle from HUD/mobile skill slots (requested UX).
+            case 'weapon_toggle': return false;
             case 'eject': return !!ctx.canEject;
             case 'drone_suicide': return !!ctx.canDroneSuicide;
             case 'drone_at': return !!ctx.canDroneAt;
@@ -1039,21 +1253,36 @@ const HUD = {
             return false;
         };
         const directControlUnitId = String((ctx.directControlUnit && ctx.directControlUnit.stats && ctx.directControlUnit.stats.id) || '').trim();
-        const isDirectControlOperator = ctx.directControlActive && directControlUnitId === 'drone_operator';
-        let directControlInteract = null;
-        if (ctx.directControlActive && !isDirectControlOperator) {
-            directControlInteract = 'direct_fire';
-        }
-        if (ctx.directControlActive && ctx.canDirectWeaponToggle) {
-            map.skill1 = 'weapon_toggle';
-            used.add('weapon_toggle');
-        }
+        const isDirectControlOperator = !!ctx.directControlActive && directControlUnitId === 'drone_operator';
+        const isDirectControl = !!ctx.directControlActive;
 
         if (ctx.hasSelectedIcbm) {
             map.skill1 = pick(['icbm_tactical', 'icbm_emp', 'icbm_nuke']);
             map.skill2 = pick(['icbm_emp', 'icbm_nuke', 'icbm_tactical']);
             map.skill3 = pick(['icbm_nuke', 'icbm_tactical', 'icbm_emp']);
-            map.interact = directControlInteract || pick(['drop', 'eject']);
+            return map;
+        }
+
+        if (isDirectControl) {
+            if (isDirectControlOperator) {
+                placeSkill('drone_suicide', ['skill1', 'skill2', 'skill3']);
+                if (ctx.hasOperatorAtSkill) {
+                    placeSkill('drone_at', ['skill2', 'skill3', 'skill1']);
+                }
+                const mode = (typeof game.getDroneControlMode === 'function')
+                    ? game.getDroneControlMode()
+                    : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
+                placeSkill((mode === 'manual') ? 'drone_auto' : 'drone_manual', ['skill3', 'skill2', 'skill1']);
+                return map;
+            }
+
+            placeSkill('drop', ['skill1', 'skill2', 'skill3']);
+            placeSkill('missile', ['skill2', 'skill3', 'skill1']);
+            placeSkill('smoke', ['skill2', 'skill3', 'skill1']);
+            placeSkill('medkit', ['skill3', 'skill2', 'skill1']);
+            placeSkill('recon', ['skill3', 'skill2', 'skill1']);
+            placeSkill('bagpipe', ['skill2', 'skill3', 'skill1']);
+            placeSkill('eject', ['skill3', 'skill2', 'skill1']);
             return map;
         }
 
@@ -1072,25 +1301,25 @@ const HUD = {
             const mode = (typeof game.getDroneControlMode === 'function')
                 ? game.getDroneControlMode()
                 : (game.droneControlMode === 'manual' ? 'manual' : 'auto');
-            // For drone operators, interact slot stays dedicated to drone mode toggle
-            // so lockdown/manual flow remains usable even during direct control.
-            map.interact = (mode === 'manual') ? 'drone_auto' : 'drone_manual';
+            placeSkill((mode === 'manual') ? 'drone_auto' : 'drone_manual', ['skill3', 'skill2', 'skill1']);
             return map;
         }
 
         if (ctx.hasBagpiperSelection) {
             if (!map.skill2) map.skill2 = pick(['smoke', 'medkit', 'missile', 'recon']);
             if (!map.skill3) map.skill3 = pick(['medkit', 'smoke', 'recon', 'missile']);
-            map.interact = directControlInteract || pick(['drop', 'eject']);
+            placeSkill('drop', ['skill3', 'skill2', 'skill1']);
+            placeSkill('eject', ['skill3', 'skill2', 'skill1']);
             return map;
         }
 
         if (!map.skill1) {
             map.skill1 = pick(['missile', 'smoke', 'medkit', 'recon']);
         }
-        map.skill2 = pick(['smoke', 'medkit', 'missile', 'recon']);
-        map.skill3 = pick(['medkit', 'recon', 'missile', 'smoke']);
-        map.interact = directControlInteract || pick(['drop', 'eject']);
+        if (!map.skill2) map.skill2 = pick(['smoke', 'medkit', 'missile', 'recon']);
+        if (!map.skill3) map.skill3 = pick(['medkit', 'recon', 'missile', 'smoke']);
+        placeSkill('drop', ['skill3', 'skill2', 'skill1']);
+        placeSkill('eject', ['skill3', 'skill2', 'skill1']);
 
         return map;
     },
@@ -1173,20 +1402,14 @@ const HUD = {
     },
 
     handleCancelCommand() {
+        // In direct-control mode, X is strictly "control cancel".
         if (typeof game.isDirectControlActive === 'function'
             && game.isDirectControlActive()
             && typeof game.stopDirectControl === 'function') {
-            game.stopDirectControl('cancel');
-            return true;
+            return game.stopDirectControl('cancel') === true;
         }
 
-        if (game.targetingType && typeof game.cancelTargeting === 'function') {
-            game.cancelTargeting();
-            return true;
-        }
-
-        if (game.buildMode && game.buildMode.active && typeof game.cancelBuildMode === 'function') {
-            game.cancelBuildMode();
+        if (this.executeAllCancelCommand() === true) {
             return true;
         }
 
@@ -1329,7 +1552,7 @@ const HUD = {
                 );
                 if (!canEject || typeof b.ejectAllGarrison !== 'function') return false;
                 b.ejectAllGarrison();
-                ui.showToast('?낅슣?뽳쭗???ル봾六??熬곣뫕???꾩룄???');
+                ui.showToast('??낆뒩?戮녹춻????ル늅筌???ш끽維???袁⑸즲???');
                 if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
                 return true;
             }
@@ -1370,6 +1593,7 @@ const HUD = {
     updateCommandButtons() {
         const ctx = this.getCommandContext();
         this.updateTopCameraButton(ctx.cameraLocked);
+        this.updateTopCancelButton(ctx);
         const roleMap = this.resolveCommandRoleMap(ctx);
 
         const stateKey = [
@@ -1472,7 +1696,7 @@ const HUD = {
         if (topActions) topActions.classList.remove('hidden');
         [
             this.elements.allRetreatBtn,
-            this.elements.allDefenseBtn,
+            this.elements.allAttackBtn,
             this.elements.allMoveBtn
         ].forEach((btn) => {
             if (btn) btn.classList.remove('hidden');
@@ -1500,8 +1724,9 @@ const HUD = {
         if (topActions) topActions.classList.add('hidden');
         [
             this.elements.allRetreatBtn,
-            this.elements.allDefenseBtn,
-            this.elements.allMoveBtn
+            this.elements.allAttackBtn,
+            this.elements.allMoveBtn,
+            this.elements.cancelBtn
         ].forEach((btn) => {
             if (btn) btn.classList.add('hidden');
         });
@@ -1553,7 +1778,7 @@ const HUD = {
                 const label = (selection.buildingType === 'spawn_flag_player') ? 'SPAWN FLAG' : 'HQ';
                 info.innerHTML = `<span class="hud-placeholder-text">${label}</span>`;
             } else if (isBunker && selection.building) {
-                // [NEW] ?類???λ쑏?癲꾧퀗??癲? ???ャ뀕??????낆뒩?戮녹춻??怨뚮옖????嶺뚮㉡?€쾮???筌?六?
+                // [NEW] ?筌????貫???꿸쑨????? ????ｋ???????녿뮝?筌믩끃異???⑤슢?????癲ル슢???ъ쒜???嶺?筌?
                 const b = selection.building;
                 const garrisonCount = b.garrisonUnits ? b.garrisonUnits.length : 0;
                 const maxGarrison = b.maxGarrison || 7;
@@ -1563,7 +1788,7 @@ const HUD = {
 
                 let statusHtml = '';
                 if (!isDestroyed && garrisonCount > 0 && b.team === 'player') {
-                    // [NEW] ??낆뒩?戮녹춻??怨뚮옖??????ろ꼤嶺뚯옕?????숆강筌?쓣爾??
+                    // [NEW] ???녿뮝?筌믩끃異???⑤슢????????띻샴癲ル슣???????녾컯嶺??ｇ댚??
                     const unitGroups = {};
                     b.garrisonUnits.forEach((u, idx) => {
                         if (!u || u.dead) return;
@@ -1575,7 +1800,7 @@ const HUD = {
                         unitGroups[id].indices.push(idx);
                     });
 
-                    // ???ろ꼤嶺뚯옕?????ш끽維곩ㅇ??UI ??獄쏅똻??
+                    // ????띻샴癲ル슣????????썹땟怨⒲뀋??UI ???꾩룆???
                     let profileHtml = '';
                     for (const [id, group] of Object.entries(unitGroups)) {
                         profileHtml += `
@@ -1612,27 +1837,27 @@ const HUD = {
 
                 info.innerHTML = `<div class="hud-selection-item">${statusHtml}</div>`;
 
-                // [NEW] ??좊즵獒???袁⑸즲????類???????濚???袁⑸즴????
+                // [NEW] ??醫딆┻????熬곣뫖利????筌????????嚥???熬곣뫖利????
                 info.querySelectorAll('[data-eject-type]').forEach(btn => {
                     btn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         const unitType = btn.dataset.ejectType;
                         if (b.ejectOneByType) {
                             b.ejectOneByType(unitType);
-                            ui.showToast(`${unitType} 1???꾩룄???`);
+                            ui.showToast(`${unitType} 1???袁⑸즲???`);
                             game.updateHUDSelection();
                         }
                     });
                 });
 
-                // [NEW] ??ш끽維???袁⑸즲????類???????濚???袁⑸즴????
+                // [NEW] ????썹땟???熬곣뫖利????筌????????嚥???熬곣뫖利????
                 const ejectAllBtn = document.getElementById('hud-eject-all-btn');
                 if (ejectAllBtn) {
                     ejectAllBtn.addEventListener('click', (e) => {
                         e.stopPropagation();
                         if (b.ejectAllGarrison) {
                             b.ejectAllGarrison();
-                            ui.showToast('?낅슣?뽳쭗???ル봾六??熬곣뫕???꾩룄???');
+                            ui.showToast('??낆뒩?戮녹춻????ル늅筌???ш끽維???袁⑸즲???');
                             game.updateHUDSelection();
                         }
                     });
@@ -1686,12 +1911,6 @@ const HUD = {
             if (game.currentCategory === 'special') {
                 game.setCategory('infantry');
             }
-        }
-
-        // Mobile direct-control layout: hide unit production bar and expose command grid.
-        if (mobileDirectControlActive) {
-            this.hideProductionArea();
-            return;
         }
 
         // Battle-only simplified layout:
@@ -1796,7 +2015,7 @@ const HUD = {
     },
 
     // ============================================
-    // [NEW] ???????癲꾧퀗????빝??類???????굿????縕??
+    // [NEW] ????????꿸쑨?????鍮??筌????????援온????潁??
     // ============================================
     checkWorkerSelected() {
         if (!game.selectedUnits || game.selectedUnits.size === 0) return false;
@@ -1958,8 +2177,8 @@ const HUD = {
         if (buildingLabel) buildingLabel.textContent = '';
     },
 
-    // [癲ル슢?꾤땟?룹춻?C/D] HQ ???ャ뀕???????ル늅筌????ш끽維???production area????ш끽維???
-    // worker??infantry ?怨멸텭??沃섅뀙??關履????????筌뚯슦苑????ル늅筌???????獄쏅똾????좊읈???
+    // [?꿔꺂??袁ㅻ븶?猷뱀떻?C/D] HQ ????ｋ????????ル뒇嶺??????썹땟???production area??????썹땟???
+    // worker??infantry ??⑤㈇???亦껋꼨????쒙쭫????????嶺뚮슣??땻?????ル뒇嶺????????꾩룆?????醫딆쓧???
     showHQProductionUI(productionArea, footer, buildingLabel, options = null) {
         if (!productionArea) return;
 
@@ -1990,20 +2209,20 @@ const HUD = {
         }
     },
 
-    // [NEW] ???ャ뀕?????獄쏅똾??癲꾧퀗??癲???좊읈??嶺뚮ㅎ?닸쾮濡㏓섀?
+    // [NEW] ????ｋ??????꾩룆????꿸쑨???????醫딆쓧??癲ル슢???몄쒜嚥▲룗??
     getSelectedProductionBuilding() {
         if (!this.selection || this.selection.kind !== 'building') return null;
         if (!game.selectedBuilding) return null;
 
         const b = game.selectedBuilding;
-        // canProduce ?????μ쐺獄쏅ı?? ????덉툗 癲꾧퀗??癲⑸?異?(?怨뚮옖????좎떴?繹먭퍗?? ??ш끽維뺠뚣렖堉②퐛紐끒?)
+        // canProduce ?????關?븀뛾?끘?? ?????됲닓 ?꿸쑨????꿎뫖???(??⑤슢?????醫롫뼱?濚밸Þ??? ????썹땟類졖?ｋ젚?됤몼?쏉쭗?뮻?)
         if (b.canProduce && b.productionTab && b.team === 'player') {
             return b;
         }
         return null;
     },
 
-    // [NEW] ??獄쏅똾??癲꾧퀗??癲?UI ??筌?六?
+    // [NEW] ???꾩룆????꿸쑨?????UI ??嶺?筌?
     showProductionBuildingUI(building, productionArea, footer, buildingLabel) {
         if (!productionArea) return;
         this.setContextRightSlotMode(false);
@@ -2012,7 +2231,7 @@ const HUD = {
         const bData = CONFIG.constructable[building.type];
         const buildingName = bData ? bData.name : building.type;
 
-        // ????????????ル늅筌?癲ル슢?꾤땟戮⑤뭄???좊읈??嶺뚮ㅎ?닸쾮濡㏓섀?
+        // ?????????????ル뒇嶺??꿔꺂??袁ㅻ븶筌믠뫀萸???醫딆쓧??癲ル슢???몄쒜嚥▲룗??
         const units = CONFIG.units;
         const tabUnits = [];
 
@@ -2023,7 +2242,7 @@ const HUD = {
             }
         }
 
-        // ??れ삀??????⑤챶裕?癲ル슣?????ㅼ뒭????獄쏅똾???類??????獄쏅똻??
+        // ???뚯????????ㅼ굡獒??꿔꺂???????쇰뮡?????꾩룆????筌????????꾩룆???
         productionArea.innerHTML = '';
 
         const btnContainer = document.createElement('div');
@@ -2053,14 +2272,14 @@ const HUD = {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (canAfford && inStock && !onCooldown) {
-                    // 癲꾧퀗??癲????????ル늅筌?????뚰룙
+                    // ?꿸쑨?????????????ル뒇嶺??????곕짍
                     this.spawnFromBuilding(building, key);
                 } else if (onCooldown) {
-                    ui.showToast('?臾낅쳜???繞?');
+                    ui.showToast('??얜굝爾???濚?');
                 } else if (!inStock) {
-                    ui.showToast('??????怨몃쾳!');
+                    ui.showToast('???????⑤챶苡?');
                 } else {
-                    ui.showToast('??????遊붋??');
+                    ui.showToast('???????딅텑???');
                 }
             });
 
@@ -2069,12 +2288,12 @@ const HUD = {
 
         productionArea.appendChild(btnContainer);
 
-        // ???ㅺ컼????筌?六?
+        // ????븐뻤????嶺?筌?
         if (footer) footer.classList.add('hud-show-production');
         if (buildingLabel) buildingLabel.textContent = buildingName;
     },
 
-    // [NEW] 癲꾧퀗??癲????????ル늅筌?????뚰룙
+    // [NEW] ?꿸쑨?????????????ル뒇嶺??????곕짍
     spawnFromBuilding(building, unitKey) {
         const uData = CONFIG.units[unitKey];
         if (!uData) return;
@@ -2093,12 +2312,12 @@ const HUD = {
             return;
         }
 
-        // ????????椰?????????좊즴???
+        // ????????濾?????????醫딆┫???
         game.supply -= uData.cost;
         game.playerStock[unitKey]--;
         game.cooldowns[unitKey] = uData.cooldown;
 
-        // 癲꾧퀗??癲????⑤；諭??????뚰룙 (癲꾧퀗??癲?????렺轅곗땡?+ ??熬곣뫚???????덈뭷??
+        // ?꿸쑨?????????ㅿ폑獄???????곕짍 (?꿸쑨??????????봔饔낃퀣??+ ???ш끽維????????덈???
         const spawnX = building.x + building.width / 2 + 30;
         const spawnY = game.groundY;
 
@@ -2107,7 +2326,7 @@ const HUD = {
         ui.showToast(`${uData.name} produced.`);
     },
 
-    // [3.8] ??????????ャ뀕??????좊즴????癲꾧퀗????빝??類????(???ル늅筌묐?逾볠⑤슣維????????⑥???????
+    // [3.8] ???????????ｋ??????醫딆┫?????꿸쑨?????鍮??筌?????(????ル뒇嶺뚮쵎??얜퀬??ㅼ뒩泳?????????Β???????
     showBuildButtons(productionArea, footer, buildingLabel) {
         if (!productionArea) return;
         this.setContextRightSlotMode(false);
@@ -2115,31 +2334,31 @@ const HUD = {
         const buildings = CONFIG.constructable || {};
         const worker = this.getSelectedWorker();
 
-        // ??れ삀??????⑤챶裕?癲ル슣?????ㅼ뒭??癲꾧퀗??癲??類??????獄쏅똻??
+        // ???뚯????????ㅼ굡獒??꿔꺂???????쇰뮡???꿸쑨??????筌????????꾩룆???
         productionArea.innerHTML = '';
 
         const btnContainer = document.createElement('div');
         btnContainer.className = 'flex gap-2 items-center overflow-x-auto hide-scrollbar';
         btnContainer.style.cssText = 'padding: 4px; height: 100%;';
 
-        // [3.8] watchtower癲???筌?六?
+        // [3.8] watchtower????嶺?筌?
         for (const key in buildings) {
             if (key !== 'watchtower') continue;
 
             const bData = buildings[key];
             const canAfford = game.supply >= bData.cost;
             const onCooldown = game.builderCooldown > 0;
-            const alreadyBuilt = game.watchtowerBuilt;  // [3.8] 1??癲꾧퀗????빝?????モ뵲 癲ル슪???띿물?
+            const alreadyBuilt = game.watchtowerBuilt;  // [3.8] 1???꿸쑨?????鍮???????뎡 ?꿔꺂?????용Ъ?
             const isDisabled = !canAfford || onCooldown || alreadyBuilt;
 
-            // [3.8] btn-unit ??????⑥???????(???ル늅筌묐?逾볠⑤슣維???◈?????곕럡??????깼??
+            // [3.8] btn-unit ???????Β???????(????ル뒇嶺뚮쵎??얜퀬??ㅼ뒩泳????댟?????怨뺣윞??????源??
             const btn = document.createElement('div');
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none flex flex-col items-center justify-center';
             if (isDisabled) {
                 btn.classList.add('opacity-50', 'cursor-not-allowed');
             }
 
-            // 癲????????ш끽維쀩??(??れ삀?????좊즴??????釉먯뒭???- ??れ삀??먮븶??類???λ쑏??????
+            // ???????????썹땟?㈑??(???뚯??????醫딆┫???????됰Ŋ????- ???뚯???癒?마??筌????貫???????
             const iconCvs = document.createElement('canvas');
             iconCvs.width = 60;
             iconCvs.height = 40;
@@ -2147,46 +2366,46 @@ const HUD = {
             const ctx = iconCvs.getContext('2d');
             ctx.save();
             ctx.translate(30, 38);
-            ctx.scale(0.16, 0.16);  // ??????釉뚰???
-            // ??れ삀???watchtower ??釉먯뒭????????異?(buildings.js 癲ル슔?蹂?덫??
-            ctx.fillStyle = '#555';  // ??れ삀??먮븶?
+            ctx.scale(0.16, 0.16);  // ???????됰슦????
+            // ???뚯????watchtower ???됰Ŋ???????????(buildings.js ?꿔꺂??癰????
+            ctx.fillStyle = '#555';  // ???뚯???癒?마?
             ctx.fillRect(-25, -150, 50, 150);
-            ctx.fillStyle = '#444';  // ?袁⑸즵?룸돀???
+            ctx.fillStyle = '#444';  // ?熬곣뫖利?猷몃????
             ctx.fillRect(-45, -150, 90, 10);
-            ctx.fillStyle = '#111';  // ??れ삀????
+            ctx.fillStyle = '#111';  // ???뚯?????
             ctx.fillRect(25, -185, 35, 6);
-            ctx.fillStyle = '#666';  // ?類???λ쑏??怨뚮옖筌?（??
+            ctx.fillStyle = '#666';  // ?筌????貫????⑤슢?뽫춯?竊??
             ctx.fillRect(-40, -210, 80, 60);
-            ctx.fillStyle = '#333';  // ????렺轅곗땡??袁⑸젻泳?μ젂繹먃??
+            ctx.fillStyle = '#333';  // ?????봔饔낃퀣???熬곣뫖?삥납??關?귞뭐癒꺜??
             ctx.fillRect(20, -220, 20, 70);
-            ctx.fillStyle = '#444';  // 癲ル슣????
+            ctx.fillStyle = '#444';  // ?꿔꺂?????
             ctx.fillRect(-45, -220, 90, 10);
             ctx.restore();
             btn.appendChild(iconCvs);
 
-            // ?????(?嶺뚮ㅎ?????????
+            // ?????(?癲ル슢??????????
             const nameSpan = document.createElement('span');
             nameSpan.className = 'font-bold text-[10px] z-10 absolute top-0 w-full text-center bg-black/30 text-white';
             nameSpan.innerText = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : bData.name;
             btn.appendChild(nameSpan);
 
-            // ???????筌?六?
+            // ???????嶺?筌?
             const costSpan = document.createElement('span');
             costSpan.className = 'text-yellow-400 text-[10px] z-10 absolute bottom-1 right-1';
             costSpan.innerText = String(bData.cost);
-            // [REQ] watchtower癲???????筌?六????
+            // [REQ] watchtower????????嶺?筌????
             if (key !== 'watchtower') {
                 btn.appendChild(costSpan);
             }
 
-            // [3.8] ???? 癲꾧퀗????빝??????곷츉???源낇꼧
+            // [3.8] ???? ?꿸쑨?????鍮??????怨룹툒???繹먮굟瑗?
             if (alreadyBuilt) {
                 const builtDiv = document.createElement('div');
                 builtDiv.className = 'absolute inset-0 bg-gray-800/70 flex items-center justify-center z-20';
                 builtDiv.innerHTML = '<span class="text-white text-[9px] font-bold">BUILT</span>';
                 btn.appendChild(builtDiv);
             }
-            // ??얜굝爾???????곷츉???源낇꼧
+            // ???쒓턁????????怨룹툒???繹먮굟瑗?
             else if (onCooldown) {
                 const cdDiv = document.createElement('div');
                 cdDiv.className = 'cooldown-overlay';
@@ -2197,20 +2416,20 @@ const HUD = {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (alreadyBuilt) {
-                    ui.showToast('?띠룆흮???? 1???異?濾곌쑬?삭땻??띠럾??繞③뜮????덈펲!');
+                    ui.showToast('??좊즴????? 1?????癲꾧퀗????빝???좊읈??濚왿몾??????덊렡!');
                 } else if (worker && canAfford && !onCooldown) {
                     game.enterBuildMode(key, worker);
                 } else if (onCooldown) {
-                    ui.showToast('濾곌쑬?삭땻??臾낅쳜???繞?');
+                    ui.showToast('癲꾧퀗????빝???얜굝爾???濚?');
                 } else if (!canAfford) {
-                    ui.showToast('??????遊붋??');
+                    ui.showToast('???????딅텑???');
                 }
             });
 
             btnContainer.appendChild(btn);
         }
 
-        // ???爾???類????(癲꾧퀗????빝?癲ル슢?꾤땟???濚욌꼬?댄꺍???????
+        // ???????筌?????(?꿸쑨?????鍮??꿔꺂??袁ㅻ븶???嚥싳쉶瑗??꾧틡???????
         if (game.buildMode && game.buildMode.active) {
             const cancelBtn = document.createElement('button');
             cancelBtn.className = 'px-3 py-2 rounded bg-red-600 hover:bg-red-500 text-white text-xs font-bold';
@@ -2224,7 +2443,7 @@ const HUD = {
 
         productionArea.appendChild(btnContainer);
 
-        // ???ㅺ컼????筌?六?(?嶺뚮ㅎ?????????
+        // ????븐뻤????嶺?筌?(?癲ル슢??????????
         if (footer) footer.classList.add('hud-show-production');
         const workerName = (typeof Lang !== 'undefined') ? Lang.getText('unit_worker_name') : 'Worker';
         const towerName = (typeof Lang !== 'undefined') ? Lang.getText('build_watchtower_name') : 'Watchtower';
@@ -2235,7 +2454,7 @@ const HUD = {
      * Hide legacy UI elements (replaced by new HUD)
      */
     hideLegacyUI() {
-        // [3.8] Hide old minimap/toggle/ctrl/cmd buttons (???源놁젳 ?類????? ???)
+        // [3.8] Hide old minimap/toggle/ctrl/cmd buttons (???繹먮냱???筌?????? ???)
         ['hud-minimap-container', 'hud-minimap-toggle', 'hud-ctrl-wrapper', 'unit-cmd-wrapper']
             .forEach(id => {
                 const el = document.getElementById(id);
@@ -2253,5 +2472,6 @@ const HUD = {
 
 // Export for global access
 window.HUD = HUD;
+
 
 

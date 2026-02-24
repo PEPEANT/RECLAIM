@@ -1,19 +1,19 @@
-// Unit Render V2 entry for: apache (AH-64D Longbow)
-// [좌표 계약]
-// classes.js가 V2 호출 전에 이미:
-//   ctx.translate(unit.x, unit.y) + ctx.scale(1.4, 1.4) 적용됨
-// 이 렌더러는 추가로:
-//   ctx.scale(APACHE_SCALE) → floatOffset → facing 순서로 적용
+﻿// Unit Render V2 entry for: apache (AH-64D Longbow)
+// [醫뚰몴 怨꾩빟]
+// classes.js媛 V2 ?몄텧 ?꾩뿉 ?대?:
+//   ctx.translate(unit.x, unit.y) + ctx.scale(1.4, 1.4) ?곸슜??
+// ???뚮뜑?щ뒗 異붽?濡?
+//   ctx.scale(APACHE_SCALE) ??floatOffset ??facing ?쒖꽌濡??곸슜
 //
-// [팀 팔레트]
-//   player: 다크 카모 (흑회색 계열)
-//   enemy:  사막 카모 (황갈색 계열)
+// [? ?붾젅??
+//   player: ?ㅽ겕 移대え (?묓쉶??怨꾩뿴)
+//   enemy:  ?щ쭑 移대え (?⑷컝??怨꾩뿴)
 (function attachUnitRenderV2_apache(globalScope) {
     'use strict';
 
-    // 기체 크기 배율 (1.4 × APACHE_SCALE = 최종 렌더 크기)
-    // 원형 좌표계가 넓기 때문에 축소 필요
-    var APACHE_SCALE = 0.60;
+    // 湲곗껜 ?ш린 諛곗쑉 (1.4 횞 APACHE_SCALE = 理쒖쥌 ?뚮뜑 ?ш린)
+    // ?먰삎 醫뚰몴怨꾧? ?볤린 ?뚮Ц??異뺤냼 ?꾩슂
+    var APACHE_SCALE = 0.57;
 
     var PALETTE_PLAYER = {
         body:     '#2c2f33',
@@ -59,12 +59,14 @@
 
         var palette = (unit.team === 'enemy') ? PALETTE_ENEMY : PALETTE_PLAYER;
 
-        // ctx는 이미 (unit.x, unit.y) + scale(1.4) 상태
-        // APACHE_SCALE → floatOffset → facing 적용
+        // ctx???대? (unit.x, unit.y) + scale(1.4) ?곹깭
+        // APACHE_SCALE ??floatOffset ??facing ?곸슜
         ctx.save();
         ctx.scale(APACHE_SCALE, APACHE_SCALE);
-        ctx.translate(0, state.floatOffset);   // 호버링 부유
-        ctx.scale(state.facing, 1);            // facing 한 번만
+        ctx.translate(0, state.floatOffset);   // hover offset
+        var bodyBank = Number(state.bodyBank) || 0;
+        if (Math.abs(bodyBank) > 0.0005) ctx.rotate(bodyBank);
+        ctx.scale(state.facing, 1);            // facing ??踰덈쭔
 
         deps.bodyApi.drawBody(unit, ctx, state, palette);
         deps.fxApi.drawFx(unit, ctx, state);
@@ -88,3 +90,4 @@
         };
     }
 })(typeof window !== 'undefined' ? window : globalThis);
+

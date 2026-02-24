@@ -11,6 +11,7 @@
         bodyShakeX: 0,
         bodyShakeY: 0,
         hoverBob: 0,
+        bodyBank: 0,
         muzzleFlash: 0,
         lastAttackFrame: -1,
         speed: 0,
@@ -40,6 +41,7 @@
         if (!Number.isFinite(state.bodyShakeX)) state.bodyShakeX = 0;
         if (!Number.isFinite(state.bodyShakeY)) state.bodyShakeY = 0;
         if (!Number.isFinite(state.hoverBob)) state.hoverBob = 0;
+        if (!Number.isFinite(state.bodyBank)) state.bodyBank = 0;
         if (!Number.isFinite(state.muzzleFlash)) state.muzzleFlash = 0;
         if (!Number.isFinite(state.lastAttackFrame)) state.lastAttackFrame = -1;
         if (!Number.isFinite(state.speed)) state.speed = 0;
@@ -63,11 +65,13 @@
 
         var xNow = Number(unit.x) || 0;
         var vx = Number(unit.vx);
+        var vy = Number(unit.vy);
         if (!Number.isFinite(vx)) {
             vx = Number.isFinite(state.prevX) ? (xNow - state.prevX) : 0;
         }
+        if (!Number.isFinite(vy)) vy = 0;
         state.prevX = xNow;
-        state.speed = Math.abs(vx);
+        state.speed = Math.hypot(vx, vy * 0.6);
 
         if (state.phaseSeedReady !== true) {
             var yNow = Number(unit.y) || 0;
@@ -86,6 +90,11 @@
         state.bodyShakeX = Math.sin((state.mainRotorAngle * 4.8) + state.phaseSeed) * vibe;
         state.bodyShakeY = Math.cos((state.mainRotorAngle * 6.9) + state.phaseSeed) * (vibe + 0.04);
         state.hoverBob = Math.sin((state.mainRotorAngle * 0.35) + state.phaseSeed) * 0.55;
+        var bankTarget = Math.max(-0.14, Math.min(0.14, (vx * 0.075) + (vy * 0.018)));
+        if (Math.abs(vx) < 0.02 && Math.abs(vy) < 0.02) bankTarget = 0;
+        state.bodyBank = Number(state.bodyBank) || 0;
+        state.bodyBank += (bankTarget - state.bodyBank) * 0.16;
+        if (Math.abs(state.bodyBank) < 0.0004) state.bodyBank = 0;
 
         var attackFrame = Number(unit.lastAttack);
         if (Number.isFinite(attackFrame) && attackFrame > 0 && attackFrame !== state.lastAttackFrame) {
@@ -107,6 +116,7 @@
         state.bodyShakeX = 0;
         state.bodyShakeY = 0;
         state.hoverBob = 0;
+        state.bodyBank = 0;
         state.muzzleFlash = 0;
         state.lastAttackFrame = -1;
         state.speed = 0;

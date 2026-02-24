@@ -264,14 +264,7 @@
         ctx.lineWidth = 0.5;
         ctx.strokeRect(barX - w / 2, barY, w, h);
 
-        const directUnit = (typeof game !== 'undefined'
-            && game
-            && typeof game.getDirectControlUnit === 'function')
-            ? game.getDirectControlUnit()
-            : null;
-        if (directUnit && directUnit === unit) {
-            drawControlStar(ctx, (barX - w / 2) - 6, barY + (h * 0.5), 3.1, 1.5);
-        }
+        // Selection marker is rendered from Unit.draw() at the unit center.
     }
 
     function getUnitIconProfile(unitKey, unitDef, options) {

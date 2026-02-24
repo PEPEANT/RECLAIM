@@ -70,6 +70,10 @@
         facing = facing >= 0 ? 1 : -1;
 
         ctx.save();
+        if (!iconMode) {
+            var bodyBank = Number(state.bodyBank) || 0;
+            if (Math.abs(bodyBank) > 0.0005) ctx.rotate(bodyBank);
+        }
         // Source UH-60 vector is drawn facing left in local space.
         // World facing(+1 right / -1 left) must be inverted for the model transform.
         if (facing > 0) ctx.scale(-1, 1);

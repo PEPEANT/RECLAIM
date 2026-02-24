@@ -250,8 +250,53 @@
         else if (type === 'tank_shell') {
             this._playOneShot('bgm/boom/boom-5.mp3', vol * 1.42, 6, worldX);
         }
+        else if (type === 'tank_fire') {
+            this._playOneShot('bgm/tank_boom.mp3', vol * 0.95, 5, worldX);
+        }
         else if (type === 'apache_missile') {
             this._playOneShot('bgm/boom/boom-4.mp3', vol * 0.7, 6, worldX);
+        }
+        else if (type === 'drone_pre_attack_suicide') {
+            this._playOneShot('bgm/drone_1.mp3', vol * 0.74, 4, worldX);
+        }
+        else if (type === 'drone_pre_attack_at') {
+            this._playOneShot('bgm/drone.mp3', vol * 0.72, 4, worldX);
+        }
+        else if (type === 'drone_pre_attack') {
+            this._playOneShot('bgm/drone.mp3', vol * 0.72, 4, worldX);
+        }
+        else if (type === 'infantry_step') {
+            const aud = this.getWorldAudibility(worldX);
+            if (aud <= 0.02) return;
+
+            const src = this.ctx.createBufferSource();
+            src.buffer = this.noiseBuffer;
+            const band = this.ctx.createBiquadFilter();
+            band.type = 'bandpass';
+            band.frequency.setValueAtTime(180 + Math.random() * 120, t);
+            band.Q.setValueAtTime(0.9, t);
+
+            const stepGain = this.ctx.createGain();
+            const stepVol = Math.max(0.001, vol * aud * (0.12 + Math.random() * 0.08));
+            stepGain.gain.setValueAtTime(stepVol, t);
+            stepGain.gain.exponentialRampToValueAtTime(0.001, t + 0.085);
+            src.connect(band);
+            band.connect(stepGain);
+            stepGain.connect(this.ctx.destination);
+            src.start(t);
+            src.stop(t + 0.09);
+
+            const heel = this.ctx.createOscillator();
+            const heelGain = this.ctx.createGain();
+            heel.type = 'triangle';
+            heel.frequency.setValueAtTime(96 + Math.random() * 18, t);
+            heel.frequency.exponentialRampToValueAtTime(58, t + 0.055);
+            heelGain.gain.setValueAtTime(stepVol * 0.52, t);
+            heelGain.gain.exponentialRampToValueAtTime(0.001, t + 0.06);
+            heel.connect(heelGain);
+            heelGain.connect(this.ctx.destination);
+            heel.start(t);
+            heel.stop(t + 0.06);
         }
         else if (type === 'helicopter_select') {
             this._playOneShot('bgm/helicopt.mp3', vol * 0.7, 4, worldX);
@@ -281,6 +326,7 @@
     _battleMoveLoops: null,
     _battleMoveProbe: (typeof WeakMap !== 'undefined') ? new WeakMap() : null,
     _battleMoveLastDistantArmorMs: 0,
+    _battleMoveLastInfantryStepMs: 0,
     _battleMoveHeliHoldUntilMs: 0,
     _battleMoveTankHoldUntilMs: 0,
     _battleMoveHumveeHoldUntilMs: 0,
@@ -456,10 +502,13 @@
         let heliAud = 0;
         let tankAud = 0;
         let humveeAud = 0;
+        let infantryAud = 0;
+        let infantryStepX = null;
         for (let i = 0; i < allUnits.length; i += 1) {
             const u = allUnits[i];
             if (!u || u.dead || !u.stats) continue;
             const id = String(u.stats.id || '').trim().toLowerCase();
+            const category = String(u.stats.category || '').trim().toLowerCase();
             const worldX = Number(u.x);
             if (!Number.isFinite(worldX)) continue;
             const isVisible = this._isWorldXVisible(worldX, 24, g);
@@ -473,8 +522,34 @@
             }
 
             if (id === 'humvee') {
-                if (this._isUnitActivelyMoving(u)) {
+                const cmd = String(u.commandMode || '').trim().toLowerCase();
+                const vx = Math.abs(Number(u.vx) || 0);
+                const directActive = !!(
+                    g
+                    && typeof g.isDirectControlActive === 'function'
+                    && typeof g.getDirectControlUnit === 'function'
+                    && g.isDirectControlActive()
+                    && g.getDirectControlUnit() === u
+                );
+                if (this._isUnitActivelyMoving(u)
+                    || cmd === 'move'
+                    || cmd === 'retreat'
+                    || vx >= 0.02
+                    || directActive) {
                     humveeAud = Math.max(humveeAud, audibility);
+                }
+                continue;
+            }
+
+            if (category === 'infantry') {
+                const cmd = String(u.commandMode || '').trim().toLowerCase();
+                const vx = Math.abs(Number(u.vx) || 0);
+                if (this._isUnitActivelyMoving(u) || cmd === 'move' || cmd === 'retreat' || vx >= 0.012) {
+                    const aud = Math.min(1, audibility * 1.05);
+                    if (aud > infantryAud) {
+                        infantryAud = aud;
+                        infantryStepX = worldX;
+                    }
                 }
                 continue;
             }
@@ -487,7 +562,7 @@
         const nowMs = Date.now();
         if (heliAud > 0.02) this._battleMoveHeliHoldUntilMs = nowMs + 600;
         if (tankAud > 0.02) this._battleMoveTankHoldUntilMs = nowMs + 450;
-        if (humveeAud > 0.02) this._battleMoveHumveeHoldUntilMs = nowMs + 400;
+        if (humveeAud > 0.02) this._battleMoveHumveeHoldUntilMs = nowMs + 560;
 
         const heliHeld = nowMs < (Number(this._battleMoveHeliHoldUntilMs) || 0);
         const tankHeld = nowMs < (Number(this._battleMoveTankHoldUntilMs) || 0);
@@ -496,6 +571,14 @@
         const heliEffectiveAud = Math.max(heliAud, heliHeld ? 0.20 : 0);
         const tankEffectiveAud = Math.max(tankAud, tankHeld ? 0.22 : 0);
         const humveeEffectiveAud = Math.max(humveeAud, humveeHeld ? 0.20 : 0);
+        if (infantryAud > 0.1) {
+            const lastStep = Number(this._battleMoveLastInfantryStepMs) || 0;
+            const stepGap = (infantryAud > 0.58) ? 620 : 860;
+            if ((nowMs - lastStep) >= stepGap && Math.random() < 0.72) {
+                this._battleMoveLastInfantryStepMs = nowMs;
+                this.playSFX('infantry_step', infantryStepX);
+            }
+        }
 
         const mix = this.volume.sfx * this.volume.master;
         this._updateBattleMoveLoop(
@@ -508,13 +591,13 @@
             'tank',
             'bgm/mov/tank_moving.mp3',
             tankEffectiveAud > 0.02,
-            mix * 0.46 * tankEffectiveAud
+            mix * 0.32 * tankEffectiveAud
         );
         this._updateBattleMoveLoop(
             'humvee',
             'bgm/mov/tank_moving2.mp3',
             humveeEffectiveAud > 0.02,
-            mix * 0.34 * humveeEffectiveAud
+            mix * 0.42 * humveeEffectiveAud
         );
 
         // 화면 밖에서 들리는 적 기갑 포성(짧게 1회) 트리거.
@@ -755,7 +838,7 @@
         const key = 'panic_scream';
         if (this.lastSFXTime[key] && now - this.lastSFXTime[key] < 0.6) return;
         this.lastSFXTime[key] = now;
-        const file = 'bgm/crowd-panic-scream-1-390796.mp3';
+        const file = 'bgm/freesound.mp3';
         const a = this._playOneShot(file, this.volume.sfx * this.volume.master * 0.9, 4, worldX);
         if (!a) return;
         try {
@@ -773,7 +856,7 @@
 
     stopPanicScream() {
         this.panicMuted = true;
-        const key = 'bgm/crowd-panic-scream-1-390796.mp3';
+        const key = 'bgm/freesound.mp3';
         const pool = this._audioPool[key];
         if (Array.isArray(pool)) {
             pool.forEach(a => {

@@ -2,9 +2,11 @@
 (function attachUnitRenderV2Weapons_spg(globalScope) {
     'use strict';
 
-    // Wide clamp so renderer can express both move-posture(down) and combat-posture(up).
-    var LIMIT_DOWN = Math.PI * 0.995;
-    var LIMIT_UP = -Math.PI / 2;
+    // Clamp range tuned to avoid unrealistic 90deg vertical lock:
+    // - move posture: slight down angle
+    // - fire posture: variable high angle (but not vertical)
+    var LIMIT_DOWN = (20 * Math.PI) / 180;
+    var LIMIT_UP = (-68 * Math.PI) / 180;
     var GUN_PIVOT_X = 10;
     var GUN_PIVOT_Y = -61;
     var DEFAULT_BARREL_LENGTH = 155;
@@ -57,6 +59,46 @@
         if (dxLocal < 0) {
             return dyWorld < 0 ? LIMIT_UP : LIMIT_DOWN;
         }
+        return clampGunAngle(angle);
+    }
+
+    function computeBallisticAimAngleFromPoint(unit, targetX, targetY, options) {
+        if (!unit) return -Math.PI / 12;
+        var tx = Number(targetX);
+        var ty = Number(targetY);
+        if (!Number.isFinite(tx) || !Number.isFinite(ty)) return -Math.PI / 12;
+
+        var opts = options || {};
+        var gRaw = Number(opts.grav);
+        var g = Number.isFinite(gRaw) ? Math.max(0.05, gRaw) : 0.33;
+        var baseDx = Math.abs(tx - (Number(unit.x) || 0));
+        var arcRaw = Number(opts.arcHeight);
+        var arcHeight = Number.isFinite(arcRaw)
+            ? Math.max(40, arcRaw)
+            : Math.max(180, Math.min(460, Math.round(baseDx * 0.34)));
+
+        var pivot = getPivotWorld(unit, opts.worldScale);
+        var dxWorld = tx - pivot.x;
+        var dyWorld = ty - pivot.y;
+        var dxLocal = dxWorld * pivot.facing;
+
+        if (dxLocal < 0) {
+            return dyWorld < 0 ? LIMIT_UP : LIMIT_DOWN;
+        }
+
+        var minY = Math.min(pivot.y, ty);
+        var apexY = minY - arcHeight;
+        if (apexY > minY - 20) apexY = minY - 20;
+
+        var dy0 = pivot.y - apexY;
+        var dy1 = ty - apexY;
+        var t0 = Math.sqrt(Math.max(0.001, (2 * dy0) / g));
+        var t1 = Math.sqrt(Math.max(0.001, (2 * dy1) / g));
+        var T = Math.max(0.001, t0 + t1);
+        var vxLocal = dxLocal / T;
+        var vy = -g * t0;
+        var angle = Math.atan2(vy, vxLocal);
+
         return clampGunAngle(angle);
     }
 
@@ -118,6 +160,7 @@
         DEFAULT_BARREL_LENGTH: DEFAULT_BARREL_LENGTH,
         clampGunAngle: clampGunAngle,
         computeAimAngleFromPoint: computeAimAngleFromPoint,
+        computeBallisticAimAngleFromPoint: computeBallisticAimAngleFromPoint,
         computeMuzzleLocal: computeMuzzleLocal,
         computeMuzzleWorld: computeMuzzleWorld
     };

@@ -113,12 +113,24 @@
         _canOperatorLaunchDrone(operator) {
             if (!operator || operator.dead || operator.stats?.operator !== true) return false;
             const fixedDroneCharges = 2;
-            if (!Number.isFinite(Number(operator.maxDroneCharges)) || Number(operator.maxDroneCharges) < fixedDroneCharges) {
-                operator.maxDroneCharges = fixedDroneCharges;
-            }
-            if (!Number.isFinite(Number(operator.droneChargesLeft)) || Number(operator.droneChargesLeft) < 1) {
-                operator.droneChargesLeft = operator.maxDroneCharges;
-            }
+            const launchLimitRaw = Number(operator.droneLaunchLimit);
+            const launchLimit = Number.isFinite(launchLimitRaw)
+                ? Math.max(1, Math.min(fixedDroneCharges, Math.floor(launchLimitRaw)))
+                : fixedDroneCharges;
+            operator.droneLaunchLimit = launchLimit;
+            operator.maxDroneCharges = launchLimit;
+
+            const launchCountRaw = Number(operator.droneLaunchCount);
+            const launchCount = Number.isFinite(launchCountRaw)
+                ? Math.max(0, Math.min(launchLimit, Math.floor(launchCountRaw)))
+                : 0;
+            operator.droneLaunchCount = launchCount;
+
+            const remainingByCount = Math.max(0, launchLimit - launchCount);
+            const chargesRaw = Number(operator.droneChargesLeft);
+            operator.droneChargesLeft = Number.isFinite(chargesRaw)
+                ? Math.max(0, Math.min(remainingByCount, Math.floor(chargesRaw)))
+                : remainingByCount;
             if ((operator.droneChargesLeft || 0) <= 0) return false;
 
             const aliveCount = (typeof this.getAliveOperatorDrones === 'function')

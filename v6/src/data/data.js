@@ -97,7 +97,7 @@ const CONFIG = {
         },
         infantry: {
             id: 'infantry', name: '보병', cost: 30, cooldown: 25, maxCount: 40,
-            hp: 80, damage: 12, range: 130, speed: 0.9,
+            hp: 80, damage: 12, range: 250, speed: 0.9,
             width: 15, height: 25, color: '#60a5fa', type: 'bio', category: 'infantry',
             role: '기본 보병', description: '전선을 유지하는 기본 보병입니다.'
         },
@@ -163,12 +163,14 @@ const CONFIG = {
         icbm: {
             id: 'icbm', name: 'ICBM 미사일차량', cost: 260, cooldown: 420, maxCount: 2,
             hp: 1400, damage: 0, range: 0, speed: 0.42,
+            icbmAmmo: 3,
             width: 150, height: 48, color: '#4b5563', type: 'mech', category: 'armored',
             role: '전략 미사일 발사', description: '핵/전술/EMP 미사일을 선택 발사하는 전략 TEL 발사차량입니다.'
         },
         icbm_enemy: {
             id: 'icbm_enemy', name: '적 ICBM 미사일차량', cost: 260, cooldown: 420, maxCount: 2,
             hp: 1400, damage: 0, range: 0, speed: 0.42,
+            icbmAmmo: 3,
             width: 150, height: 48, color: '#4b5563', type: 'mech', category: 'armored',
             role: '적 전략 미사일 발사', description: '적 AI 전용 ICBM TEL 발사차량입니다.',
             hideFromUnitBar: true,

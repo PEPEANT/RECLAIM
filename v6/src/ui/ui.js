@@ -11,6 +11,7 @@ const ui = {
     _optActiveTab: 'general',
     _optContext: 'general',
     _exitAction: 'quit',
+    _unitIconBgColor: '',
 
     init() {
         this.initUnitScroller();
@@ -131,6 +132,77 @@ const ui = {
         return 'infantry';
     },
 
+    getPlayerUnitIconBgColor() {
+        const fallback = '#4A8522';
+        try {
+            if (typeof TeamColors !== 'undefined' && TeamColors && typeof TeamColors.get === 'function') {
+                const raw = String(TeamColors.get('player', 'primary') || '').trim();
+                if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
+                if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+                    const r = raw[1], g = raw[2], b = raw[3];
+                    return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+                }
+            }
+        } catch (_) { }
+        return fallback;
+    },
+
+    drawUnitButtonIcon(canvas, unitKey, unitDef, bgColor = '#4A8522') {
+        if (!canvas || !unitDef) return false;
+        const ctx = (typeof canvas.getContext === 'function') ? canvas.getContext('2d') : null;
+        if (!ctx) return false;
+
+        const key = String(unitKey || '').trim();
+        const u = unitDef;
+        const svgIcons = (typeof UnitProfileIcons !== 'undefined') ? UnitProfileIcons : null;
+        const drewSvg = !!(svgIcons && typeof svgIcons.drawToCanvas === 'function'
+            && svgIcons.drawToCanvas(ctx, key, u, {
+                bgColor,
+                padX: 1,
+                padY: 1
+            }));
+
+        const iconUtils = (typeof UnitRenderUtils !== 'undefined') ? UnitRenderUtils : null;
+        const drew = drewSvg || !!(iconUtils && typeof iconUtils.drawUnitIconToCanvas === 'function'
+            && iconUtils.drawUnitIconToCanvas(ctx, key, u, {
+                centerX: 32,
+                bottomY: 44,
+                baseScale: 0.8,
+                baseOffsetY: 0,
+                drawFallback: false
+            }));
+
+        if (!drew) {
+            const w = Math.max(10, Math.min(50, Math.round((Number(u.width) || 30) * 0.9)));
+            const h = Math.max(6, Math.min(26, Math.round((Number(u.height) || 16) * 0.9)));
+            ctx.clearRect(0, 0, Number(canvas.width) || 64, Number(canvas.height) || 48);
+            ctx.fillStyle = u.color || '#38bdf8';
+            ctx.globalAlpha = 0.9;
+            ctx.fillRect((60 - w) / 2, (40 - h) / 2 + 6, w, h);
+            ctx.globalAlpha = 1;
+        }
+        return true;
+    },
+
+    refreshUnitButtonIconTheme(force = false) {
+        const nextBgColor = this.getPlayerUnitIconBgColor();
+        if (!force && this._unitIconBgColor === nextBgColor) return;
+        if (typeof CONFIG === 'undefined' || !CONFIG || !CONFIG.units) {
+            this._unitIconBgColor = nextBgColor;
+            return;
+        }
+
+        Object.keys(this.elementCache || {}).forEach((key) => {
+            const cache = this.elementCache[key];
+            if (!cache || !cache.iconCvs) return;
+            const unitDef = CONFIG.units[key];
+            if (!unitDef) return;
+            this.drawUnitButtonIcon(cache.iconCvs, key, unitDef, nextBgColor);
+        });
+
+        this._unitIconBgColor = nextBgColor;
+    },
+
     // [OPTIMIZATION] 초기 1회 실행: 모든 유닛 버튼 생성 및 캐싱
     initUnitButtons(currentCategory) {
         const container = document.getElementById('unit-list-container');
@@ -143,8 +215,39 @@ const ui = {
         }
 
         const icbmSkillKeys = new Set(['nuke', 'tactical_missile', 'emp']);
+        const iconBgColor = this.getPlayerUnitIconBgColor();
+        const rawUnitKeys = Object.keys(CONFIG.units);
+        const unitOrderIndex = new Map(rawUnitKeys.map((unitKey, idx) => [unitKey, idx]));
+        const infantryUiOrder = new Map([
+            ['infantry', 0],
+            ['engineer', 1],
+            ['special_ops', 2],
+            ['drone_operator', 3],
+            ['sniper', 4],   // 5th in infantry row (1-based)
+            ['bagpiper', 5]  // last in infantry row
+        ]);
+        const sortedUnitKeys = rawUnitKeys.slice().sort((a, b) => {
+            const aDef = CONFIG.units[a];
+            const bDef = CONFIG.units[b];
+            const aCategory = this.getUnitCategoryForTab(a, aDef);
+            const bCategory = this.getUnitCategoryForTab(b, bDef);
 
-        Object.keys(CONFIG.units).forEach(key => {
+            // Infantry row fixed order:
+            // infantry -> engineer -> special_ops -> drone_operator -> sniper -> bagpiper
+            if (aCategory === 'infantry' && bCategory === 'infantry') {
+                const aInfOrder = infantryUiOrder.has(a) ? infantryUiOrder.get(a) : null;
+                const bInfOrder = infantryUiOrder.has(b) ? infantryUiOrder.get(b) : null;
+                if (aInfOrder !== null && bInfOrder !== null) {
+                    return aInfOrder - bInfOrder;
+                }
+                if (aInfOrder !== null) return -1;
+                if (bInfOrder !== null) return 1;
+            }
+
+            return (unitOrderIndex.get(a) ?? 0) - (unitOrderIndex.get(b) ?? 0);
+        });
+
+        sortedUnitKeys.forEach(key => {
             const u = CONFIG.units[key];
             if (!u) {
                 console.warn(`[UI] Missing unit config for key: ${key}`);
@@ -167,34 +270,7 @@ const ui = {
             // 캔버스 아이콘 (한 번만 그림)
             const iconCvs = document.createElement('canvas');
             iconCvs.width = 64; iconCvs.height = 48;
-            const ctx = iconCvs.getContext('2d');
-
-            const svgIcons = (typeof UnitProfileIcons !== 'undefined') ? UnitProfileIcons : null;
-            const drewSvg = !!(svgIcons && typeof svgIcons.drawToCanvas === 'function'
-                && svgIcons.drawToCanvas(ctx, key, u, {
-                    bgColor: '#4A8522',
-                    padX: 1,
-                    padY: 1
-                }));
-
-            const iconUtils = (typeof UnitRenderUtils !== 'undefined') ? UnitRenderUtils : null;
-            const drew = drewSvg || !!(iconUtils && typeof iconUtils.drawUnitIconToCanvas === 'function'
-                && iconUtils.drawUnitIconToCanvas(ctx, key, u, {
-                    centerX: 32,
-                    bottomY: 44,
-                    baseScale: 0.8,
-                    baseOffsetY: 0,
-                    drawFallback: false
-                }));
-
-            if (!drew) {
-                const w = Math.max(10, Math.min(50, Math.round((Number(u.width) || 30) * 0.9)));
-                const h = Math.max(6, Math.min(26, Math.round((Number(u.height) || 16) * 0.9)));
-                ctx.fillStyle = u.color || '#38bdf8';
-                ctx.globalAlpha = 0.9;
-                ctx.fillRect((60 - w) / 2, (40 - h) / 2 + 6, w, h);
-                ctx.globalAlpha = 1;
-            }
+            this.drawUnitButtonIcon(iconCvs, key, u, iconBgColor);
 
             btn.appendChild(iconCvs);
 
@@ -223,13 +299,15 @@ const ui = {
             btn.appendChild(qBadge);
 
             // 캐시에 저장 (매 프레임 검색 방지)
-            this.elementCache[key] = { btn, nameSpan, countSpan, cdDiv, qBadge };
+            this.elementCache[key] = { btn, nameSpan, countSpan, cdDiv, qBadge, iconCvs };
             this.lastValues[key] = { stock: -1, cdRatio: -1, queue: -1, active: null };
 
             // 이벤트 바인딩
             this.bindButtonEvents(btn, key);
             container.appendChild(btn);
         });
+
+        this._unitIconBgColor = iconBgColor;
 
         if (typeof this._updateUnitScroller === 'function') {
             this._updateUnitScroller();
@@ -356,6 +434,7 @@ const ui = {
     },
 
     updateUnitButtons(cat, stock, cooldowns, supply, queue) {
+        this.refreshUnitButtonIconTheme(false);
         const icbmSkillKeys = new Set(['nuke', 'tactical_missile', 'emp']);
         const normalizedCategory = (cat === 'infantry' || cat === 'armored' || cat === 'air')
             ? cat
@@ -864,15 +943,22 @@ const ui = {
         const nextTab = requestedTab || defaultTab;
         this.setOptionTab(nextTab);
         // Update slider values
-        if (typeof AudioSystem !== 'undefined') {
-            document.getElementById('vol-master-val').innerText = parseInt(AudioSystem.volume.master * 100) + '%';
-            document.querySelector("input[oninput*='master']").value = AudioSystem.volume.master * 100;
+        if (typeof AudioSystem !== 'undefined' && AudioSystem && AudioSystem.volume) {
+            const syncVolumeUi = (type, fallback = 0.5) => {
+                const raw = Number(AudioSystem.volume[type]);
+                const normalized = Number.isFinite(raw) ? raw : fallback;
+                const pct = Math.max(0, Math.min(100, Math.round(normalized * 100)));
+                const valEl = document.getElementById(`vol-${type}-val`);
+                if (valEl) valEl.innerText = `${pct}%`;
+                const slider = document.querySelector(`input[data-volume='${type}']`)
+                    || document.querySelector(`input[oninput*='${type}']`);
+                if (slider) slider.value = pct;
+            };
 
-            document.getElementById('vol-bgm-val').innerText = parseInt(AudioSystem.volume.bgm * 100) + '%';
-            document.querySelector("input[oninput*='bgm']").value = AudioSystem.volume.bgm * 100;
-
-            document.getElementById('vol-sfx-val').innerText = parseInt(AudioSystem.volume.sfx * 100) + '%';
-            document.querySelector("input[oninput*='sfx']").value = AudioSystem.volume.sfx * 100;
+            // Audio tab is simplified to BGM/SFX, but keep master sync for backward compatibility.
+            syncVolumeUi('master', 0.5);
+            syncVolumeUi('bgm', 0.4);
+            syncVolumeUi('sfx', 0.6);
         }
 
         const iogToggle = document.getElementById('opt-iog-always-open');
@@ -895,7 +981,8 @@ const ui = {
             if (type === 'bgm') AudioSystem.setBGMVolume(v);
             else AudioSystem.setVolume(type, v);
         }
-        document.getElementById(`vol-${type}-val`).innerText = val + '%';
+        const labelEl = document.getElementById(`vol-${type}-val`);
+        if (labelEl) labelEl.innerText = val + '%';
     },
 
     changeBGM(val) {
@@ -933,5 +1020,9 @@ const ui = {
         if (activeBtn) activeBtn.classList.add('active');
     }
 };
+
+if (typeof window !== 'undefined') {
+    window.ui = ui;
+}
 
 

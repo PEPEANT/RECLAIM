@@ -6,7 +6,8 @@
     var LIMIT_DOWN_BACK = -0.10;
     var LIMIT_UP = -Math.PI / 2.2;
     var TURRET_PIVOT_X = -5;
-    var TURRET_PIVOT_Y = -27;
+    // Keep muzzle/aim pivot aligned with render_parts turret anchor.
+    var TURRET_PIVOT_Y = -33;
     var AUTO_BARREL_LEN = 65;
     var TOW_OFFSET_X = -10;
     var TOW_OFFSET_Y = -18;

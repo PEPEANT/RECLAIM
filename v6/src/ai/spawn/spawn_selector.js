@@ -66,12 +66,65 @@
         const infantry = Math.max(0, Number(info?.infantry) || 0);
         const total = Math.max(0, Number(info?.total) || 0);
         const hasBunker = !!info?.hasBunker;
+
+        const players = Array.isArray(game?.players) ? game.players : [];
+        let airPower = 0;
+        let armorPower = 0;
+        let infantryPower = 0;
+        let overallPower = 0;
+
+        const getUnitThreat = (u) => {
+            if (!u || u.dead || !u.stats) return 0;
+            const s = u.stats || {};
+            if (s.invulnerable) return 0;
+            const hpMax = Math.max(1, Number(u.maxHp) || Number(s.hp) || 1);
+            const hpCur = Math.max(0, Number(u.hp));
+            const hpRatio = Math.max(0.2, Math.min(1.1, hpCur / hpMax));
+            const dmg = Math.max(
+                Number(s.damage) || 0,
+                Number(s.damageGround) || 0,
+                Number(s.damageAir) || 0,
+                Number(s.missileDamage) || 0
+            );
+            const range = Math.max(0, Number((typeof u.getEffectiveRange === 'function') ? u.getEffectiveRange() : s.range) || 0);
+            const speed = Math.max(0, Number(s.speed) || 0);
+            let score = 0.55
+                + Math.min(2.5, hpMax / 520)
+                + Math.min(2.4, dmg / 50)
+                + Math.min(1.8, range / 560)
+                + Math.min(0.7, speed / 1.9);
+            const type = String(s.type || '');
+            const category = String(s.category || '');
+            const id = String(s.id || '');
+            if (type === 'air') score *= 1.14;
+            if (category === 'armored' || type === 'mech') score *= 1.17;
+            if (id === 'spg' || id === 'bomber') score *= 1.18;
+            return Math.max(0.15, score * hpRatio);
+        };
+
+        for (let i = 0; i < players.length; i++) {
+            const u = players[i];
+            const score = getUnitThreat(u);
+            if (score <= 0) continue;
+            overallPower += score;
+            const type = String((u && u.stats && u.stats.type) || '');
+            const category = String((u && u.stats && u.stats.category) || '');
+            if (type === 'air') airPower += score;
+            else if (category === 'armored' || type === 'mech') armorPower += score;
+            else infantryPower += score;
+        }
+
+        const weightedAir = Math.max(air, airPower);
+        const weightedArmor = Math.max(tank, armorPower);
+        const weightedInf = Math.max(infantry, infantryPower);
+        const weightedTotal = Math.max(total, overallPower);
+
         return {
-            antiAir: air * 3 + (air >= 3 ? 2 : 0),
-            antiArmor: tank * 3 + (tank >= 3 ? 2 : 0),
-            antiInfantry: Math.max(0, infantry - 4) * 1.8,
-            siege: (hasBunker ? 4 : 0) + (total >= 14 ? 2 : 0),
-            pressure: Math.max(0, total - this._getAliveEnemyUnitCount())
+            antiAir: (weightedAir * 1.9) + (weightedAir >= 5 ? 2 : 0),
+            antiArmor: (weightedArmor * 1.7) + (weightedArmor >= 5 ? 2 : 0),
+            antiInfantry: Math.max(0, weightedInf - 5) * 1.45,
+            siege: (hasBunker ? 4 : 0) + (weightedTotal >= 18 ? 2 : 0),
+            pressure: Math.max(0, weightedTotal - this._getAliveEnemyUnitCount())
         };
     },
 
@@ -225,6 +278,10 @@
 
         const info = this.analyze();
         const frame = game.frame || 0;
+        const massSpawnBoost = (typeof this._getMassSpawnResponseBoost === 'function')
+            ? this._getMassSpawnResponseBoost(frame)
+            : null;
+        const massResponseActive = !!(massSpawnBoost && massSpawnBoost.active);
         const enemyUnitCount = this._getAliveEnemyUnitCount();
         if (!this._canSpawnByWaveCap(1, frame)) return;
         const aliveCap = this._getGlobalAliveCap(frame);
@@ -266,13 +323,23 @@
         if (!spawned) return;
 
         // 분산 보강 스폰: 한 프레임 폭주 대신 짧은 텀을 둔다.
-        const supportNeed = (info.total > enemyUnitCount + 4) || (this.difficulty === 'elite' && game.enemySupply > 900);
+        const supportNeed = massResponseActive
+            || (info.total > enemyUnitCount + 4)
+            || (this.difficulty === 'elite' && game.enemySupply > 900);
         if (!supportNeed) return;
 
-        const extraChance = (this.difficulty === 'elite') ? 0.32 : (this.difficulty === 'veteran' ? 0.2 : 0.1);
+        let extraChance = (this.difficulty === 'elite') ? 0.32 : (this.difficulty === 'veteran' ? 0.2 : 0.1);
+        if (massResponseActive) {
+            const bonus = Math.max(0, Number(massSpawnBoost?.supportChanceBonus) || 0);
+            extraChance = Math.min(0.9, extraChance + bonus);
+        }
         if (Math.random() > extraChance) return;
 
-        const baseDelay = isEarly ? 420 : 260;
+        let baseDelay = isEarly ? 420 : 260;
+        if (massResponseActive) {
+            const delayMul = Math.max(0.45, Math.min(1, Number(massSpawnBoost?.supportDelayMul) || 1));
+            baseDelay = Math.max(90, Math.floor(baseDelay * delayMul));
+        }
         const delay = baseDelay + Math.floor(Math.random() * 180);
         setTimeout(() => {
             if (!game || !game.running || game.paused) return;

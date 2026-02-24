@@ -6,6 +6,9 @@
         turretAngle: -0.10,
         trackOffset: 0,
         recoil: 0,
+        hullKick: 0,
+        hullRoll: 0,
+        lastKickShotFrame: -1,
         mgFlash: 0,
         mainFlash: 0,
         facing: 1
@@ -30,6 +33,9 @@
         if (!Number.isFinite(state.turretAngle)) state.turretAngle = DEFAULT_STATE.turretAngle;
         if (!Number.isFinite(state.trackOffset)) state.trackOffset = DEFAULT_STATE.trackOffset;
         if (!Number.isFinite(state.recoil)) state.recoil = DEFAULT_STATE.recoil;
+        if (!Number.isFinite(state.hullKick)) state.hullKick = DEFAULT_STATE.hullKick;
+        if (!Number.isFinite(state.hullRoll)) state.hullRoll = DEFAULT_STATE.hullRoll;
+        if (!Number.isFinite(state.lastKickShotFrame)) state.lastKickShotFrame = DEFAULT_STATE.lastKickShotFrame;
         if (!Number.isFinite(state.mgFlash)) state.mgFlash = DEFAULT_STATE.mgFlash;
         if (!Number.isFinite(state.mainFlash)) state.mainFlash = DEFAULT_STATE.mainFlash;
         if (!Number.isFinite(state.facing) || state.facing === 0) state.facing = DEFAULT_STATE.facing;
@@ -57,6 +63,19 @@
         var shotDiff = Number.isFinite(frameNow) && Number.isFinite(shotFrame)
             ? (frameNow - shotFrame)
             : NaN;
+        if (Number.isFinite(shotFrame) && shotFrame > 0 && shotFrame !== state.lastKickShotFrame) {
+            state.lastKickShotFrame = shotFrame;
+            var recoilKick = Math.max(3.2, Math.min(7.6, state.recoil * 0.62));
+            state.hullKick = Math.max(Number(state.hullKick) || 0, recoilKick);
+            var turretAngle = Number(state.turretAngle);
+            if (!Number.isFinite(turretAngle)) turretAngle = -0.10;
+            var rollSign = (turretAngle >= 0) ? -1 : 1;
+            state.hullRoll = rollSign * (0.014 + Math.min(0.018, recoilKick * 0.0022));
+        }
+        state.hullKick = Math.max(0, (Number(state.hullKick) || 0) * 0.78 - 0.03);
+        state.hullRoll = (Number(state.hullRoll) || 0) * 0.74;
+        if (Math.abs(state.hullRoll) < 0.0006) state.hullRoll = 0;
+
         if (Number.isFinite(shotDiff) && shotFrame > 0 && shotDiff >= 0 && shotDiff <= 3) {
             state.mainFlash = Math.max(0, 1 - (shotDiff / 4));
         } else if (state.recoil > 2.8) {
@@ -90,6 +109,9 @@
         state.turretAngle = Number.isFinite(turretAngle) ? turretAngle : -0.12;
         state.trackOffset = 4.2;
         state.recoil = 0;
+        state.hullKick = 0;
+        state.hullRoll = 0;
+        state.lastKickShotFrame = -1;
         state.facing = 1;
         state.mainFlash = 0;
         state.mgFlash = 0;

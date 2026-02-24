@@ -1190,6 +1190,22 @@ const game = {
             app.loadIntoGame();      // speed/difficulty/lastMapId 등 반영
             app.commit('init');      // UI 1회 정렬 + 저장 포맷 정리
         }
+        const isMobileBackFlow = () => {
+            let mobileUa = false;
+            let coarsePointer = false;
+            let touchPoints = 0;
+            try {
+                mobileUa = /Android|iPhone|iPad|iPod|Mobile/i.test(String(navigator.userAgent || ''));
+            } catch (_) { }
+            try {
+                coarsePointer = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+            } catch (_) { }
+            try {
+                touchPoints = Number(navigator.maxTouchPoints) || 0;
+            } catch (_) { }
+            return !!(mobileUa || (coarsePointer && touchPoints > 0));
+        };
+
         // [NEW] History API Handle for Back Button
         window.addEventListener('popstate', (event) => {
             const isVisible = (id) => {
@@ -1200,6 +1216,15 @@ const game = {
             const isEndOpen = isVisible('end-screen');
             if (this.isGameOver || isEndOpen) {
                 history.pushState({ page: 'gameover' }, "GameOver", "#game");
+                return;
+            }
+            if (isMobileBackFlow()) {
+                if (this.running) {
+                    history.pushState({ page: 'game' }, "Game", "#game");
+                } else {
+                    history.pushState({ page: 'map-select' }, "MapSelect", "#map-select");
+                }
+                ui.showExitConfirmation('quit');
                 return;
             }
             if (this.running) {
@@ -1849,6 +1874,7 @@ const game = {
         const hideIds = [
             'hud-ctrl-wrapper',
             'hud-top-actions',
+            'global-settings-btn',
             'unit-panel-container',
             'hud-footer',
             'unit-cmd-wrapper',
@@ -2471,6 +2497,7 @@ const game = {
         document.getElementById('unit-cmd-wrapper')?.classList.add('hidden');
         // [FIX] endGame에서 숨긴 UI 복구
         document.getElementById('hud-footer')?.classList.remove('hidden');
+        document.getElementById('global-settings-btn')?.classList.remove('hidden');
         if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
 
         // [NEW] Show fixed bottom HUD
@@ -4355,6 +4382,7 @@ const game = {
         this.cancelTargeting();
         document.getElementById('unit-panel-container')?.classList.add('hidden');
         document.getElementById('hud-footer')?.classList.add('hidden');
+        document.getElementById('global-settings-btn')?.classList.add('hidden');
         if (typeof HUD !== 'undefined') HUD.hide();
         if (typeof NewsIntro !== 'undefined') NewsIntro.hide();
         if (typeof NewsOverlay !== 'undefined') NewsOverlay.hide();
