@@ -6778,23 +6778,62 @@ class Wreckage {
         this.tilt = (Math.random() - 0.5) * 0.1; // 약간의 기울어짐
     }
 
+    _isMobileSimpleMode() {
+        return !!(typeof game !== 'undefined' && game && game.mobileViewportActive === true);
+    }
+
+    _getLifeConfig() {
+        const mobileSimple = this._isMobileSimpleMode();
+        if (this.isArmored) {
+            if (mobileSimple) {
+                return {
+                    maxLife: 150,
+                    fadeStartRatio: 0.3,
+                    smokeInterval: 120,
+                    smokeParticleCount: 0,
+                    smokeLifeGate: 0.75
+                };
+            }
+            return {
+                maxLife: 240,
+                fadeStartRatio: 0.45,
+                smokeInterval: 85,
+                smokeParticleCount: 1,
+                smokeLifeGate: 0.5
+            };
+        }
+        return {
+            maxLife: 540,
+            fadeStartRatio: 0.7,
+            smokeInterval: 40,
+            smokeParticleCount: 2,
+            smokeLifeGate: 0.3
+        };
+    }
+
     update() {
         this.age++;
+        const cfg = this._getLifeConfig();
+        this.maxLife = cfg.maxLife;
+        this.fadeStartRatio = cfg.fadeStartRatio;
+        this.smokeInterval = cfg.smokeInterval;
+        this.smokeParticleCount = cfg.smokeParticleCount;
         // 설정 비율 지점부터 fade out 시작
         const fadeStart = Math.max(1, this.maxLife * this.fadeStartRatio);
         const fadeSpan = Math.max(1, this.maxLife - fadeStart);
         if (this.age > fadeStart) {
             this.life = 1 - (this.age - fadeStart) / fadeSpan;
         }
+        if (this.age >= this.maxLife) this.life = 0;
         if (this.life <= 0) this.life = 0;
 
         // 간헐적 연기 이펙트 (기갑은 횟수/강도 축소)
         this.smokeTimer++;
-        const smokeLifeGate = this.isArmored ? 0.5 : 0.3;
+        const smokeLifeGate = cfg.smokeLifeGate;
         if (this.smokeTimer >= this.smokeInterval && this.life > smokeLifeGate) {
             this.smokeTimer = 0;
             if (typeof game !== 'undefined' && game.createParticles) {
-                if (!this.isArmored || Math.random() < 0.5) {
+                if (this.smokeParticleCount > 0 && (!this.isArmored || Math.random() < 0.5)) {
                     game.createParticles(
                         this.x + (Math.random() - 0.5) * 20,
                         this.y - 15,
@@ -6822,6 +6861,11 @@ class Wreckage {
 
         // Armored-only: do not use legacy wreck sprite/debris references.
         if (this.isArmored) {
+            if (this._isMobileSimpleMode()) {
+                this._drawArmoredMobileSimpleWreck(ctx);
+                ctx.restore();
+                return;
+            }
             this._drawArmoredLiteWreck(ctx);
             ctx.restore();
             return;
@@ -6878,6 +6922,29 @@ class Wreckage {
         ctx.fillStyle = '#111827';
         ctx.fillRect(-(s.w * 0.45), (s.h * 0.24), s.w * 0.16, Math.max(2, s.h * 0.12));
         ctx.fillRect((s.w * 0.28), (s.h * 0.24), s.w * 0.17, Math.max(2, s.h * 0.12));
+        ctx.restore();
+    }
+
+    _drawArmoredMobileSimpleWreck(ctx) {
+        const life = Math.max(0, Math.min(1, this.life));
+        ctx.save();
+        ctx.globalAlpha = Math.min(0.95, 0.9 * life);
+
+        // Ground shadow
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.beginPath();
+        ctx.ellipse(0, 6, 19, 9, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Very simple wreck body (no detailed armored renderer on mobile)
+        ctx.rotate(-0.04);
+        ctx.fillStyle = '#30343a';
+        ctx.fillRect(-18, -8, 36, 13);
+        ctx.fillStyle = '#1e2228';
+        ctx.fillRect(-18, -8, 36, 4);
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(-15, 2, 7, 2);
+        ctx.fillRect(8, 2, 7, 2);
         ctx.restore();
     }
 
