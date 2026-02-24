@@ -4971,6 +4971,16 @@ class Unit extends Entity {
             return;
         }
 
+        const legacyDisabledInfantryIds = new Set([
+            'infantry',
+            'sniper',
+            'special_ops',
+            'special_forces',
+            'engineer',
+            'rpg',
+            'drone_operator'
+        ]);
+
         // Unit Render V2: armored + infantry line expansion (sniper/special ops included).
         if ((id === 'mbt'
             || id === 'spg'
@@ -5005,6 +5015,13 @@ class Unit extends Entity {
                 drawHpBar();
                 return;
             }
+        }
+        if (legacyDisabledInfantryIds.has(id)) {
+            // Do not fallback to legacy infantry renderer (prevents 1-frame old-style pop on death).
+            ctx.restore();
+            drawSelectionMarker();
+            drawHpBar();
+            return;
         }
 
         // [R 4.2 FIX v3] facing은 update()에서 확정됨 - draw()에서는 단순 적용만
