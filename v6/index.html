@@ -1476,9 +1476,10 @@
                     video.pause();
                     video.currentTime = 0;
                     video.src = videoPath;
-                    video.defaultMuted = !!bgmPath;
-                    video.muted = !!bgmPath;
-                    video.volume = bgmPath ? 0 : 1;
+                    // Keep map-intro video audio audible even when external BGM is playing.
+                    video.defaultMuted = false;
+                    video.muted = false;
+                    video.volume = 1;
                     video.setAttribute('playsinline', '');
                     video.load();
                 } catch (err) {
