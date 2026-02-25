@@ -5482,23 +5482,28 @@ input[type=range]::-webkit-slider-runnable-track {
         padding: 0 !important;
     }
 
-    #battle-area-kabul-card {
+    #battle-area-kabul-card,
+    #battle-area-coast-card {
         width: 100% !important;
     }
 
-    #battle-area-kabul-card .h-32 {
+    #battle-area-kabul-card .h-32,
+    #battle-area-coast-card .h-32 {
         height: clamp(84px, 24vh, 150px) !important;
     }
 
-    #battle-area-kabul-card .font-black {
+    #battle-area-kabul-card .font-black,
+    #battle-area-coast-card .font-black {
         font-size: clamp(0.9rem, 4.7vw, 1.5rem) !important;
     }
 
-    #battle-area-kabul-card .p-4 {
+    #battle-area-kabul-card .p-4,
+    #battle-area-coast-card .p-4 {
         padding: clamp(8px, 2vw, 12px) !important;
     }
 
-    #battle-area-kabul-card p {
+    #battle-area-kabul-card p,
+    #battle-area-coast-card p {
         display: block !important;
         margin-top: 6px !important;
         font-size: clamp(0.64rem, 2.5vw, 0.84rem) !important;
@@ -5531,11 +5536,13 @@ input[type=range]::-webkit-slider-runnable-track {
         font-size: 0.72rem !important;
     }
 
-    #battle-area-kabul-card .h-32 {
+    #battle-area-kabul-card .h-32,
+    #battle-area-coast-card .h-32 {
         height: 72px !important;
     }
 
-    #battle-area-kabul-card p {
+    #battle-area-kabul-card p,
+    #battle-area-coast-card p {
         font-size: 0.58rem !important;
         line-height: 1.2 !important;
     }

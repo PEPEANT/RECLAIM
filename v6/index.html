@@ -573,7 +573,7 @@
             <h2 class="text-3xl font-bold text-white mb-6 tracking-widest">Battle Area</h2>
 
             <div id="battle-area-grid" class="grid grid-cols-1 gap-3 md:gap-6 w-full max-w-md px-2 md:px-4">
-                <button id="battle-area-kabul-card" onclick="window.playMapIntroAndStart ? window.playMapIntroAndStart('skirmish_kabul') : game.startGame('skirmish_kabul')" class="map-card group" data-map="skirmish_kabul">
+                <button id="battle-area-kabul-card" type="button" class="map-card group" data-map="skirmish_kabul">
                     <div class="h-32 relative overflow-hidden rounded-t-lg">
                         <img src="png/map/kavul.png" alt="Kabul map preview" class="w-full h-full object-cover">
                         <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-900/20 to-transparent"></div>
@@ -584,7 +584,22 @@
                     <div
                         class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
                         <p class="text-xs leading-snug text-slate-300">
-                            2030년, 세계는 신제국 미합중국과 러시아 연방권으로 갈라지고, 아프간에서 국지전이 발생한다.
+                            카불 도심과 외곽이 이어진 장거리 교전 전장.
+                        </p>
+                    </div>
+                </button>
+                <button id="battle-area-coast-card" type="button" class="map-card group" data-map="skirmish_coast">
+                    <div class="h-32 relative overflow-hidden rounded-t-lg">
+                        <img src="png/map/7852ee66.jpg" alt="Coast map preview" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-900/20 to-transparent"></div>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center font-black text-2xl text-white/80 group-hover:text-white drop-shadow">
+                            <span style="text-shadow: 0 0 1px #000, 0 1px 2px #000;">해안 Coast</span>
+                        </div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <p class="text-xs leading-snug text-slate-300">
+                            거친 해안과 방파제, 항구 측면으로 진입로가 갈리는 전장. 중앙 교전과 측면 우회가 동시에 요구된다.
                         </p>
                     </div>
                 </button>
@@ -597,8 +612,8 @@
     <!-- Cinematic Modal -->
     <div id="cinematic-modal" class="hidden fixed inset-0 z-[100] bg-black">
         <!-- Video Logo (plays first) -->
-        <video id="cinematic-video" class="hidden absolute" muted playsinline preload="metadata">
-            <source src="assets/tutorial/videos/grok_video.mp4" type="video/mp4">
+        <video id="cinematic-video" class="hidden absolute" playsinline preload="metadata">
+            <source src="assets/tutorial/videos/grok_war.mp4" type="video/mp4">
         </video>
 
         <!-- Canvas Animation (plays after video) -->
@@ -888,18 +903,19 @@
         </div>
     </div>
 
-    <script src="src/data/data.js?v=20260223d3"></script>
+    <script src="src/data/data.js?v=20260225d4"></script>
     <script src="src/core/team_colors.js?v=20260224tc4"></script>
+    <script src="src/core/feature_flags.js?v=20260225ff4"></script>
     <script src="src/render/unit-params.js?v=20260223up2"></script>
     <!-- [ADD] IngameRenderer for unit wreckage rendering -->
     <script src="unit-editor/js/ingame-renderer.js"></script>
     <script src="src/entities/unit-render-utils.js?v=20260223ur5"></script>
-    <script src="src/entities/classes.js?v=20260224air40"></script>
+    <script src="src/entities/classes.js?v=20260225sup4"></script>
     <script src="src/combat/projectile-designs.js?v=20260223pd2"></script>
     <!-- VFX (explosions / particles) -->
     <script src="src/vfx/explosion.js?v=20260223ex1"></script>
     <script src="src/entities/buildings.js?v=20260224b4"></script>
-    <script src="src/combat/projectiles.js?v=20260223p3"></script>
+    <script src="src/combat/projectiles.js?v=20260225p4"></script>
     <script src="src/ui/chat/chat_panel.js?v=20260223cp4"></script>
     <script src="src/ui/unit_profile_icons.js?v=20260224upi2"></script>
     <script src="src/ui/ui.js?v=20260223u14"></script>
@@ -909,6 +925,9 @@
     <script src="src/maps/maps/skirmish/maps/skirmish_kabul/definition.js?v=20260224mk2"></script>
     <script src="src/maps/maps/skirmish/maps/skirmish_kabul/render_base.js?v=20260224mk2"></script>
     <script src="src/maps/maps/skirmish/maps/skirmish_kabul/render_decor.js?v=20260224mk2"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_coast/definition.js?v=20260225mc1"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_coast/render_base.js?v=20260225mc1"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_coast/render_decor.js?v=20260225mc1"></script>
     <script src="src/maps/maps.js?v=20260224m9"></script>
     <script src="src/ai/ai_core.js"></script>
     <script src="src/ai/ai_config.js"></script>
@@ -925,7 +944,7 @@
     <script src="src/units/drone/drone-behavior.js?v=20260224d4"></script>
     <script src="src/core/spatial.js?v=20260223sp2"></script>
     <script src="src/core/camera.js?v=20260224c1"></script>
-    <script src="src/game/corpse.js"></script>
+    <script src="src/game/corpse.js?v=20260225c2"></script>
     <script src="src/render/unit-v2/registry.js"></script>
     <script src="src/render/unit-v2/common/scale.js"></script>
     <script src="src/render/unit-v2/common/palettes.js?v=20260224p3"></script>
@@ -960,7 +979,7 @@
     <script src="src/render/unit-v2/units/spg/render_parts.js"></script>
     <script src="src/render/unit-v2/units/spg/fx.js"></script>
     <script src="src/render/unit-v2/units/spg/index.js?v=20260224sp4"></script>
-    <script src="src/render/unit-v2/units/infantry/state.js"></script>
+    <script src="src/render/unit-v2/units/infantry/state.js?v=20260225is2"></script>
     <script src="src/render/unit-v2/units/infantry/weapons.js"></script>
     <script src="src/render/unit-v2/units/infantry/render_body.js"></script>
     <script src="src/render/unit-v2/units/infantry/render_parts.js"></script>
@@ -1025,14 +1044,19 @@
     <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260224uh60a7"></script>
     <script src="src/render/unit-v2/index.js"></script>
     <script src="src/game/battle_economy.js"></script>
-    <script src="src/game/game.js?v=20260224g42"></script>
+    <script src="src/game/events/landing/landing_intro_types.js"></script>
+    <script src="src/game/events/landing/landing_craft_entity.js"></script>
+    <script src="src/game/events/landing/landing_craft_renderer.js"></script>
+    <script src="src/game/events/landing/landing_intro_controller.js"></script>
+    <script src="src/game/events/landing/index.js"></script>
+    <script src="src/game/game.js?v=20260225g44"></script>
     <script src="src/units/drone/drone-manager.js?v=20260224dm2"></script>
     <script src="src/units/drone/drone-commands.js?v=20260224dc2"></script>
     <script src="src/units/drone/drone-control.js"></script>
     <script src="src/game/runtime_loop.js?v=20260224r10"></script>
     <script src="src/game/app_persistence.js?v=20260224ap8"></script>
     <script src="src/game/app_runtime.js"></script>
-    <script src="src/game/input.js?v=20260224dc40"></script>
+    <script src="src/game/input.js?v=20260225dc41"></script>
     <script src="src/game/camera_controls.js"></script>
     <script src="src/game/victory.js?v=20260224v7"></script>
     <script src="src/game/map_setup.js?v=20260223ms2"></script>
@@ -1057,26 +1081,37 @@
             let gatePrepared = false;
             let gateConsumed = false;
 
+            const requestFlowTransition = (phase, options = null) => {
+                const opts = (options && typeof options === 'object') ? options : {};
+                const source = String(opts.source || 'boot.request').trim() || 'boot.request';
+                const allowReenter = opts.allowReenter === true;
+                if (typeof window !== 'undefined' && typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function') {
+                    window.__RECLAIM_TRANSITION_FLOW__(phase, { source, allowReenter });
+                    return true;
+                }
+                if (typeof window !== 'undefined') {
+                    window.__RECLAIM_PENDING_FLOW_REQUEST__ = {
+                        phase: String(phase || '').trim(),
+                        source,
+                        allowReenter
+                    };
+                }
+                return false;
+            };
+            if (typeof window !== 'undefined') {
+                window.__RECLAIM_REQUEST_FLOW_TRANSITION__ = requestFlowTransition;
+            }
+
             const showMapSelect = () => {
-                const mapSelectScreen = document.getElementById('map-select-screen');
-                if (mapSelectScreen) mapSelectScreen.classList.remove('hidden');
-                if (typeof game !== 'undefined' && game && typeof game.updateMapSelectLocks === 'function') {
-                    game.updateMapSelectLocks();
-                }
-                if (typeof game !== 'undefined' && game && typeof game.playMapSelectBgm === 'function') {
-                    try { game.playMapSelectBgm(); } catch (_) { }
-                }
+                requestFlowTransition('map_select', {
+                    source: 'boot.showMapSelect'
+                });
             };
 
             const startBattleDirectly = () => {
-                const bootGate = document.getElementById('boot-gate');
-                const loadingScreen = document.getElementById('loading-screen');
-                const cinematicModal = document.getElementById('cinematic-modal');
-                const mapSelectScreen = document.getElementById('map-select-screen');
-                if (bootGate) bootGate.classList.add('hidden');
-                if (loadingScreen) loadingScreen.classList.add('hidden');
-                if (cinematicModal) cinematicModal.classList.add('hidden');
-                if (mapSelectScreen) mapSelectScreen.classList.add('hidden');
+                requestFlowTransition('battle', {
+                    source: 'boot.directStart'
+                });
 
                 const tryStart = () => {
                     if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') return false;
@@ -1147,9 +1182,18 @@
                 return (options = null) => {
                     if (pending) return pending;
                     const force = !!(options && options.force === true);
+                    const currentPhase = (typeof window !== 'undefined')
+                        ? String(window.__RECLAIM_FLOW_PHASE__ || 'map_select')
+                        : 'map_select';
+                    const canOpen = currentPhase === 'map_select' || currentPhase === 'faction_pick';
+                    if (!canOpen) return Promise.resolve(true);
 
                     const api = window.TeamColors;
                     if (!api || typeof api.ensure !== 'function') {
+                        return Promise.resolve(true);
+                    }
+
+                    if (typeof window !== 'undefined' && window.__RECLAIM_BLOCK_FACTION_POPUP__ === true) {
                         return Promise.resolve(true);
                     }
 
@@ -1207,13 +1251,14 @@
                             if (typeof ui !== 'undefined' && ui && typeof ui.refreshUnitButtonIconTheme === 'function') {
                                 ui.refreshUnitButtonIconTheme(true);
                             }
-                            screen.classList.add('hidden');
                             pending = null;
                             resolve(true);
                         };
 
                         render();
-                        screen.classList.remove('hidden');
+                        requestFlowTransition('faction_pick', {
+                            source: 'boot.openFactionSelection'
+                        });
                     });
 
                     return pending;
@@ -1250,7 +1295,7 @@
                         if (!ok) {
                             console.error('[Boot] Cinematic API missing after script load attempts');
                             console.warn('[Boot] Cinematic API missing, fallback map-select');
-                            showFactionThenMapSelect({ force: true });
+                            showMapSelect();
                             return;
                         }
 
@@ -1272,11 +1317,11 @@
                             console.log('[Boot] Cinematic.play(force=true) invoke');
                             Cinematic.play(() => {
                                 console.log('[Cinematic] Playback complete');
-                                showFactionThenMapSelect({ force: true });
+                                showMapSelect();
                             }, { force: true });
                         } catch (err) {
                             console.error('[Cinematic] Play failed:', err);
-                            showFactionThenMapSelect({ force: true });
+                            showMapSelect();
                         }
                     });
                 }, 120);
@@ -1382,15 +1427,164 @@
     </script>
     <script>
         (() => {
-            const MAP_INTRO_VIDEO_BY_MAP = Object.freeze({
-                skirmish_kabul: 'assets/tutorial/videos/0221.mp4'
+            const PRE_BATTLE_FLOW = Object.freeze({
+                BOOT: 'boot',
+                MAP_SELECT: 'map_select',
+                FACTION_PICK: 'faction_pick',
+                MAP_INTRO: 'map_intro',
+                BATTLE: 'battle'
             });
-            const MAP_INTRO_BGM_BY_MAP = Object.freeze({
-                skirmish_kabul: 'bgm/ost/freesound.mp3'
+            const MAP_FLOW_CONFIG_BY_MAP = Object.freeze({
+                skirmish_kabul: Object.freeze({
+                    mapId: 'skirmish_kabul',
+                    requireFaction: true,
+                    introVideo: '',
+                    introBgm: ''
+                }),
+                skirmish_coast: Object.freeze({
+                    mapId: 'skirmish_coast',
+                    requireFaction: true,
+                    introVideo: '',
+                    introBgm: ''
+                })
             });
+            const DEFAULT_MAP_FLOW_CONFIG = Object.freeze({
+                mapId: '',
+                requireFaction: true,
+                introVideo: '',
+                introBgm: ''
+            });
+            const FLOW_TRACE_LIMIT = 120;
 
             let mapIntroPlaying = false;
             let mapIntroMapId = '';
+            let flowPhase = PRE_BATTLE_FLOW.BOOT;
+            let flowPrevPhase = '';
+            let flowToken = 0;
+            let duplicateTransitionCount = 0;
+            const flowTrace = [];
+            const FLOW_VALUES = new Set(Object.values(PRE_BATTLE_FLOW));
+
+            const toSource = (raw, fallback = 'flow.transition') => {
+                const source = String(raw || fallback).trim();
+                return source || fallback;
+            };
+            const setHidden = (el, hidden) => {
+                if (!el) return;
+                if (hidden) el.classList.add('hidden');
+                else el.classList.remove('hidden');
+            };
+            const applyPhaseUi = (phase) => {
+                const mapSelectScreen = document.getElementById('map-select-screen');
+                const factionScreen = document.getElementById('team-color-screen');
+                const introModal = document.getElementById('map-intro-modal');
+
+                if (phase === PRE_BATTLE_FLOW.BOOT) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, true);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.MAP_SELECT) {
+                    setHidden(mapSelectScreen, false);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, true);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.FACTION_PICK) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, false);
+                    setHidden(introModal, true);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.MAP_INTRO) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, false);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.BATTLE) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, true);
+                }
+            };
+            const pushFlowTrace = (kind, prev, next, source, detail = null) => {
+                const entry = {
+                    at: new Date().toISOString(),
+                    kind: String(kind || '').trim() || 'transition',
+                    prev: String(prev || '').trim(),
+                    next: String(next || '').trim(),
+                    source: toSource(source),
+                    token: flowToken
+                };
+                if (detail && typeof detail === 'object') {
+                    Object.assign(entry, detail);
+                }
+                flowTrace.push(entry);
+                if (flowTrace.length > FLOW_TRACE_LIMIT) flowTrace.shift();
+            };
+            const syncFlowGlobals = (source = 'flow.sync') => {
+                if (typeof window === 'undefined') return;
+                window.__RECLAIM_FLOW_PHASE__ = flowPhase;
+                window.__RECLAIM_FLOW_PREV_PHASE__ = flowPrevPhase;
+                window.__RECLAIM_FLOW_LAST_SOURCE__ = toSource(source, 'flow.sync');
+                window.__RECLAIM_FLOW_TRACE__ = flowTrace.slice();
+                window.__RECLAIM_FLOW_DUPLICATE_COUNT__ = duplicateTransitionCount;
+                window.__RECLAIM_FLOW_AVAILABLE_PHASES__ = Array.from(FLOW_VALUES);
+            };
+            const transitionTo = (phase, options = null) => {
+                const opts = (options && typeof options === 'object') ? options : {};
+                const source = toSource(opts.source);
+                const allowReenter = opts.allowReenter === true;
+                const nextPhase = String(phase || '').trim();
+
+                if (!FLOW_VALUES.has(nextPhase)) {
+                    pushFlowTrace('invalid', flowPhase, nextPhase || '(empty)', source);
+                    syncFlowGlobals(source);
+                    return flowPhase;
+                }
+
+                if (flowPhase === nextPhase && !allowReenter) {
+                    duplicateTransitionCount += 1;
+                    pushFlowTrace('duplicate', flowPhase, nextPhase, source, {
+                        duplicateCount: duplicateTransitionCount
+                    });
+                    syncFlowGlobals(source);
+                    return flowPhase;
+                }
+
+                const prevPhase = flowPhase;
+                flowPrevPhase = prevPhase;
+                flowPhase = nextPhase;
+                applyPhaseUi(nextPhase);
+                if (nextPhase === PRE_BATTLE_FLOW.MAP_SELECT) {
+                    if (typeof game !== 'undefined' && game && typeof game.updateMapSelectLocks === 'function') {
+                        game.updateMapSelectLocks();
+                    }
+                    if (typeof game !== 'undefined' && game && typeof game.playMapSelectBgm === 'function') {
+                        try { game.playMapSelectBgm(); } catch (_) { }
+                    }
+                }
+                pushFlowTrace('transition', prevPhase, nextPhase, source);
+                syncFlowGlobals(source);
+                return flowPhase;
+            };
+            const resolveMapFlowConfig = (mapId) => {
+                const key = String(mapId || '').trim();
+                const base = MAP_FLOW_CONFIG_BY_MAP[key];
+                if (!base) {
+                    return {
+                        ...DEFAULT_MAP_FLOW_CONFIG,
+                        mapId: key
+                    };
+                }
+                return {
+                    ...DEFAULT_MAP_FLOW_CONFIG,
+                    ...base,
+                    mapId: key || String(base.mapId || '').trim()
+                };
+            };
 
             const stopMapSelectBgm = () => {
                 if (typeof game !== 'undefined' && game && typeof game.stopMapSelectBgm === 'function') {
@@ -1400,33 +1594,53 @@
 
             const startMapGame = (mapId) => {
                 const target = String(mapId || '').trim();
-                if (!target) return;
-                if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') return;
+                if (!target) {
+                    if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = false;
+                    if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
+                    transitionTo(PRE_BATTLE_FLOW.MAP_SELECT, {
+                        source: 'flow.startMapGame.invalidTarget',
+                        allowReenter: true
+                    });
+                    return;
+                }
+                if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') {
+                    if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = false;
+                    if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
+                    transitionTo(PRE_BATTLE_FLOW.MAP_SELECT, {
+                        source: 'flow.startMapGame.gameUnavailable',
+                        allowReenter: true
+                    });
+                    return;
+                }
+                transitionTo(PRE_BATTLE_FLOW.BATTLE, { source: 'flow.startMapGame.start' });
                 game.startGame(target);
             };
 
-            const playMapIntroAndStart = (mapId) => {
+            const playMapIntroAndStart = (mapId, flowConfig = null, requestToken = flowToken) => {
+                if (requestToken !== flowToken) return;
                 const target = String(mapId || '').trim();
-                const videoPath = MAP_INTRO_VIDEO_BY_MAP[target];
-                const bgmPath = String(MAP_INTRO_BGM_BY_MAP[target] || '').trim();
+                const mapFlow = flowConfig || resolveMapFlowConfig(target);
+                const videoPath = String(mapFlow.introVideo || '').trim();
+                const bgmPath = String(mapFlow.introBgm || '').trim();
                 if (!target || !videoPath) {
                     startMapGame(target);
                     return;
                 }
                 if (mapIntroPlaying) return;
 
-                const modal = document.getElementById('map-intro-modal');
                 const video = document.getElementById('map-intro-video');
                 const skipBtn = document.getElementById('map-intro-skip-btn');
-                if (!modal || !video || !skipBtn) {
+                if (!video || !skipBtn) {
                     startMapGame(target);
                     return;
                 }
 
+                transitionTo(PRE_BATTLE_FLOW.MAP_INTRO, { source: 'flow.playMapIntroAndStart' });
                 mapIntroPlaying = true;
                 mapIntroMapId = target;
                 stopMapSelectBgm();
                 let introAudio = null;
+                let finalized = false;
 
                 const stopIntroAudio = () => {
                     if (!introAudio) return;
@@ -1452,11 +1666,17 @@
                         video.removeAttribute('src');
                         video.load();
                     } catch (_) { }
-                    modal.classList.add('hidden');
                     mapIntroPlaying = false;
                 };
 
                 const finish = () => {
+                    if (finalized) return;
+                    finalized = true;
+                    if (requestToken !== flowToken) {
+                        mapIntroMapId = '';
+                        cleanup();
+                        return;
+                    }
                     const nextMapId = mapIntroMapId;
                     mapIntroMapId = '';
                     cleanup();
@@ -1469,8 +1689,6 @@
                     console.warn('[MapIntro] video playback failed. Fallback to start game.');
                     finish();
                 };
-
-                modal.classList.remove('hidden');
 
                 try {
                     video.pause();
@@ -1513,7 +1731,188 @@
                 }
             };
 
+            const playMapFromSelect = (mapId) => {
+                const targetMapId = String(mapId || '').trim();
+                if (!targetMapId) return;
+                const mapFlow = resolveMapFlowConfig(targetMapId);
+                if (flowPhase !== PRE_BATTLE_FLOW.MAP_SELECT) return;
+                if (typeof window !== 'undefined' && window.__RECLAIM_MAP_START_LOCK__ === true) return;
+                if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = true;
+                const token = ++flowToken;
+                transitionTo(PRE_BATTLE_FLOW.FACTION_PICK, { source: 'flow.playMapFromSelect' });
+
+                const start = () => {
+                    if (token !== flowToken) return;
+                    if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = true;
+                    playMapIntroAndStart(targetMapId, mapFlow, token);
+                };
+                if (mapFlow.requireFaction !== true) {
+                    start();
+                    return;
+                }
+                const openFaction = window.__RECLAIM_SHOW_FACTION_SELECTION__;
+                if (typeof openFaction !== 'function') {
+                    start();
+                    return;
+                }
+
+                Promise.resolve(openFaction({ force: true }))
+                    .catch((err) => {
+                        console.warn('[MapSelect] faction selection failed before map start:', err);
+                    })
+                    .finally(() => {
+                        start();
+                    });
+            };
+
+            const playKabulMapFromSelect = () => {
+                playMapFromSelect('skirmish_kabul');
+            };
+
+            const bindMapSelectHandlers = () => {
+                const cards = document.querySelectorAll('.map-card[data-map]');
+                cards.forEach((card) => {
+                    if (!card) return;
+                    if (card.dataset.boundMapFlow === '1') return;
+                    card.dataset.boundMapFlow = '1';
+                    card.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        if (card.classList.contains('locked')) return;
+                        if (card.getAttribute('aria-disabled') === 'true') return;
+                        if ('disabled' in card && card.disabled) return;
+                        const mapId = String(card.dataset.map || '').trim();
+                        playMapFromSelect(mapId);
+                    });
+                });
+            };
+            const runMapContractChecks = () => {
+                const warnings = [];
+                const cards = Array.from(document.querySelectorAll('.map-card[data-map]'));
+                const hasScript = (suffix) => {
+                    const scripts = Array.from(document.scripts || []);
+                    return scripts.some((s) => String(s && s.src ? s.src : '').includes(suffix));
+                };
+                const mapIds = [];
+                if (cards.length === 0) {
+                    warnings.push('[MapContract] no map-card[data-map] entries found');
+                }
+
+                cards.forEach((card, index) => {
+                    const mapId = String(card && card.dataset ? card.dataset.map || '' : '').trim();
+                    if (!mapId) {
+                        warnings.push(`[MapContract] card[${index}] missing data-map`);
+                        return;
+                    }
+                    mapIds.push(mapId);
+                    if (!MAP_FLOW_CONFIG_BY_MAP[mapId]) {
+                        warnings.push(`[MapContract] ${mapId}: MAP_FLOW_CONFIG_BY_MAP entry missing`);
+                    }
+                    if (!hasScript(`/${mapId}/definition.js`)) {
+                        warnings.push(`[MapContract] ${mapId}: definition.js script missing`);
+                    }
+                    if (!hasScript(`/${mapId}/render_base.js`)) {
+                        warnings.push(`[MapContract] ${mapId}: render_base.js script missing`);
+                    }
+                    if (!hasScript(`/${mapId}/render_decor.js`)) {
+                        warnings.push(`[MapContract] ${mapId}: render_decor.js script missing`);
+                    }
+                    const def = (window.MapRegistry && typeof window.MapRegistry.getMapDefinition === 'function')
+                        ? window.MapRegistry.getMapDefinition(mapId)
+                        : null;
+                    if (!def) {
+                        warnings.push(`[MapContract] ${mapId}: MapRegistry definition missing`);
+                    }
+                    const baseHook = (window.MapRegistry && typeof window.MapRegistry.getMapHook === 'function')
+                        ? window.MapRegistry.getMapHook(mapId, 'renderBase')
+                        : null;
+                    const decorHook = (window.MapRegistry && typeof window.MapRegistry.getMapHook === 'function')
+                        ? window.MapRegistry.getMapHook(mapId, 'renderDecor')
+                        : null;
+                    if (typeof baseHook !== 'function') {
+                        warnings.push(`[MapContract] ${mapId}: renderBase hook missing`);
+                    }
+                    if (typeof decorHook !== 'function') {
+                        warnings.push(`[MapContract] ${mapId}: renderDecor hook missing`);
+                    }
+                    const flow = resolveMapFlowConfig(mapId);
+                    // introVideo/introBgm can be intentionally empty when map intro trailer is disabled.
+                    const preview = card.querySelector('img');
+                    if (!preview || !String(preview.getAttribute('src') || '').trim()) {
+                        warnings.push(`[MapContract] ${mapId}: preview image src missing`);
+                    }
+                });
+
+                const uniqueMapCount = new Set(mapIds).size;
+                if (uniqueMapCount !== mapIds.length) {
+                    warnings.push('[MapContract] duplicate data-map values found in map cards');
+                }
+                if (typeof window !== 'undefined') {
+                    window.__RECLAIM_MAP_CONTRACT_WARNINGS__ = warnings.slice();
+                }
+                if (warnings.length > 0) {
+                    console.warn('[MapContract] map contract warnings detected:', warnings);
+                }
+            };
+            const resetPreBattleFlow = () => {
+                flowToken += 1;
+                mapIntroPlaying = false;
+                mapIntroMapId = '';
+                if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = false;
+                if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
+                const video = document.getElementById('map-intro-video');
+                const skipBtn = document.getElementById('map-intro-skip-btn');
+                if (skipBtn) skipBtn.onclick = null;
+                if (video) {
+                    video.onended = null;
+                    video.onerror = null;
+                    try {
+                        video.pause();
+                        video.currentTime = 0;
+                    } catch (_) { }
+                    try {
+                        video.removeAttribute('src');
+                        video.load();
+                    } catch (_) { }
+                }
+                transitionTo(PRE_BATTLE_FLOW.MAP_SELECT, {
+                    source: 'flow.resetPreBattleFlow',
+                    allowReenter: true
+                });
+            };
+            let preBattleFlowInitialized = false;
+            const initializePreBattleFlow = () => {
+                if (preBattleFlowInitialized) return;
+                preBattleFlowInitialized = true;
+                bindMapSelectHandlers();
+                runMapContractChecks();
+                transitionTo(PRE_BATTLE_FLOW.BOOT, {
+                    source: 'flow.init',
+                    allowReenter: true
+                });
+                const pending = (typeof window !== 'undefined' && window.__RECLAIM_PENDING_FLOW_REQUEST__)
+                    ? window.__RECLAIM_PENDING_FLOW_REQUEST__
+                    : null;
+                if (pending && pending.phase) {
+                    transitionTo(String(pending.phase || '').trim(), {
+                        source: toSource(pending.source, 'flow.pending'),
+                        allowReenter: pending.allowReenter === true
+                    });
+                    window.__RECLAIM_PENDING_FLOW_REQUEST__ = null;
+                }
+            };
+
+            if (document.readyState === 'loading') {
+                window.addEventListener('DOMContentLoaded', initializePreBattleFlow, { once: true });
+            } else {
+                initializePreBattleFlow();
+            }
+
             window.playMapIntroAndStart = playMapIntroAndStart;
+            window.playMapFromSelect = playMapFromSelect;
+            window.playKabulMapFromSelect = playKabulMapFromSelect;
+            window.__RECLAIM_MAP_FLOW_CONFIG_BY_MAP__ = MAP_FLOW_CONFIG_BY_MAP;
+            window.__RECLAIM_TRANSITION_FLOW__ = transitionTo;
+            window.__RECLAIM_RESET_PRE_BATTLE_FLOW__ = resetPreBattleFlow;
         })();
     </script>
     <script>

@@ -2,6 +2,10 @@
     'use strict';
 
     const DEFAULT_MAP_ID = 'skirmish_kabul';
+    const AVAILABLE_MAP_IDS = Object.freeze([
+        DEFAULT_MAP_ID,
+        'skirmish_coast'
+    ]);
     const VALID_DIFFICULTY = new Set(['recruit', 'veteran', 'elite']);
 
     function toInt(value, fallback = 0) {
@@ -124,7 +128,7 @@
             if (typeof game !== 'undefined' && game) {
                 game.speed = clampSpeed(settings.speed);
                 game.currentMapId = DEFAULT_MAP_ID;
-                game.mapOrder = [DEFAULT_MAP_ID];
+                game.mapOrder = AVAILABLE_MAP_IDS.slice();
                 game.clearedMaps = [DEFAULT_MAP_ID];
                 game.firstRunDone = true;
                 game.devUnlockAllMaps = true;

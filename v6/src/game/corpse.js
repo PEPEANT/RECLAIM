@@ -4,6 +4,7 @@
 
     const rand = (min, max) => Math.random() * (max - min) + min;
     const INFANTRY_CORPSE_IDS = new Set([
+        'worker',
         'infantry',
         'bagpiper',
         'engineer',
@@ -14,6 +15,19 @@
         'drone_operator'
     ]);
     const DEFAULT_CACHE_BUILD_BUDGET = 2;
+
+    function isFeatureFlagEnabled(flagName) {
+        const key = String(flagName || '').trim();
+        if (!key) return false;
+        const flags = (typeof globalThis !== 'undefined'
+            && globalThis
+            && globalThis.RECLAIM_FEATURE_FLAGS
+            && typeof globalThis.RECLAIM_FEATURE_FLAGS === 'object')
+            ? globalThis.RECLAIM_FEATURE_FLAGS
+            : null;
+        if (!flags) return false;
+        return flags[key] === true;
+    }
 
     /**
      * Corpse - 보병 사망 시 생성되는 시체 객체
@@ -362,8 +376,14 @@
             const applyFilter = () => {
                 if (canFilter && allowFilter) ctx.filter = 'brightness(0.55) saturate(0.6)';
             };
+            const useCorpseRenderV2Only = isFeatureFlagEnabled('corpseRenderV2Only');
+            const corpseTypeKey = String(this.typeKey || '').trim();
 
             if (simpleRender) {
+                if (useCorpseRenderV2Only && INFANTRY_CORPSE_IDS.has(corpseTypeKey)) {
+                    const drewV2InSimplePath = this._drawUnitRenderV2Corpse(ctx, () => {});
+                    if (drewV2InSimplePath) return;
+                }
                 this.drawFallback(ctx);
                 return;
             }
@@ -373,7 +393,7 @@
             else if (this._drawUnitRenderV2Corpse(ctx, applyFilter)) {
                 // handled by Unit Render V2 (infantry family)
             }
-            else if (INFANTRY_CORPSE_IDS.has(String(this.typeKey || '').trim())) {
+            else if (INFANTRY_CORPSE_IDS.has(corpseTypeKey)) {
                 // Infantry-family corpses should not fallback to legacy renderer.
                 this.drawFallback(ctx);
             }

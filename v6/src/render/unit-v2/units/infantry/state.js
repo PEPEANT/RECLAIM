@@ -88,6 +88,61 @@
         return (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
     }
 
+    function isFlagEnabled(flagName) {
+        var key = String(flagName || '').trim();
+        if (!key) return false;
+
+        var runtime = (
+            globalScope
+            && globalScope.RECLAIM_FEATURE_FLAGS
+            && typeof globalScope.RECLAIM_FEATURE_FLAGS === 'object'
+        ) ? globalScope.RECLAIM_FEATURE_FLAGS : null;
+        if (runtime && runtime[key] === true) return true;
+
+        var ff = (
+            globalScope
+            && globalScope.FeatureFlags
+            && typeof globalScope.FeatureFlags === 'object'
+        ) ? globalScope.FeatureFlags : null;
+        if (ff && typeof ff.isEnabled === 'function') {
+            try {
+                return ff.isEnabled(key) === true;
+            } catch (_) { }
+        }
+        return false;
+    }
+
+    function getSuppressionInfo(unit, frameNow) {
+        var info = {
+            enabled: false,
+            level: 0,
+            ratio: 0,
+            heavy: false,
+            critical: false,
+            recentHit: false
+        };
+        if (!isInfantryLike(unit)) return info;
+        if (!isFlagEnabled('infantrySuppressionV1')) return info;
+
+        var rawLevel = Number(unit && unit._infantrySuppressionLevel);
+        if (!Number.isFinite(rawLevel)) {
+            rawLevel = Number(unit && unit.infantrySuppression);
+        }
+        var level = clamp(rawLevel, 0, 100);
+        var ratio = level / 100;
+
+        var lastHit = Number(unit && unit.infantrySuppressionLastHitFrame);
+        var recentHit = Number.isFinite(lastHit) && ((frameNow - lastHit) <= 120);
+
+        info.enabled = true;
+        info.level = level;
+        info.ratio = ratio;
+        info.heavy = level >= 36;
+        info.critical = level >= 68;
+        info.recentHit = recentHit;
+        return info;
+    }
+
     function getEffectiveRange(unit) {
         if (!unit) return 0;
         var r = 0;
@@ -166,6 +221,12 @@
         var longStationaryFire = stationaryFrames >= STATIONARY_PRONE_PROMOTE_FRAMES;
         var moving = Math.abs(vx) > 0.08 || Number(state.moveBlend || 0) > 0.16 || unit.commandMode === 'move';
         var underFire = Number.isFinite(Number(unit.lastDamagedFrame)) && (frameNow - Number(unit.lastDamagedFrame) <= 90);
+        var suppression = getSuppressionInfo(unit, frameNow);
+        var suppressionHeavy = (suppression.enabled && suppression.heavy);
+        var suppressionCritical = (suppression.enabled && suppression.critical);
+        if (suppression.enabled && (suppression.recentHit || suppressionHeavy)) {
+            underFire = true;
+        }
         var lowHp = (hp <= 40) || (hpRatio <= 0.45);
         var criticalHp = (hp <= 28) || (hpRatio <= 0.32);
         var longRangeFight = !!target && targetDist >= Math.max(180, effRange * 0.62);
@@ -176,16 +237,23 @@
                 stance: 'standing',
                 moving: true,
                 underFire: underFire,
-                critical: criticalHp
+                critical: criticalHp,
+                suppressionHeavy: suppressionHeavy,
+                suppressionCritical: suppressionCritical
             };
         }
 
         if (!target || !inRange) {
+            var idleStance = (underFire && lowHp) ? 'crouching' : 'standing';
+            if (suppressionCritical) idleStance = 'prone';
+            else if (suppressionHeavy || suppression.recentHit) idleStance = 'crouching';
             return {
-                stance: (underFire && lowHp) ? 'crouching' : 'standing',
+                stance: idleStance,
                 moving: false,
                 underFire: underFire,
-                critical: criticalHp
+                critical: criticalHp,
+                suppressionHeavy: suppressionHeavy,
+                suppressionCritical: suppressionCritical
             };
         }
 
@@ -198,10 +266,13 @@
         // Front infantry lowers stance so rear infantry can shoot over.
         if (formation.hasRearOverlap || longStationaryFire) desired = 'crouching';
 
-        var pressured = underFire || formation.sameTargetCount >= 3;
+        var pressured = underFire || formation.sameTargetCount >= 3 || suppressionHeavy;
         if (!closeRangeFight && (criticalHp || (lowHp && pressured && longRangeFight))) desired = 'prone';
         else if (!closeRangeFight && longRangeFight && formation.hasRearOverlap && pressured) desired = 'prone';
         else if (!closeRangeFight && inRange && longStationaryFire) desired = 'prone';
+        if (suppressionCritical && !closeRangeFight) desired = 'prone';
+        else if ((suppressionHeavy || suppression.recentHit) && desired === 'standing') desired = 'crouching';
+        if (!closeRangeFight && longRangeFight && suppression.enabled && suppression.level >= 52) desired = 'prone';
 
         if (formation.hasRearOverlap && desired === 'standing') desired = 'crouching';
 
@@ -209,7 +280,9 @@
             stance: desired,
             moving: false,
             underFire: underFire,
-            critical: criticalHp
+            critical: criticalHp,
+            suppressionHeavy: suppressionHeavy,
+            suppressionCritical: suppressionCritical
         };
     }
 
@@ -260,6 +333,8 @@
         if (desiredInfo.moving && state.stance === 'prone') framesNeeded = 2;
         if (desiredInfo.critical) framesNeeded = Math.min(framesNeeded, 2);
         if (desiredInfo.underFire && desired !== 'standing') framesNeeded = Math.min(framesNeeded, 4);
+        if (desiredInfo.suppressionHeavy && desired !== 'standing') framesNeeded = Math.min(framesNeeded, 2);
+        if (desiredInfo.suppressionCritical && desired !== 'standing') framesNeeded = Math.min(framesNeeded, 1);
 
         if (state.desiredStanceFrames >= framesNeeded) {
             state.stance = desired;

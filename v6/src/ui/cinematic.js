@@ -7,11 +7,11 @@
     'use strict';
 
     const CINEMATIC_KEY = 'reclaim_cinematic_watched';
-    const INTRO_LOGO_BGM_PATH = 'bgm/ost/tunetank2.mp3';
-    const MAIN_CINEMATIC_BGM_PATH = 'bgm/ost/warrior.mp3';
+    const INTRO_LOGO_BGM_PATH = '';
+    const MAIN_CINEMATIC_BGM_PATH = '';
     const CINEMATIC_ENGINE_PATH = 'bgm/ost/806143.mp3';
-    const INTRO_LOGO_VIDEO_PATH = 'assets/tutorial/videos/grok_video.mp4';
-    const CINEMATIC_VIDEO_PATH = 'assets/tutorial/videos/cinematic.mp4';
+    const INTRO_LOGO_VIDEO_PATH = 'assets/tutorial/videos/grok_war.mp4';
+    const CINEMATIC_VIDEO_PATH = 'assets/tutorial/videos/grok_war.mp4';
     const INTRO_LOGO_MAX_SECONDS = 3;
 
     let canvas, ctx;
@@ -156,6 +156,7 @@
     }
 
     function startIntroLogoBgm() {
+        if (!INTRO_LOGO_BGM_PATH) return;
         stopIntroLogoBgm();
         try {
             introLogoAudio = new Audio(INTRO_LOGO_BGM_PATH);
@@ -179,6 +180,7 @@
     }
 
     function startMainCinematicBgm() {
+        if (!MAIN_CINEMATIC_BGM_PATH) return;
         try {
             if (!mainCinematicAudio) {
                 mainCinematicAudio = new Audio(MAIN_CINEMATIC_BGM_PATH);
@@ -207,17 +209,10 @@
         const isMain = stage === 'main';
         videoEl.classList.toggle('cinematic-video-logo', !isMain);
         videoEl.classList.toggle('cinematic-video-main', isMain);
-        if (isMain) {
-            videoEl.defaultMuted = true;
-            videoEl.setAttribute('muted', '');
-            videoEl.muted = true;
-            videoEl.volume = 0;
-        } else {
-            videoEl.defaultMuted = true;
-            videoEl.setAttribute('muted', '');
-            videoEl.muted = true;
-            videoEl.volume = 0;
-        }
+        videoEl.defaultMuted = false;
+        videoEl.removeAttribute('muted');
+        videoEl.muted = false;
+        videoEl.volume = 1;
     }
 
     function applyVideoSource(videoEl, srcPath) {
@@ -396,54 +391,32 @@
             video.classList.remove('hidden');
             canvas.classList.add('hidden');
 
-            // 1) Intro logo video + intro logo BGM
-            currentVideoStage = 'logo';
-            mainVideoStarted = false;
-            setVideoPresentation(video, 'logo');
-            applyVideoSource(video, INTRO_LOGO_VIDEO_PATH);
+            // Boot trailer: direct-play grok_war.mp4 (single-stage, embedded audio)
+            currentVideoStage = 'main';
+            mainVideoStarted = true;
+            stopIntroLogoBgm();
+            setVideoPresentation(video, 'main');
+            applyVideoSource(video, CINEMATIC_VIDEO_PATH);
             video.currentTime = 0;
-            startIntroLogoBgm();
-            try {
-                if (!mainCinematicAudio) {
-                    mainCinematicAudio = new Audio(MAIN_CINEMATIC_BGM_PATH);
-                    mainCinematicAudio.preload = 'auto';
-                    mainCinematicAudio.loop = false;
-                    mainCinematicAudio.volume = 0.72;
-                    mainCinematicAudio.load();
-                }
-            } catch (err) {
-                console.warn('[Cinematic] Main cinematic audio preload failed:', err);
-            }
+            video.preload = 'metadata';
 
             video.onended = () => {
                 if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-                if (currentVideoStage === 'logo' && !mainVideoStarted) {
-                    startMainVideoOnce('logo_ended');
-                    return;
-                }
                 completePlaybackOnce('main_video_ended');
             };
-            video.ontimeupdate = () => {
-                if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-                if (currentVideoStage === 'logo' && !mainVideoStarted) {
-                    const current = Number(video.currentTime) || 0;
-                    if (current >= INTRO_LOGO_MAX_SECONDS) {
-                        startMainVideoOnce('logo_trim_3s');
-                    }
-                }
-            };
-            video.onerror = () => handleVideoFailure('video_error');
+            video.ontimeupdate = null;
+            video.onerror = () => handleVideoFailure('main_video_error');
 
             armVideoWatchers((failReason) => {
-                handleVideoFailure(`logo_${failReason}`);
+                handleVideoFailure(`main_${failReason}`);
             });
 
             const playPromise = video.play();
             if (playPromise !== undefined) {
                 playPromise.catch(err => {
                     if (sessionToken !== cinematicSessionToken || cinematicStopped) return;
-                    console.warn('[Cinematic] Intro logo video autoplay blocked:', err);
-                    handleVideoFailure('video_play_rejected');
+                    console.warn('[Cinematic] Main video autoplay blocked:', err);
+                    startCanvasOnce('main_video_play_rejected');
                 });
             }
         } else {

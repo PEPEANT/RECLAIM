@@ -95,6 +95,10 @@ class Projectile {
         this.impactVfxAir = (opts && opts.impactVfxAir) ? opts.impactVfxAir : null;
         this.impactVfxOnly = !!(opts && opts.impactVfxOnly);
         this.source = (opts && opts.source) ? opts.source : null;
+        const hitChanceMulRaw = Number(opts && opts.hitChanceMul);
+        this.hitChanceMul = Number.isFinite(hitChanceMulRaw)
+            ? Math.max(0.25, Math.min(2.0, hitChanceMulRaw))
+            : 1;
         this.impactGroundY = Number.isFinite(Number(y)) ? Number(y) : 0;
         this._impactScatterApplied = false;
 
@@ -1097,6 +1101,8 @@ class Projectile {
                     // Machinegun vs Drone -> High Miss rate
                     hitChance = 0.3;
                 }
+                hitChance *= Number(this.hitChanceMul) || 1;
+                hitChance = Math.max(0.03, Math.min(0.995, hitChance));
                 if (Math.random() < hitChance) {
                     if (!(closest.stats && closest.stats.invulnerable)) {
                         closest.takeDamage(this.damage, this.type, this.x, this.y, this.vx, this.vy, this.source);

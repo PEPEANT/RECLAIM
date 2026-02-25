@@ -5,6 +5,8 @@
     const CAPTURE_MAX = 100;
     const CAPTURE_SHOW_HOLD_FRAMES = 120;
     const PLAYER_FORCE_MIN_FOR_DEFEAT = 5;
+    const COAST_PLAYER_FORCE_MAX_FOR_DEFEAT = 10;
+    const COAST_MAP_ID = 'skirmish_coast';
     const CAMERA_EDGE_MARGIN = 12;
     const MAP_EDGE_CAPTURE_MARGIN = 16;
     const CAPTURE_BREACH_STEP = 20;
@@ -38,6 +40,51 @@
             + sumPositiveReserve(game.spawnQueue)
             + sumPositiveReserve(game.playerVeteranStock)
         );
+    }
+
+    function getCurrentMapId(game) {
+        const gameMapId = String((game && game.currentMapId) || '').trim();
+        if (gameMapId) return gameMapId;
+        const mapsMapId = (typeof Maps !== 'undefined' && Maps && Maps.currentMap)
+            ? String(Maps.currentMap).trim()
+            : '';
+        return mapsMapId;
+    }
+
+    function isCoastMap(game) {
+        return getCurrentMapId(game) === COAST_MAP_ID;
+    }
+
+    function getLandingCraftStatus(game) {
+        let state = null;
+        const ctrl = game && game.landingIntroController;
+        if (ctrl && typeof ctrl.getDebugState === 'function') {
+            try {
+                state = ctrl.getDebugState();
+            } catch (_) { }
+        }
+        if ((!state || !Array.isArray(state.crafts)) && typeof window !== 'undefined') {
+            const fallback = window.__RECLAIM_LANDING_INTRO_STATE__;
+            if (fallback && Array.isArray(fallback.crafts)) {
+                state = fallback;
+            }
+        }
+        const crafts = Array.isArray(state && state.crafts) ? state.crafts : [];
+        let total = 0;
+        let destroyed = 0;
+        for (let i = 0; i < crafts.length; i++) {
+            const c = crafts[i];
+            if (!c) continue;
+            total += 1;
+            const hp = Number(c.hp);
+            const maxHp = Number(c.maxHp);
+            const failedReason = String(c.failedReason || '').trim().toLowerCase();
+            const destroyedFlag = c.destroyed === true
+                || failedReason === 'destroyed'
+                || (Number.isFinite(maxHp) && maxHp > 0 && Number.isFinite(hp) && hp <= 0);
+            if (destroyedFlag) destroyed += 1;
+        }
+        return { total, destroyed, alive: Math.max(0, total - destroyed) };
     }
 
     function clamp(value, min, max) {
@@ -244,6 +291,12 @@
             const playerWiped = (alivePlayerUnits <= 0)
                 && (game.playerEverSeen || skirmishBattle)
                 && playerTotalRemaining < PLAYER_FORCE_MIN_FOR_DEFEAT;
+            const coastPlayerWiped = (alivePlayerUnits <= 0) || (playerTotalRemaining <= COAST_PLAYER_FORCE_MAX_FOR_DEFEAT);
+            const coastMap = isCoastMap(game);
+            const coastLandingCraft = coastMap ? getLandingCraftStatus(game) : { total: 0, destroyed: 0, alive: 0 };
+            const coastLandingCraftAllDestroyed = coastMap
+                && coastLandingCraft.total > 0
+                && coastLandingCraft.alive <= 0;
 
             const enemyHQExists = !!enemyHQAny;
             const enemyHQDestroyed = enemyHQExists
@@ -254,6 +307,30 @@
             const survived = elapsedSeconds >= survivalTime;
 
             const captureState = updateCaptureControlState(game);
+            if (coastMap) {
+                if (coastLandingCraftAllDestroyed) {
+                    game.endGame('lose', '작전 실패', '상륙정이 모두 파괴되었습니다.');
+                    return;
+                }
+                if (captureState && Number(captureState.playerCapture) >= CAPTURE_MAX) {
+                    game.endGame('win', '작전 성공', '적 전선을 돌파해 점령도 100%를 달성했습니다.');
+                    return;
+                }
+                if (enemyWiped) {
+                    game.endGame('win', '작전 성공', '적 부대를 모두 섬멸했습니다.');
+                    return;
+                }
+                if (coastPlayerWiped) {
+                    game.endGame(
+                        'lose',
+                        '작전 실패',
+                        `아군 전력이 임계치 이하입니다. (잔여 전력 ${playerTotalRemaining}기)`
+                    );
+                    return;
+                }
+                return;
+            }
+
             if (captureState) {
                 const enemyCaptureDone = Number(captureState.enemyRisk) >= CAPTURE_MAX;
                 const playerCaptureDone = Number(captureState.playerCapture) >= CAPTURE_MAX;

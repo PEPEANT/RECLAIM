@@ -97,7 +97,7 @@ const CONFIG = {
         },
         infantry: {
             id: 'infantry', name: '보병', cost: 30, cooldown: 25, maxCount: 40,
-            hp: 80, damage: 12, range: 250, speed: 0.9,
+            hp: 80, damage: 12, range: 280, speed: 0.9,
             width: 15, height: 25, color: '#60a5fa', type: 'bio', category: 'infantry',
             role: '기본 보병', description: '전선을 유지하는 기본 보병입니다.'
         },
@@ -105,15 +105,16 @@ const CONFIG = {
             id: 'bagpiper', name: '백파이프병', cost: 30, cooldown: 70, maxCount: 1,
             hp: 80, damage: 0, range: 0, speed: 0.9,
             width: 16, height: 26, color: '#60a5fa', type: 'bio', category: 'infantry',
-            role: '전투 치유 지원', description: '공격하지 않고 백파이프 연주로 주변 아군 보병을 치유합니다.',
+            role: '전투 기동 지원', description: '공격하지 않고 백파이프 연주로 주변 아군의 이동속도를 증가시킵니다.',
             bagpipeSkill: true,
-            bagpipeHealRadius: 180,
-            bagpipeHealFlat: 2,
-            bagpipeHealTickFrames: 30
+            bagpipeSpeedRadius: 190,
+            bagpipeSpeedMul: 1.32,
+            bagpipeBuffTickFrames: 24,
+            bagpipeSpeedDurationFrames: 34
         },
         engineer: {
             id: 'engineer', name: '공병', cost: 30, cooldown: 20, maxCount: 12,
-            hp: 60, damage: 15, range: 180, missileRange: 620, missileDamage: 120, speed: 0.7,
+            hp: 60, damage: 15, range: 230, missileRange: 620, missileDamage: 120, speed: 0.7,
             width: 14, height: 22, color: '#f87171', type: 'bio', antiAir: true, category: 'infantry',
             role: '대전차/대공', description: '보병에겐 기관총, 기갑/공중에겐 유도 미사일로 공격합니다.',
             hasMissile: true, missileCount: 1, missileAimFrames: 54
@@ -121,7 +122,7 @@ const CONFIG = {
         // [NEW] 병영 신규 유닛
         sniper: {
             id: 'sniper', name: '저격수', cost: 667, cooldown: 220, maxCount: 4,
-            hp: 90, damage: 180, range: 860, speed: 0.62,
+            hp: 90, damage: 180, range: 920, speed: 0.62,
             width: 16, height: 26, color: '#334155', type: 'bio', category: 'infantry',
             role: '초장거리 저격', description: '매우 긴 사거리와 높은 단발 화력을 가지지만 발사 간격이 길다.',
             targetScanInterval: 12,
@@ -129,7 +130,7 @@ const CONFIG = {
         },
         special_ops: {
             id: 'special_ops', name: '특수부대', cost: 417, cooldown: 90, maxCount: 8,
-            hp: 200, damage: 30, range: 220, speed: 1.15,
+            hp: 200, damage: 30, range: 310, speed: 1.15,
             width: 16, height: 26, color: '#0f172a', type: 'bio', category: 'infantry',
             role: '고성능 돌격', description: '전술 장비를 갖춘 정예 보병. 기동성과 생존력이 높다.'
         },
@@ -234,7 +235,7 @@ const CONFIG = {
         // [NEW] 드론병 (Drone Operator)
         drone_operator: {
             id: 'drone_operator', name: '드론병', cost: 80, cooldown: 120, maxCount: 6,
-            hp: 100, damage: 12, range: 150, speed: 0.9,
+            hp: 100, damage: 12, range: 205, speed: 0.9,
             width: 18, height: 28, color: '#64748b', type: 'bio', category: 'infantry',
             role: '드론 운용', description: '아군 건물 뒤에서 정지해 적을 감지하면 드론을 1회 발진한다. 회수에 성공하면 1회 추가 발진할 수 있다.',
             // 드론병 전용 필드

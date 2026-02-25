@@ -1,0 +1,2324 @@
+﻿<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+        content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#020617">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="RECLAIM">
+    <!-- OpenGraph : DCInside thumbnail -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="RECLAIM DEV (수복)">
+    <meta property="og:description" content="2D 실시간 전쟁 게임">
+    <meta property="og:image" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/png/RECLAIM.jpg">
+    <meta property="og:url" content="https://pepeant.github.io/dis-site/games/RECLAIM_2.5/">
+    <title>RECLAIM DEV (수복)</title>
+    <link rel="icon" href="data:,">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="png/RECLAIM.jpg">
+    <script>
+        window.__RECLAIM_DEV_ENTRY__ = true;
+        window.__RECLAIM_DISABLE_SW__ = true;
+        window.__RECLAIM_DISABLE_VERSION_GUARD__ = true;
+    </script>
+    <script>
+        (() => {
+            const CURRENT_BUILD = '2026-02-21.1';
+            const VERSION_KEY = 'RECLAIM_BUILD_VERSION';
+            const CHECK_TIMEOUT_MS = 2200;
+            const DEV_ENTRY = window.__RECLAIM_DEV_ENTRY__ === true || /\bdev=1\b/.test(location.search);
+
+            if (DEV_ENTRY || window.__RECLAIM_DISABLE_VERSION_GUARD__ === true) {
+                window.__RECLAIM_FORCE_BLOCK_BOOT__ = false;
+                window.__RECLAIM_VERSION_GUARD__ = Promise.resolve({ blocked: false, devEntry: true });
+                return;
+            }
+
+            const normalizeLatestUrl = (raw) => {
+                const v = String(raw || '').trim();
+                if (!v) return location.href;
+                try {
+                    return new URL(v, location.href).toString();
+                } catch (_) {
+                    return location.href;
+                }
+            };
+
+            const clearRuntimeCaches = async () => {
+                try {
+                    if ('serviceWorker' in navigator) {
+                        const regs = await navigator.serviceWorker.getRegistrations();
+                        await Promise.all(regs.map((reg) => reg.unregister()));
+                    }
+                } catch (_) { }
+                try {
+                    if ('caches' in window) {
+                        const keys = await caches.keys();
+                        await Promise.all(keys.map((k) => caches.delete(k)));
+                    }
+                } catch (_) { }
+            };
+
+            const showUpdateOverlay = (message, latestUrl) => {
+                if (document.getElementById('version-update-overlay')) return;
+                const root = document.createElement('div');
+                root.id = 'version-update-overlay';
+                root.style.cssText = [
+                    'position:fixed',
+                    'inset:0',
+                    'z-index:2147483647',
+                    'display:flex',
+                    'align-items:center',
+                    'justify-content:center',
+                    'padding:20px',
+                    'background:rgba(2,6,23,0.94)',
+                    'color:#e2e8f0',
+                    'font-family:Segoe UI, Arial, sans-serif',
+                    'text-align:center'
+                ].join(';');
+
+                const card = document.createElement('div');
+                card.style.cssText = [
+                    'max-width:640px',
+                    'width:100%',
+                    'background:#0b1220',
+                    'border:1px solid #334155',
+                    'border-radius:14px',
+                    'padding:24px 20px'
+                ].join(';');
+
+                const title = document.createElement('h2');
+                title.textContent = '최신 버전으로 업데이트되었습니다';
+                title.style.cssText = 'margin:0 0 10px;font-size:22px;color:#f8fafc;font-weight:800;';
+
+                const desc = document.createElement('p');
+                desc.textContent = message || '구버전은 더 이상 지원되지 않습니다. 아래 주소로 접속해 주세요.';
+                desc.style.cssText = 'margin:0 0 14px;line-height:1.6;color:#cbd5e1;';
+
+                const link = document.createElement('a');
+                link.href = latestUrl;
+                link.textContent = latestUrl;
+                link.style.cssText = 'display:block;word-break:break-all;margin:0 0 16px;color:#38bdf8;font-weight:700;';
+
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.textContent = '최신 버전으로 이동';
+                btn.style.cssText = [
+                    'display:inline-block',
+                    'padding:10px 16px',
+                    'border-radius:10px',
+                    'border:none',
+                    'font-weight:800',
+                    'cursor:pointer',
+                    'background:#22c55e',
+                    'color:#052e16'
+                ].join(';');
+                btn.addEventListener('click', () => {
+                    location.replace(latestUrl);
+                });
+
+                card.appendChild(title);
+                card.appendChild(desc);
+                card.appendChild(link);
+                card.appendChild(btn);
+                root.appendChild(card);
+                document.body.appendChild(root);
+            };
+
+            const runVersionGuard = async () => {
+                const controller = new AbortController();
+                const timeout = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+                try {
+                    const res = await fetch('./version.json?t=' + Date.now(), {
+                        cache: 'no-store',
+                        signal: controller.signal
+                    });
+                    if (!res.ok) return { blocked: false };
+
+                    const meta = await res.json();
+                    const incomingVersion = String(meta && meta.version || '').trim();
+                    if (!incomingVersion) return { blocked: false };
+                    const isStaleBundle = incomingVersion !== CURRENT_BUILD;
+                    if (!isStaleBundle) {
+                        try { localStorage.setItem(VERSION_KEY, incomingVersion); } catch (_) { }
+                        return { blocked: false };
+                    }
+
+                    await clearRuntimeCaches();
+
+                    const latestUrl = normalizeLatestUrl(meta && meta.latestUrl);
+                    const message = String(meta && meta.message || '').trim();
+                    const hardBlock = (meta && meta.forceUpdate === true);
+
+                    if (hardBlock) {
+                        window.__RECLAIM_FORCE_BLOCK_BOOT__ = true;
+                        if (document.readyState === 'loading') {
+                            window.addEventListener('DOMContentLoaded', () => showUpdateOverlay(message, latestUrl), { once: true });
+                        } else {
+                            showUpdateOverlay(message, latestUrl);
+                        }
+                        return { blocked: true };
+                    }
+
+                    location.replace(latestUrl);
+                    return { blocked: true };
+                } catch (_) {
+                    return { blocked: false };
+                } finally {
+                    clearTimeout(timeout);
+                }
+            };
+
+            window.__RECLAIM_VERSION_GUARD__ = runVersionGuard();
+        })();
+    </script>
+    <script>
+        (() => {
+            const root = document.documentElement;
+            const updateViewportVars = () => {
+                const vv = window.visualViewport || null;
+                const rawW = vv && Number.isFinite(vv.width) ? vv.width : window.innerWidth;
+                const rawH = vv && Number.isFinite(vv.height) ? vv.height : window.innerHeight;
+                const width = Math.max(1, Math.round(Number(rawW) || 0));
+                const height = Math.max(1, Math.round(Number(rawH) || 0));
+                root.style.setProperty('--app-width', `${width}px`);
+                root.style.setProperty('--app-height', `${height}px`);
+            };
+
+            updateViewportVars();
+            window.addEventListener('resize', updateViewportVars, { passive: true });
+            window.addEventListener('orientationchange', () => setTimeout(updateViewportVars, 120), { passive: true });
+            if (window.visualViewport && typeof window.visualViewport.addEventListener === 'function') {
+                window.visualViewport.addEventListener('resize', updateViewportVars, { passive: true });
+                window.visualViewport.addEventListener('scroll', updateViewportVars, { passive: true });
+            }
+        })();
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
+    <link rel="stylesheet" href="src/styles/style.css?v=20260224s62">
+    <link rel="stylesheet" href="src/styles/skirmish.css?v=20260216sc2">
+    <!-- Google Fonts for Cyberpunk/Sci-fi look -->
+    <link
+        href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Rajdhani:wght@400;600;700&family=Noto+Sans+KR:wght@300;500;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+
+    <div id="game-wrapper">
+        <div id="boot-gate" class="boot-gate" role="dialog" aria-modal="true" aria-label="게임 시작">
+            <button id="boot-play-btn" type="button" class="boot-play-btn" aria-label="플레이">
+                PLAY
+            </button>
+        </div>
+
+        <canvas id="game-canvas" class="absolute inset-0"></canvas>
+        <div id="emp-flash" class="emp-effect"></div>
+
+        <!-- 국지전 배치 페이즈 UI -->
+        <div id="skirmish-placement-ui" class="hidden skirmish-placement-ui">
+            <div class="skirmish-bottom-bar">
+                <div id="skirmish-narration" class="skirmish-narration"></div>
+                <div id="skirmish-unit-palette" class="skirmish-unit-palette"></div>
+                <button id="skirmish-ready-btn" type="button" class="skirmish-ready-btn"
+                    onclick="SkirmishMode.onReadyClick(game)">배치 완료</button>
+            </div>
+        </div>
+
+        <!-- 국지전 카운트다운 오버레이 -->
+        <div id="skirmish-countdown" class="hidden skirmish-countdown">
+            <span id="skirmish-countdown-num"></span>
+        </div>
+
+        <!-- [NEW] Fake Loading Screen -->
+        <div id="loading-screen"
+            class="hidden absolute inset-0 z-[100] bg-black flex flex-col items-center justify-center p-4">
+            <h1 class="text-6xl md:text-8xl font-black text-white mb-2 tracking-tighter title-shadow"
+                style="font-family: 'Orbitron', sans-serif;">
+                RECLAIM
+            </h1>
+            <div class="text-2xl text-blue-500 font-bold mb-12 tracking-[0.5em]" data-lang="project_title">
+                PROJECT: RECLAIM
+            </div>
+
+            <div class="w-full max-w-md bg-gray-900 h-2 rounded-full overflow-hidden relative mb-4">
+                <div id="loading-bar" class="absolute top-0 left-0 h-full bg-blue-500 w-0 transition-all duration-300">
+                </div>
+            </div>
+            <!-- Loading Progress Text -->
+            <div id="loading-text" class="text-sm text-gray-400 font-mono animate-pulse" data-lang="loading_system">
+                System Initializing...
+            </div>
+
+            <!-- TIP Section -->
+            <div id="loading-tip" class="mt-12 max-w-2xl text-center px-6">
+                <div class="text-blue-400 text-xs font-bold mb-2 tracking-widest">💡 TIP</div>
+                <p id="loading-tip-text" class="text-gray-300 text-sm leading-relaxed">
+                    초반에는 생산 건물 위주로 지어 자원을 확보하는 것이 좋습니다.
+                </p>
+            </div>
+        </div>
+        <!-- Legacy Speed Controls -->
+        <div id="hud-ctrl-wrapper" class="hidden pointer-events-auto">
+            <button id="hud-ctrl-toggle" class="btn-speed" aria-label="Toggle controls">
+                <i class="fa-solid fa-sliders"></i>
+            </button>
+            <div id="hud-ctrl-body" class="hidden">
+                <div id="hud-speed-controls">
+                    <button id="btn-speed-0.5" onclick="game.setSpeed(0.5)" class="btn-speed">x0.5</button>
+                    <button id="btn-speed-1" onclick="game.setSpeed(1)" class="btn-speed">x1</button>
+                    <button id="btn-speed-2" onclick="game.setSpeed(2)" class="btn-speed">x2</button>
+                    <div id="hud-zoom-controls">
+                        <button id="btn-zoom-out" onclick="game.zoomOut()" class="btn-speed">-</button>
+                        <span id="hud-zoom-text">100%</span>
+                        <button id="btn-zoom-in" onclick="game.zoomIn()" class="btn-speed">+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- [R 2.4] Unit Command Panel (Multi-Select + Drag) -->
+        <div id="unit-cmd-wrapper" class="hidden pointer-events-auto">
+            <div id="unit-cmd-panel">
+                <div id="cmd-header">
+                    <button id="cmd-panel-toggle" class="cmd-toggle-btn" onclick="game.toggleCmdPanel(event)"
+                        aria-label="Command panel">
+                        <i class="fa-solid fa-bars"></i>
+                    </button>
+                    <div class="cmd-header-right">
+                        <button id="cmd-layout-toggle" class="cmd-layout-toggle" aria-label="Toggle layout">
+                            <i class="fa-solid fa-border-all"></i>
+                        </button>
+                        <button id="clear-units-btn" class="cmd-btn-clear-mini"><span class="cmd-ico">X</span></button>
+                    </div>
+                </div>
+                <div id="cmd-actions" class="hidden">
+                    <!-- Row1: Retreat / Stop -->
+                    <button data-cmd="retreat" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-arrow-rotate-left"></i></span>
+                        <span data-lang="cmd_retreat">RETREAT</span>
+                    </button>
+                    <button data-cmd="stop" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-pause"></i></span>
+                        <span data-lang="cmd_stop">STOP</span>
+                    </button>
+
+                    <!-- Row2: Attack / Camera / Move -->
+                    <button data-cmd="attack" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-crosshairs"></i></span>
+                        <span data-lang="cmd_attack">ATTACK</span>
+                    </button>
+                    <button data-cmd="camera" class="cmd-btn-action">
+                        <span class="cmd-ico"><i class="fa-solid fa-video"></i></span>
+                        <span data-lang="cmd_camera">CAMERA</span>
+                    </button>
+                    <button data-cmd="move" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-up-down-left-right"></i></span>
+                        <span data-lang="cmd_move">MOVE</span>
+                    </button>
+
+                    <!-- Recon: show only if recon unit selected -->
+                    <button data-cmd="recon" id="cmd-recon-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-binoculars"></i></span>
+                        <span data-lang="cmd_recon">RECON</span>
+                    </button>
+                    <!-- Smoke: show only if smoke unit selected -->
+                    <button data-cmd="smoke" id="cmd-smoke-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-smog"></i></span>
+                        <span data-lang="cmd_smoke">SMOKE</span>
+                    </button>
+                    <!-- Medkit: show only if medkit unit selected -->
+                    <button data-cmd="medkit" id="cmd-medkit-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-kit-medical"></i></span>
+                        <span data-lang="cmd_medkit">MEDKIT</span>
+                    </button>
+                    <!-- Drop: show only if transport unit selected -->
+                    <button data-cmd="drop" id="cmd-drop-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-arrow-down"></i></span>
+                        <span data-lang="cmd_drop">DROP</span>
+                    </button>
+                    <!-- Missile: show only if fighter jet selected -->
+                    <button data-cmd="missile" id="cmd-missile-btn" class="cmd-btn-action hidden">
+                        <span class="cmd-ico"><i class="fa-solid fa-rocket"></i></span>
+                        <span data-lang="cmd_missile">MISSILE</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="hud-top-actions" class="hidden" aria-label="Top Actions">
+            <div class="hud-top-actions-row">
+                <button id="hud-all-retreat-btn" class="hud-top-btn hidden" data-hud-top-action="all_retreat" aria-label="All Retreat">
+                    <i class="fa-solid fa-arrow-left"></i>
+                </button>
+                <button id="hud-all-attack-btn" class="hud-top-btn hidden" data-hud-top-action="all_stop" aria-label="All Stop">
+                    <i class="fa-solid fa-pause"></i>
+                </button>
+                <button id="hud-all-move-btn" class="hud-top-btn hidden" data-hud-top-action="all_attack" aria-label="All Attack">
+                    <i class="fa-solid fa-arrow-right"></i>
+                </button>
+            </div>
+            <button id="hud-cancel-btn" class="hud-top-btn hidden" data-hud-top-action="cancel" aria-label="Cancel Commands">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <div id="unit-info-panel">
+            <h3 id="info-name">Unit Name</h3>
+            <span id="info-role" class="role-badge">Role</span>
+            <p id="info-desc">Description</p>
+        </div>
+
+        <div id="targeting-overlay"
+            class="hidden pointer-events-none absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 bg-black/70 text-white px-3 py-2 rounded-lg shadow-2xl z-30">
+            <span id="target-msg" class="font-bold text-sm" data-lang="target_select">SELECT A TARGET</span>
+        </div>
+
+        <!-- [NEW] Mission Objective Modal -->
+        <div id="mission-objective-modal"
+            class="hidden fixed inset-0 z-[130] flex items-center justify-center bg-black/70">
+            <div class="mission-objective-panel bg-slate-900 border-2 border-blue-500 rounded-xl p-6 max-w-md mx-4 shadow-2xl">
+                <div class="flex items-center gap-3 mb-4 border-b border-slate-700 pb-3">
+                    <i class="fa-solid fa-bullseye text-2xl text-blue-400"></i>
+                    <h2 class="text-xl font-bold text-white" data-lang="mission_objective_title">MISSION OBJECTIVE</h2>
+                </div>
+                <p id="mission-objective-text" class="text-gray-200 text-base leading-relaxed mb-4">
+                    <!-- Dynamic mission objective text per map -->
+                </p>
+                <button onclick="game.hideMissionObjective()"
+                    class="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded transition-colors"
+                    data-lang="confirm">
+                    CONFIRM
+                </button>
+            </div>
+        </div>
+
+        <!-- [NEWS INTRO] broadcast intro -->
+        <div id="news-intro-widget" class="news-intro-widget hidden pointer-events-none">
+            <div class="news-frame">
+                <canvas id="news-intro-canvas" width="420" height="240"></canvas>
+            </div>
+        </div>
+
+        <!-- [NEWS] broadcast overlay -->
+        <div id="news-widget" class="news-widget hidden pointer-events-none">
+            <div class="news-frame">
+                <canvas id="news-canvas" width="420" height="240"></canvas>
+                <div class="news-ui">
+                    <div class="news-live">LIVE</div>
+                    <div id="news-location" class="news-location" data-lang="news_location">
+                        BATTLE ZONE CIVIL CONTROL | 14:02
+                    </div>
+                    <div class="news-bar">
+                        <div class="news-title">
+                            <span data-lang="news_breaking">BREAKING</span>
+                        </div>
+                        <div class="news-headline" data-lang="news_headline">
+                            SPECIAL MILITARY OPERATION DECLARED
+                        </div>
+                    </div>
+                    <div class="news-ticker">
+                        <div class="news-ticker-track">
+                            <span data-lang="news_ticker">Troop movements detected / Major routes blocked / Alert level
+                                raised / Market volatility</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="hud-overlay" class="absolute inset-0 pointer-events-none flex flex-col justify-between p-2 md:p-4">
+
+            <div class="flex justify-between items-start pointer-events-auto w-full mt-2 px-2">
+                <div class="flex gap-2">
+                    <!-- Map Button Removed (Replaced by HUD Minimap) -->
+                    <button onclick="game.toggleScope()"
+                        class="cmd-btn text-blue-400 border-blue-800 hover:bg-slate-700 whitespace-nowrap">
+                        <i class="fa-solid fa-binoculars"></i> <span data-lang="enemy_analysis">ENEMY ANALYSIS</span>
+                    </button>
+                </div>
+
+                <div id="spawn-indicator"
+                    class="hidden bg-slate-800/90 border border-yellow-500 text-yellow-400 px-4 py-2 rounded shadow-lg font-bold text-sm animate-pulse">
+                    <i class="fa-solid fa-tent-arrow-down-to-line mr-2"></i>
+                    <span data-lang="spawn_indicator">FORWARD BASE MODE</span>
+                    <button onclick="game.selectSpawn(null)"
+                        class="ml-3 text-white text-xs bg-slate-600 px-2 py-1 rounded"
+                        data-lang="return_hq">RETURN</button>
+                </div>
+            </div>
+
+            <div id="toast-msg"
+                class="hidden absolute top-32 left-1/2 transform -translate-x-1/2 bg-slate-800/90 border border-slate-500 text-white px-6 py-3 rounded-lg font-bold text-sm shadow-2xl z-20 transition-opacity duration-300">
+            </div>
+
+            <div class="flex w-full items-end gap-2 overflow-visible pointer-events-auto">
+
+                <!-- [R 4.2] Chat Panel (Log Window) -->
+                <div id="chat-panel" class="hidden pointer-events-auto">
+                    <div id="chat-header">
+                        <span class="chat-title">LOG</span>
+                        <div class="chat-btns hidden">
+                            <button id="chat-clear-btn" title="닫기">&lt;</button>
+                            <button id="chat-toggle-btn" title="Toggle">
+                                <i class="fa-solid fa-comment-dots"></i>
+                            </button>
+                        </div>
+                    </div>
+                    <div id="chat-body">
+                        <div id="chat-list"></div>
+                    </div>
+                </div>
+
+                <div id="unit-panel-container"
+                    class="flex flex-col flex-1 bg-slate-900/80 border border-slate-700 rounded-lg overflow-hidden backdrop-blur-sm">
+                    <div class="unit-category-row flex w-full bg-slate-800 border-b border-slate-700">
+                        <button onclick="game.setCategory('infantry')" id="tab-infantry"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm active"
+                            data-lang="cat_infantry">INFANTRY</button>
+                        <button onclick="game.setCategory('armored')" id="tab-armored"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_armored">ARMORED</button>
+                        <button onclick="game.setCategory('air')" id="tab-air"
+                            class="btn-category flex-1 py-2 text-xs md:text-sm" data-lang="cat_air">AIR</button>
+                    </div>
+                    <div id="unit-list-wrapper" class="relative">
+                        <div id="unit-list-container"
+                            class="flex gap-2 p-2 overflow-x-auto hide-scrollbar h-24 md:h-20 items-center touch-pan-x">
+                        </div>
+                        <button id="unit-scroll-right" class="unit-scroll-btn right hidden" aria-label="Scroll right">›</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="map-modal"
+            class="hidden absolute inset-0 z-40 bg-black/80 flex items-center justify-center pointer-events-auto p-4">
+            <div class="bg-slate-800 border-2 border-slate-600 p-3 rounded-lg max-w-2xl w-full relative shadow-2xl">
+                <div class="flex justify-between items-center mb-3">
+                    <h2 class="text-green-500 font-bold text-sm tracking-widest flex items-center gap-2">
+                        <i class="fa-solid fa-satellite-dish"></i> SATELLITE VIEW
+                    </h2>
+                    <button onclick="game.toggleMap()" class="text-gray-400 hover:text-white text-xl font-bold px-2">
+                        <i class="fa-solid fa-xmark"></i>
+                    </button>
+                </div>
+                <div class="w-full h-64 bg-black rounded border border-slate-700 relative overflow-hidden">
+                    <canvas id="map-canvas" class="w-full h-full block"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div id="scope-modal"
+            class="hidden absolute inset-0 z-40 bg-black/90 flex items-center justify-center pointer-events-auto p-4">
+            <div
+                class="bg-slate-900 border border-blue-800 rounded-lg w-[95vw] max-w-6xl relative shadow-2xl flex flex-col overflow-hidden">
+                <div class="bg-slate-950 p-4 border-b border-blue-900 flex justify-between items-center">
+                    <h2 class="text-blue-400 font-bold text-lg tracking-widest" data-lang="enemy_analysis_title"><i
+                            class="fa-solid fa-crosshairs mr-2"></i>ENEMY ANALYSIS</h2>
+                    <button onclick="game.toggleScope()" class="text-gray-500 hover:text-white text-lg"><i
+                            class="fa-solid fa-xmark"></i></button>
+                </div>
+                <div class="p-3 bg-slate-900/80">
+                    <!-- Horizontal table layout: one unit per column -->
+                    <table class="recon-table recon-h">
+                        <thead>
+                            <tr id="enemy-status-head-row"></tr>
+                        </thead>
+                        <tbody>
+                            <tr id="enemy-status-count-row"></tr>
+                            <tr id="enemy-status-state-row"></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div class="p-3 bg-slate-950 border-t border-blue-900 text-center">
+                    <button onclick="game.toggleScope()"
+                        class="bg-slate-800 hover:bg-slate-700 text-white text-sm px-6 py-2 rounded border border-slate-600"
+                        data-lang="close">CLOSE</button>
+                </div>
+            </div>
+        </div>
+        <!-- Battle-only flow: non-combat UI removed -->
+        <div id="team-color-screen"
+            class="hidden absolute inset-0 z-[55] bg-slate-950/95 flex flex-col items-center justify-center pointer-events-auto p-4">
+            <div id="faction-panel" class="w-full max-w-2xl bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-5 md:p-6">
+                <h2 class="text-xl md:text-2xl font-bold text-white tracking-wide">진영 선택</h2>
+                <div id="faction-grid" class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-5">
+                    <button id="faction-btn-usa"
+                        class="text-left bg-slate-800/70 border border-slate-700 rounded-lg p-4 hover:border-blue-400 transition-colors">
+                        <div class="w-full h-28 rounded-md overflow-hidden border border-slate-600 mb-3 bg-slate-900">
+                            <img src="png/gonfalon/Us.png" alt="US flag" class="w-full h-full object-contain">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-base font-bold text-white">신미합중국 US</span>
+                            <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#8b7a5a"></span>
+                        </div>
+                    </button>
+                    <button id="faction-btn-russia"
+                        class="text-left bg-slate-800/70 border border-slate-700 rounded-lg p-4 hover:border-lime-400 transition-colors">
+                        <div class="w-full h-28 rounded-md overflow-hidden border border-slate-600 mb-3 bg-slate-900">
+                            <img src="png/gonfalon/Rs.png" alt="Russia flag" class="w-full h-full object-contain">
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span class="text-base font-bold text-white">러시아연방권 RS</span>
+                            <span class="inline-block w-5 h-5 rounded border border-slate-400" style="background:#6b8e23"></span>
+                        </div>
+                    </button>
+                </div>
+
+                <div id="faction-confirm-row" class="flex justify-end gap-2 mt-5">
+                    <button id="faction-confirm-btn"
+                        class="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded border border-blue-400 text-sm font-bold">
+                        진영 확정
+                    </button>
+                </div>
+            </div>
+        </div>
+        <!-- Map select screen -->
+        <div id="map-select-screen"
+            class="hidden absolute inset-0 z-50 bg-slate-950 flex flex-col items-center justify-center pointer-events-auto p-4">
+
+            <h2 class="text-3xl font-bold text-white mb-6 tracking-widest">Battle Area</h2>
+
+            <div id="battle-area-grid" class="grid grid-cols-1 gap-3 md:gap-6 w-full max-w-md px-2 md:px-4">
+                <button id="battle-area-kabul-card" type="button" class="map-card group" data-map="skirmish_kabul">
+                    <div class="h-32 relative overflow-hidden rounded-t-lg">
+                        <img src="png/map/kavul.png" alt="Kabul map preview" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-900/20 to-transparent"></div>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center font-black text-2xl text-white/80 group-hover:text-white drop-shadow">
+                            <span style="text-shadow: 0 0 1px #000, 0 1px 2px #000;">카불 Kabul</span>
+                        </div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <p class="text-xs leading-snug text-slate-300">
+                            넓은 사막의 분지형 수도 전장. 도시 외곽의 개활지와 중심부의 빌딩 숲으로 구성되어 다양한 전술과 기동이 가능한 맵
+                        </p>
+                    </div>
+                </button>
+                <button id="battle-area-coast-card" type="button" class="map-card group" data-map="skirmish_coast">
+                    <div class="h-32 relative overflow-hidden rounded-t-lg">
+                        <img src="png/map/7852ee66.jpg" alt="Coast map preview" class="w-full h-full object-cover">
+                        <div class="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-900/20 to-transparent"></div>
+                        <div class="absolute inset-0 flex flex-col items-center justify-center font-black text-2xl text-white/80 group-hover:text-white drop-shadow">
+                            <span style="text-shadow: 0 0 1px #000, 0 1px 2px #000;">노르망디 Normandie</span>
+                        </div>
+                    </div>
+                    <div
+                        class="p-4 bg-slate-800 rounded-b-lg border-x border-b border-slate-700 group-hover:border-blue-500 transition-colors">
+                        <p class="text-xs leading-snug text-slate-300">
+                            거친 해안과 방파제, 항구 측면으로 진입로가 갈리는 전장. 제한적인 보병 전투와 기갑의 대규모 돌격이 공존하는 맵
+                        </p>
+                    </div>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    </div>
+
+    <!-- Cinematic Modal -->
+    <div id="cinematic-modal" class="hidden fixed inset-0 z-[100] bg-black">
+        <!-- Video Logo (plays first) -->
+        <video id="cinematic-video" class="hidden absolute" playsinline preload="metadata">
+            <source src="assets/tutorial/videos/grok_war.mp4" type="video/mp4">
+        </video>
+
+        <!-- Canvas Animation (plays after video) -->
+        <canvas id="cinematic-canvas" class="hidden"></canvas>
+
+        <!-- Skip Button -->
+        <button id="cinematic-skip-btn"
+            class="fixed bottom-8 right-8 px-6 py-3 bg-slate-800/80 hover:bg-slate-700 text-white rounded-lg border border-slate-600 hover:border-white transition-all duration-200 flex items-center gap-2 group">
+            <span>스킵하기</span>
+            <i class="fa-solid fa-forward group-hover:translate-x-1 transition-transform"></i>
+        </button>
+    </div>
+
+    <!-- Map Intro Modal -->
+    <div id="map-intro-modal" class="hidden fixed inset-0 z-[110] bg-black">
+        <video id="map-intro-video" class="absolute inset-0 w-full h-full object-contain bg-black" playsinline preload="metadata"></video>
+        <button id="map-intro-skip-btn"
+            class="absolute px-4 py-2 bg-slate-800/85 hover:bg-slate-700 text-white rounded-lg border border-slate-600 hover:border-white transition-all duration-200 text-sm font-bold"
+            style="top: calc(12px + env(safe-area-inset-top, 0px)); right: calc(12px + env(safe-area-inset-right, 0px));">
+            스킵하기
+        </button>
+    </div>
+
+    <button id="global-settings-btn" type="button" class="global-settings-btn hidden" aria-label="설정"
+        onclick="if(typeof game!=='undefined'&&game&&game.running===true&&typeof ui!=='undefined'&&ui&&typeof ui.openOptions==='function'){ui.openOptions({ context: 'ingame', source: 'global-gear' });}">
+        <i class="fa-solid fa-gear" aria-hidden="true"></i>
+    </button>
+
+    <!-- Option Modal -->
+    <div id="option-modal" class="modal-overlay" onclick="if(event.target===this){ui.closeOptions();}">
+        <div class="option-panel">
+            <button id="opt-modal-close-btn" type="button" class="opt-modal-close" onclick="ui.closeOptions()" aria-label="닫기">×</button>
+            <h2 id="opt-modal-title" class="text-2xl font-bold text-white mb-6 border-b border-slate-700 pb-2" data-lang="options">
+                SETTINGS
+            </h2>
+
+            <div class="opt-shell">
+                <div class="opt-tab-bar mb-4" role="tablist" aria-label="Settings Category">
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="gameplay">게임방법</button>
+                    <button type="button" class="opt-tab-btn active" data-opt-tab-btn="general">일반</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="video">비디오</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="audio">오디오</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="language">언어</button>
+                    <button type="button" class="opt-tab-btn" data-opt-tab-btn="credits">제작자</button>
+                </div>
+
+                <div class="opt-content">
+                    <div id="opt-tab-gameplay" class="opt-tab-panel mb-5">
+                        <div class="opt-info-card">
+                            <div class="opt-info-title">게임방법</div>
+                            <ul class="opt-info-list">
+                                <li>PC: 좌클릭으로 유닛/건물 선택, 우클릭으로 이동/공격 명령.</li>
+                                <li>PC: 휠로 확대/축소, ESC로 설정/취소 메뉴를 엽니다.</li>
+                                <li>PC: Q / E 키로 카메라 좌우 이동이 가능합니다.</li>
+                                <li>모바일: 화면 터치로 유닛 선택, 빈 지면 터치로 이동, 적 유닛 터치로 공격.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-general" class="opt-tab-panel active mb-5">
+                        <div class="opt-game-card">
+                            <div id="opt-game-title" class="opt-game-title">전투/종료</div>
+                            <div id="opt-game-desc" class="opt-game-desc">전투 중에는 후퇴, 평시에는 종료 확인을 사용할 수 있습니다.</div>
+                            <div class="opt-game-actions">
+                                <button id="opt-exit-btn" onclick="ui.openRetreatConfirmationFromOptions(event);"
+                                    class="opt-game-btn opt-game-btn-retreat"
+                                    data-lang="retreat">후퇴</button>
+                                <button id="opt-quit-btn" onclick="ui.closeOptions(); ui.showExitConfirmation('quit');"
+                                    class="opt-game-btn opt-game-btn-exit"
+                                    data-lang="menu_exit">게임 종료</button>
+                            </div>
+                        </div>
+
+                        <div class="flex items-center justify-between bg-slate-900/70 border border-slate-700 rounded px-3 py-2">
+                            <label for="opt-iog-always-open" class="text-xs text-gray-300">IOG 항상 열기</label>
+                            <input id="opt-iog-always-open" type="checkbox" onchange="ui.setIogAlwaysOpen(this.checked)">
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-video" class="opt-tab-panel mb-5">
+                        <div class="opt-info-card">
+                            <div class="opt-info-title">비디오</div>
+                            <p class="opt-info-text">모바일 가로 플레이 기준으로 HUD 가독성과 입력 정확도를 우선 적용합니다.</p>
+                            <div class="opt-video-control">
+                                <button id="opt-fullscreen-toggle" type="button" class="opt-video-toggle">전체화면 켜기</button>
+                                <div id="opt-fullscreen-state" class="opt-video-state">현재: 창 모드</div>
+                                <button id="opt-hitbox-toggle" type="button" class="opt-video-toggle">히트박스 켜기</button>
+                                <div id="opt-hitbox-state" class="opt-video-state">현재: 숨김</div>
+                            </div>
+                            <ul class="opt-info-list">
+                                <li>주소창/하단바 노출 시 화면 회전 후 다시 열면 복구됩니다.</li>
+                                <li>고해상도 기기에서 버튼이 작으면 UI 배율 옵션을 우선 적용합니다.</li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-audio" class="opt-tab-panel mb-5">
+                        <div class="mb-4">
+                            <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="audio_settings">오디오</h3>
+                            <div class="space-y-3">
+                                <div>
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>배경음</span><span
+                                            id="vol-bgm-val">40%</span></div>
+                                    <input type="range" data-volume="bgm" min="0" max="100" value="40" oninput="ui.setVolume('bgm', this.value)">
+                                </div>
+                                <div>
+                                    <div class="flex justify-between text-xs text-gray-400 mb-1"><span>효과음</span><span
+                                            id="vol-sfx-val">60%</span></div>
+                                    <input type="range" data-volume="sfx" min="0" max="100" value="60" oninput="ui.setVolume('sfx', this.value)">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-language" class="opt-tab-panel mb-5">
+                        <div>
+                            <h3 class="text-blue-400 text-sm font-bold mb-2" data-lang="lang_settings">LANGUAGE</h3>
+                            <div class="flex gap-2">
+                                <button onclick="Lang.setLang('ko')"
+                                    class="flex-1 py-2 rounded bg-slate-800 border border-slate-600 hover:border-blue-500 text-gray-300"
+                                    data-lang="lang_ko">KOREAN</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="opt-tab-credits" class="opt-tab-panel mb-5">
+                        <div class="opt-info-card">
+                            <div class="opt-info-title">제작자</div>
+                            <p class="opt-info-text">훈서기</p>
+                            <ul class="opt-info-list">
+                                <li>최초 제작일: 2025.12.09 21:15:48</li>
+                                <li>메인제작 : 코덱스 5.3</li>
+                                <li>그래픽 : 제미나이 3.1</li>
+                                <li>메인보조 : 클로드 오퍼스 4.6</li>
+                                <li>영상제작 : 그록 4.1</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mb-1 opt-close-row">
+                <button onclick="ui.closeOptions()"
+                    class="w-full py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded font-bold text-sm"
+                    data-lang="close">CLOSE</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="end-screen"
+        class="hidden absolute inset-0 z-50 bg-black/95 flex flex-col items-center justify-center pointer-events-auto p-6">
+        <h1 id="end-title" class="text-5xl font-bold mb-4"></h1>
+        <p id="end-desc"
+            class="text-gray-300 mb-8 text-xl text-center font-serif border-t border-b border-gray-700 py-4"></p>
+        <button onclick="game.backToLobby()"
+            class="px-8 py-3 bg-white text-black font-bold rounded hover:bg-gray-200 flex items-center gap-2">
+            <i class="fa-solid fa-house"></i>
+            <span data-lang="back_to_map_short">MAP</span>
+        </button>
+    </div>
+
+    <!-- [NEW] Exit Confirmation Modal -->
+    <div id="exit-modal"
+        class="hidden absolute inset-0 z-[100] bg-black/80 flex items-center justify-center pointer-events-auto p-4 backdrop-blur-sm">
+        <div
+            class="bg-slate-900 border border-slate-600 rounded-lg p-6 max-w-sm w-full shadow-2xl transform scale-100 transition-transform">
+            <h3 class="text-xl font-bold text-white mb-2" data-lang="exit_confirm_title">게임 종료</h3>
+            <p class="text-gray-400 mb-6 text-sm" data-lang="exit_confirm_desc">정말 게임을 종료하시겠습니까?</p>
+            <div class="flex gap-3">
+                <button onclick="ui.confirmExit(true)"
+                    class="flex-1 bg-red-600 hover:bg-red-500 text-white py-2 rounded font-bold transition-colors"
+                    data-lang="yes">예</button>
+                <button onclick="ui.confirmExit(false)"
+                    class="flex-1 bg-slate-700 hover:bg-slate-600 text-gray-200 py-2 rounded font-bold transition-colors"
+                    data-lang="no">아니오</button>
+            </div>
+        </div>
+    </div>
+
+    </div><!-- /game-wrapper -->
+
+    <!-- ============================================
+         [NEW] Fixed Bottom HUD (StarCraft-style)
+        - Left: Controls
+        - Center: Info/Production Panel
+        - Right: Command Panel
+         ============================================ -->
+    <footer id="hud-footer" class="hud-footer hidden">
+        <!-- Left Panel: Controls -->
+        <section id="hud-left" class="hud-panel hud-left">
+            <div id="hud-controls-bar">
+                <button id="hud-btn-pause" class="hud-ctrl-btn" aria-label="Pause">||</button>
+                <button id="hud-btn-speed-05" class="hud-ctrl-btn" data-speed="0.5">x0.5</button>
+                <button id="hud-btn-speed-1" class="hud-ctrl-btn active" data-speed="1">x1</button>
+                <button id="hud-btn-speed-2" class="hud-ctrl-btn" data-speed="2">x2</button>
+                <span class="hud-divider"></span>
+                <button id="hud-btn-zoom-out" class="hud-ctrl-btn">-</button>
+                <span id="hud-zoom-display">100%</span>
+                <button id="hud-btn-zoom-in" class="hud-ctrl-btn">+</button>
+            </div>
+        </section>
+
+        <!-- Center Panel: Info/Production -->
+        <section id="hud-center" class="hud-panel hud-center">
+            <div id="hud-info-area">
+                <div id="hud-selection-info">
+                    <span class="hud-placeholder-text" data-lang="hud_placeholder">SELECT A UNIT/BUILDING</span>
+                </div>
+            </div>
+            <div id="hud-production-area">
+                <!-- Production grid will be populated dynamically -->
+            </div>
+        </section>
+
+        <!-- Right Panel: Commands -->
+        <section id="hud-right" class="hud-panel hud-right">
+            <div id="hud-command-grid">
+                <div class="hud-cmd-group hud-cmd-group-action">
+                    <button id="hud-cmd-skill1" class="hud-cmd-btn hud-cmd-skill" data-hud-cmd="skill1">
+                        <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
+                        <span data-lang="cmd_skill1">SKILL 1</span>
+                    </button>
+
+                    <button id="hud-cmd-skill2" class="hud-cmd-btn hud-cmd-skill" data-hud-cmd="skill2">
+                        <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
+                        <span data-lang="cmd_skill2">SKILL 2</span>
+                    </button>
+
+                    <button id="hud-cmd-skill3" class="hud-cmd-btn hud-cmd-skill" data-hud-cmd="skill3">
+                        <span class="cmd-icon"><i class="fa-solid fa-bolt"></i></span>
+                        <span data-lang="cmd_skill3">SKILL 3</span>
+                    </button>
+
+                    <button id="hud-cmd-interact" class="hud-cmd-btn hud-cmd-interact hidden" data-hud-cmd="interact">
+                        <span class="cmd-icon"><i class="fa-solid fa-hand-pointer"></i></span>
+                        <span data-lang="cmd_interact">INTERACT</span>
+                    </button>
+                </div>
+
+            </div>
+        </section>
+    </footer>
+
+    <!-- Mobile direct-control overlay -->
+    <div id="mobile-direct-ui" class="mobile-direct-ui hidden" aria-hidden="true">
+        <div class="mobile-direct-pad" aria-label="Move pad">
+            <div id="mobile-dc-stick-zone" class="mobile-direct-stick-zone" aria-label="Move joystick">
+                <div id="mobile-dc-stick-knob" class="mobile-direct-stick-knob"></div>
+            </div>
+        </div>
+        <div id="pc-direct-wasd-hint" class="pc-direct-wasd-hint hidden" aria-hidden="true">WASD 이동</div>
+        <div class="mobile-direct-attack-wrap">
+            <button id="mobile-dc-stance" class="mobile-direct-action-btn mobile-direct-action-stance hidden" type="button" aria-label="Stance">
+                <span id="mobile-dc-stance-label" class="mobile-direct-stance-label">앉</span>
+            </button>
+            <button id="mobile-dc-attack" class="mobile-direct-action-btn mobile-direct-action-attack" type="button" aria-label="Attack">
+                <i class="fa-solid fa-gun"></i>
+            </button>
+        </div>
+        <div class="mobile-direct-skill-wrap">
+            <div class="mobile-direct-action-grid">
+                <button id="mobile-dc-skill1" class="mobile-direct-action-btn mobile-direct-action-skill hidden" type="button" aria-label="Skill 1">
+                    <span class="mobile-direct-action-icon"><i class="fa-solid fa-bolt"></i></span>
+                    <span class="mobile-direct-action-label"></span>
+                </button>
+                <button id="mobile-dc-skill2" class="mobile-direct-action-btn mobile-direct-action-skill hidden" type="button" aria-label="Skill 2">
+                    <span class="mobile-direct-action-icon"><i class="fa-solid fa-bolt"></i></span>
+                    <span class="mobile-direct-action-label"></span>
+                </button>
+                <button id="mobile-dc-skill3" class="mobile-direct-action-btn mobile-direct-action-skill hidden" type="button" aria-label="Skill 3">
+                    <span class="mobile-direct-action-icon"><i class="fa-solid fa-bolt"></i></span>
+                    <span class="mobile-direct-action-label"></span>
+                </button>
+            </div>
+            <div id="mobile-direct-status" class="mobile-direct-status">조종 대기</div>
+        </div>
+    </div>
+    <!-- Portrait Mode Overlay (blocks game in portrait) -->
+    <div id="portrait-overlay" class="portrait-overlay">
+        <div class="portrait-content">
+            <i class="fa-solid fa-mobile-screen-button portrait-icon"></i>
+            <h2 data-lang="rotate_title">PLEASE ROTATE</h2>
+            <p data-lang="rotate_desc">This game is playable only in landscape mode.</p>
+            <div class="rotate-hint">
+                <i class="fa-solid fa-rotate"></i>
+            </div>
+        </div>
+    </div>
+
+    <script src="src/data/data.js?v=20260225d4"></script>
+    <script src="src/core/team_colors.js?v=20260224tc4"></script>
+    <script src="src/core/feature_flags.js?v=20260225ff4"></script>
+    <script src="src/render/unit-params.js?v=20260223up2"></script>
+    <!-- [ADD] IngameRenderer for unit wreckage rendering -->
+    <script src="unit-editor/js/ingame-renderer.js"></script>
+    <script src="src/entities/unit-render-utils.js?v=20260223ur5"></script>
+    <script src="src/entities/classes.js?v=20260225sup4"></script>
+    <script src="src/combat/projectile-designs.js?v=20260223pd2"></script>
+    <!-- VFX (explosions / particles) -->
+    <script src="src/vfx/explosion.js?v=20260223ex1"></script>
+    <script src="src/entities/buildings.js?v=20260224b4"></script>
+    <script src="src/combat/projectiles.js?v=20260225p4"></script>
+    <script src="src/ui/chat/chat_panel.js?v=20260223cp4"></script>
+    <script src="src/ui/unit_profile_icons.js?v=20260224upi2"></script>
+    <script src="src/ui/ui.js?v=20260223u14"></script>
+    <script src="src/maps/core/registry.js"></script>
+    <script src="src/maps/core/adapter.js"></script>
+    <script src="src/maps/maps/skirmish/definition.js"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_kabul/definition.js?v=20260224mk2"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_kabul/render_base.js?v=20260224mk2"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_kabul/render_decor.js?v=20260224mk2"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_coast/definition.js?v=20260225mc1"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_coast/render_base.js?v=20260225mc1"></script>
+    <script src="src/maps/maps/skirmish/maps/skirmish_coast/render_decor.js?v=20260225mc1"></script>
+    <script src="src/maps/maps.js?v=20260224m9"></script>
+    <script src="src/ai/ai_core.js"></script>
+    <script src="src/ai/ai_config.js"></script>
+    <script src="src/ai/spawn/spawn_caps.js"></script>
+    <script src="src/ai/spawn/spawn_selector.js?v=20260223ss2"></script>
+    <script src="src/ai/special/special_state.js"></script>
+    <script src="src/ai/special/cluster.js"></script>
+    <script src="src/ai/special/special_logic.js"></script>
+    <script src="src/ai/tactics/orders.js"></script>
+    <script src="src/ai/tactics/wave_controller.js"></script>
+    <script src="src/audio/audio.js?v=20260224a15"></script>
+    <script src="src/i18n/lang.js?v=20260223l6"></script>
+    <script src="src/core/version.js?v=20260223v3"></script>
+    <script src="src/units/drone/drone-behavior.js?v=20260224d4"></script>
+    <script src="src/core/spatial.js?v=20260223sp2"></script>
+    <script src="src/core/camera.js?v=20260224c1"></script>
+    <script src="src/game/corpse.js?v=20260225c2"></script>
+    <script src="src/render/unit-v2/registry.js"></script>
+    <script src="src/render/unit-v2/common/scale.js"></script>
+    <script src="src/render/unit-v2/common/palettes.js?v=20260224p3"></script>
+    <script src="src/render/unit-v2/common/math.js"></script>
+    <script src="src/render/unit-v2/units/humvee/state.js"></script>
+    <script src="src/render/unit-v2/units/humvee/weapons.js"></script>
+    <script src="src/render/unit-v2/units/humvee/render_body.js"></script>
+    <script src="src/render/unit-v2/units/humvee/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/humvee/fx.js"></script>
+    <script src="src/render/unit-v2/units/humvee/index.js?v=20260224hv2"></script>
+    <script src="src/render/unit-v2/units/apc/state.js"></script>
+    <script src="src/render/unit-v2/units/apc/weapons.js?v=20260224apw1"></script>
+    <script src="src/render/unit-v2/units/apc/render_body.js"></script>
+    <script src="src/render/unit-v2/units/apc/render_parts.js?v=20260224apr1"></script>
+    <script src="src/render/unit-v2/units/apc/fx.js"></script>
+    <script src="src/render/unit-v2/units/apc/index.js?v=20260224ap2"></script>
+    <script src="src/render/unit-v2/units/aa_tank/state.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/weapons.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/render_body.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/render_parts.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/fx.js?v=20260222aa1"></script>
+    <script src="src/render/unit-v2/units/aa_tank/index.js?v=20260224aa3"></script>
+    <script src="src/render/unit-v2/units/mbt/state.js?v=20260224mb2"></script>
+    <script src="src/render/unit-v2/units/mbt/weapons.js"></script>
+    <script src="src/render/unit-v2/units/mbt/render_body.js"></script>
+    <script src="src/render/unit-v2/units/mbt/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/mbt/fx.js"></script>
+    <script src="src/render/unit-v2/units/mbt/index.js?v=20260224mb3"></script>
+    <script src="src/render/unit-v2/units/spg/state.js"></script>
+    <script src="src/render/unit-v2/units/spg/weapons.js?v=20260224sp3"></script>
+    <script src="src/render/unit-v2/units/spg/render_body.js"></script>
+    <script src="src/render/unit-v2/units/spg/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/spg/fx.js"></script>
+    <script src="src/render/unit-v2/units/spg/index.js?v=20260224sp4"></script>
+    <script src="src/render/unit-v2/units/infantry/state.js?v=20260225is2"></script>
+    <script src="src/render/unit-v2/units/infantry/weapons.js"></script>
+    <script src="src/render/unit-v2/units/infantry/render_body.js"></script>
+    <script src="src/render/unit-v2/units/infantry/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/infantry/fx.js"></script>
+    <script src="src/render/unit-v2/units/infantry/index.js?v=20260224inf2"></script>
+    <script src="src/render/unit-v2/units/engineer/state.js"></script>
+    <script src="src/render/unit-v2/units/engineer/weapons.js"></script>
+    <script src="src/render/unit-v2/units/engineer/render_body.js"></script>
+    <script src="src/render/unit-v2/units/engineer/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/engineer/fx.js"></script>
+    <script src="src/render/unit-v2/units/engineer/index.js?v=20260224eng2"></script>
+    <script src="src/render/unit-v2/units/drone_operator/state.js"></script>
+    <script src="src/render/unit-v2/units/drone_operator/weapons.js"></script>
+    <script src="src/render/unit-v2/units/drone_operator/render_body.js"></script>
+    <script src="src/render/unit-v2/units/drone_operator/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/drone_operator/fx.js"></script>
+    <script src="src/render/unit-v2/units/drone_operator/index.js?v=20260224dop2"></script>
+    <script src="src/render/unit-v2/units/sniper/state.js"></script>
+    <script src="src/render/unit-v2/units/sniper/weapons.js"></script>
+    <script src="src/render/unit-v2/units/sniper/render_body.js"></script>
+    <script src="src/render/unit-v2/units/sniper/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/sniper/fx.js"></script>
+    <script src="src/render/unit-v2/units/sniper/index.js?v=20260224sn2"></script>
+    <script src="src/render/unit-v2/units/special_ops/state.js"></script>
+    <script src="src/render/unit-v2/units/special_ops/weapons.js"></script>
+    <script src="src/render/unit-v2/units/special_ops/render_body.js"></script>
+    <script src="src/render/unit-v2/units/special_ops/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/special_ops/fx.js"></script>
+    <script src="src/render/unit-v2/units/special_ops/index.js?v=20260224so2"></script>
+    <!-- Apache V2 Renderer -->
+    <script src="src/render/unit-v2/units/apache/state.js?v=20260224ap1"></script>
+    <script src="src/render/unit-v2/units/apache/weapons.js?v=20260224ap2"></script>
+    <script src="src/render/unit-v2/units/apache/render_body.js"></script>
+    <script src="src/render/unit-v2/units/apache/fx.js"></script>
+    <script src="src/render/unit-v2/units/apache/index.js?v=20260224ap3"></script>
+    <!-- Fighter V2 Renderer -->
+    <script src="src/render/unit-v2/units/fighter/state.js"></script>
+    <script src="src/render/unit-v2/units/fighter/weapons.js"></script>
+    <script src="src/render/unit-v2/units/fighter/render_body.js"></script>
+    <script src="src/render/unit-v2/units/fighter/render_parts.js"></script>
+    <script src="src/render/unit-v2/units/fighter/fx.js"></script>
+    <script src="src/render/unit-v2/units/fighter/index.js"></script>
+    <!-- Bomber V2 Renderer -->
+    <script src="src/render/unit-v2/units/bomber/state.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/render_body.js?v=20260224bm2"></script>
+    <script src="src/render/unit-v2/units/bomber/render_parts.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/fx.js?v=20260224bm1"></script>
+    <script src="src/render/unit-v2/units/bomber/index.js?v=20260224bm2"></script>
+    <!-- Chinook V2 Renderer -->
+    <script src="src/render/unit-v2/units/chinook/state.js?v=20260224ch2"></script>
+    <script src="src/render/unit-v2/units/chinook/weapons.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/render_body.js?v=20260224ch2"></script>
+    <script src="src/render/unit-v2/units/chinook/render_parts.js?v=20260224ch6"></script>
+    <script src="src/render/unit-v2/units/chinook/fx.js?v=20260224ch1"></script>
+    <script src="src/render/unit-v2/units/chinook/index.js?v=20260224ch3"></script>
+    <!-- Blackhawk V2 Renderer -->
+    <script src="src/render/unit-v2/units/blackhawk/state.js?v=20260224uh60a6"></script>
+    <script src="src/render/unit-v2/units/blackhawk/weapons.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/render_body.js?v=20260224uh60a7"></script>
+    <script src="src/render/unit-v2/units/blackhawk/render_parts.js?v=20260224uh60a8"></script>
+    <script src="src/render/unit-v2/units/blackhawk/fx.js?v=20260221uh60a5"></script>
+    <script src="src/render/unit-v2/units/blackhawk/index.js?v=20260224uh60a7"></script>
+    <script src="src/render/unit-v2/index.js"></script>
+    <script src="src/game/battle_economy.js"></script>
+    <script src="src/game/events/landing/landing_intro_types.js"></script>
+    <script src="src/game/events/landing/landing_craft_entity.js"></script>
+    <script src="src/game/events/landing/landing_craft_renderer.js"></script>
+    <script src="src/game/events/landing/landing_intro_controller.js"></script>
+    <script src="src/game/events/landing/index.js"></script>
+    <script src="src/game/game.js?v=20260225g44"></script>
+    <script src="src/units/drone/drone-manager.js?v=20260224dm2"></script>
+    <script src="src/units/drone/drone-commands.js?v=20260224dc2"></script>
+    <script src="src/units/drone/drone-control.js"></script>
+    <script src="src/game/runtime_loop.js?v=20260224r10"></script>
+    <script src="src/game/app_persistence.js?v=20260224ap8"></script>
+    <script src="src/game/app_runtime.js"></script>
+    <script src="src/game/input.js?v=20260225dc41"></script>
+    <script src="src/game/camera_controls.js"></script>
+    <script src="src/game/victory.js?v=20260224v7"></script>
+    <script src="src/game/map_setup.js?v=20260223ms2"></script>
+    <script src="src/game/news.js"></script>
+    <!-- Patch Modules (load order fixed) -->
+    <!-- /Patch Modules -->
+    <script src="src/ui/hud.js?v=20260224h27"></script>
+    <script src="src/game/unit_commands.js?v=20260224uc32"></script>
+    <script src="src/render/news/news_intro.js"></script>
+    <script src="src/render/news/news_overlay.js"></script>
+
+    <!-- Cinematic System -->
+    <script src="src/ui/cinematic.js?v=20260224c7"></script>
+    <script>
+        // 시작 시 사용자 제스처로 오디오를 먼저 unlock한 뒤 시네마틱 부팅
+        (() => {
+            // Temporary hot mode: launch battle immediately on app boot.
+            // Set to false to restore cinematic -> map-select flow.
+            const DIRECT_BOOT_TO_BATTLE = false;
+            let bootStarted = false;
+            let cinematicLoaderStarted = false;
+            let gatePrepared = false;
+            let gateConsumed = false;
+
+            const requestFlowTransition = (phase, options = null) => {
+                const opts = (options && typeof options === 'object') ? options : {};
+                const source = String(opts.source || 'boot.request').trim() || 'boot.request';
+                const allowReenter = opts.allowReenter === true;
+                if (typeof window !== 'undefined' && typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function') {
+                    window.__RECLAIM_TRANSITION_FLOW__(phase, { source, allowReenter });
+                    return true;
+                }
+                if (typeof window !== 'undefined') {
+                    window.__RECLAIM_PENDING_FLOW_REQUEST__ = {
+                        phase: String(phase || '').trim(),
+                        source,
+                        allowReenter
+                    };
+                }
+                return false;
+            };
+            if (typeof window !== 'undefined') {
+                window.__RECLAIM_REQUEST_FLOW_TRANSITION__ = requestFlowTransition;
+            }
+
+            const showMapSelect = () => {
+                requestFlowTransition('map_select', {
+                    source: 'boot.showMapSelect'
+                });
+            };
+
+            const startBattleDirectly = () => {
+                requestFlowTransition('battle', {
+                    source: 'boot.directStart'
+                });
+
+                const tryStart = () => {
+                    if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') return false;
+                    if (!game.canvas || !game.ctx) return false;
+                    try {
+                        game.startGame('skirmish_kabul');
+                        return true;
+                    } catch (err) {
+                        console.error('[Boot] direct battle start failed:', err);
+                        return false;
+                    }
+                };
+
+                if (tryStart()) return;
+                let attempts = 0;
+                const timer = setInterval(() => {
+                    attempts += 1;
+                    if (tryStart() || attempts >= 600) {
+                        clearInterval(timer);
+                    }
+                }, 120);
+            };
+
+            const ensureCinematicApi = (done) => {
+                if (typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function') {
+                    done(true);
+                    return;
+                }
+                if (cinematicLoaderStarted) {
+                    setTimeout(() => {
+                        done(typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function');
+                    }, 300);
+                    return;
+                }
+                cinematicLoaderStarted = true;
+
+                const candidates = [
+                    'src/ui/cinematic.js?v=20260224c7',
+                    'src/ui/cinematic.js'
+                ];
+
+                const loadNext = (idx) => {
+                    if (idx >= candidates.length) {
+                        done(typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function');
+                        return;
+                    }
+
+                    const s = document.createElement('script');
+                    s.src = candidates[idx];
+                    s.async = false;
+                    s.onload = () => {
+                        if (typeof Cinematic !== 'undefined' && typeof Cinematic.play === 'function') {
+                            done(true);
+                        } else {
+                            loadNext(idx + 1);
+                        }
+                    };
+                    s.onerror = () => loadNext(idx + 1);
+                    document.head.appendChild(s);
+                };
+
+                loadNext(0);
+            };
+
+            const openFactionSelection = (() => {
+                let pending = null;
+
+                return (options = null) => {
+                    if (pending) return pending;
+                    const force = !!(options && options.force === true);
+                    const currentPhase = (typeof window !== 'undefined')
+                        ? String(window.__RECLAIM_FLOW_PHASE__ || 'map_select')
+                        : 'map_select';
+                    const canOpen = currentPhase === 'map_select' || currentPhase === 'faction_pick';
+                    if (!canOpen) return Promise.resolve(true);
+
+                    const api = window.TeamColors;
+                    if (!api || typeof api.ensure !== 'function') {
+                        return Promise.resolve(true);
+                    }
+
+                    if (typeof window !== 'undefined' && window.__RECLAIM_BLOCK_FACTION_POPUP__ === true) {
+                        return Promise.resolve(true);
+                    }
+
+                    api.ensure();
+                    if (!force && typeof api.hasSelection === 'function' && api.hasSelection()) {
+                        return Promise.resolve(true);
+                    }
+
+                    pending = new Promise((resolve) => {
+                        const screen = document.getElementById('team-color-screen');
+                        const usaBtn = document.getElementById('faction-btn-usa');
+                        const russiaBtn = document.getElementById('faction-btn-russia');
+                        const confirmBtn = document.getElementById('faction-confirm-btn');
+
+                        if (!screen || !confirmBtn || !usaBtn || !russiaBtn) {
+                            if (typeof api.setFaction === 'function') {
+                                api.setFaction('usa', true);
+                            }
+                            pending = null;
+                            resolve(true);
+                            return;
+                        }
+
+                        const factions = (typeof api.getFactions === 'function') ? api.getFactions() : [];
+                        const fMap = {};
+                        factions.forEach((f) => {
+                            if (f && f.id) fMap[f.id] = f;
+                        });
+                        const baseState = (typeof api.getState === 'function') ? api.getState() : null;
+                        let selectedFaction = (baseState && baseState.faction && fMap[baseState.faction]) ? baseState.faction : 'usa';
+
+                        const render = () => {
+                            if (typeof api.setFaction === 'function') api.setFaction(selectedFaction, false);
+                            if (typeof ui !== 'undefined' && ui && typeof ui.refreshUnitButtonIconTheme === 'function') {
+                                ui.refreshUnitButtonIconTheme(true);
+                            }
+
+                            usaBtn.style.borderColor = (selectedFaction === 'usa') ? '#b89b6e' : '#334155';
+                            russiaBtn.style.borderColor = (selectedFaction === 'russia') ? '#a3e635' : '#334155';
+                        };
+
+                        usaBtn.onclick = () => {
+                            selectedFaction = 'usa';
+                            render();
+                        };
+                        russiaBtn.onclick = () => {
+                            selectedFaction = 'russia';
+                            render();
+                        };
+
+                        confirmBtn.onclick = () => {
+                            if (typeof api.setFaction === 'function') {
+                                api.setFaction(selectedFaction, true);
+                            }
+                            if (typeof ui !== 'undefined' && ui && typeof ui.refreshUnitButtonIconTheme === 'function') {
+                                ui.refreshUnitButtonIconTheme(true);
+                            }
+                            pending = null;
+                            resolve(true);
+                        };
+
+                        render();
+                        requestFlowTransition('faction_pick', {
+                            source: 'boot.openFactionSelection'
+                        });
+                    });
+
+                    return pending;
+                };
+            })();
+
+            window.__RECLAIM_SHOW_FACTION_SELECTION__ = (options = null) => openFactionSelection(options);
+
+            const showFactionThenMapSelect = (options = null) => {
+                openFactionSelection(options)
+                    .catch((err) => {
+                        console.warn('[Boot] faction selection failed:', err);
+                    })
+                    .finally(() => {
+                        showMapSelect();
+                    });
+            };
+
+            const runBoot = async () => {
+                if (bootStarted) return;
+                bootStarted = true;
+                console.log('[Boot] cinematic bootstrap start');
+
+                const loadingScreen = document.getElementById('loading-screen');
+                if (loadingScreen) loadingScreen.classList.add('hidden');
+
+                if (DIRECT_BOOT_TO_BATTLE) {
+                    startBattleDirectly();
+                    return;
+                }
+
+                setTimeout(() => {
+                    ensureCinematicApi((ok) => {
+                        if (!ok) {
+                            console.error('[Boot] Cinematic API missing after script load attempts');
+                            console.warn('[Boot] Cinematic API missing, fallback map-select');
+                            showMapSelect();
+                            return;
+                        }
+
+                        try {
+                            sessionStorage.removeItem('reclaim_cinematic_watched');
+                        } catch (err) {
+                            console.warn('[Boot] sessionStorage remove failed:', err);
+                        }
+
+                        if (typeof Cinematic.reset === 'function') {
+                            try {
+                                Cinematic.reset();
+                            } catch (err) {
+                                console.warn('[Boot] Cinematic.reset failed:', err);
+                            }
+                        }
+
+                        try {
+                            console.log('[Boot] Cinematic.play(force=true) invoke');
+                            Cinematic.play(() => {
+                                console.log('[Cinematic] Playback complete');
+                                showMapSelect();
+                            }, { force: true });
+                        } catch (err) {
+                            console.error('[Cinematic] Play failed:', err);
+                            showMapSelect();
+                        }
+                    });
+                }, 120);
+            };
+
+            const tryLockLandscape = async () => {
+                if (!screen || !screen.orientation || typeof screen.orientation.lock !== 'function') return;
+                try {
+                    await screen.orientation.lock('landscape');
+                } catch (_) { }
+            };
+
+            const tryEnterFullscreen = async () => {
+                const docEl = document.documentElement;
+                if (!docEl) return false;
+                const request = docEl.requestFullscreen
+                    || docEl.webkitRequestFullscreen
+                    || docEl.msRequestFullscreen;
+                if (typeof request !== 'function') return false;
+                try {
+                    const result = request.call(docEl);
+                    if (result && typeof result.then === 'function') {
+                        await result;
+                    }
+                    await tryLockLandscape();
+                    return true;
+                } catch (err) {
+                    console.warn('[Boot] Fullscreen request denied or failed:', err);
+                    return false;
+                }
+            };
+
+            const warmupAudioByGesture = async () => {
+                if (typeof AudioSystem === 'undefined') return;
+                if (typeof AudioSystem.init === 'function') AudioSystem.init();
+                if (AudioSystem.ctx && AudioSystem.ctx.state === 'suspended' && typeof AudioSystem.ctx.resume === 'function') {
+                    try {
+                        await AudioSystem.ctx.resume();
+                    } catch (err) {
+                        console.warn('[Boot] Audio context resume failed:', err);
+                    }
+                }
+            };
+
+            const prepareBootGate = () => {
+                if (window.__RECLAIM_FORCE_BLOCK_BOOT__ === true) {
+                    const gate = document.getElementById('boot-gate');
+                    if (gate) gate.classList.add('hidden');
+                    return;
+                }
+                if (DIRECT_BOOT_TO_BATTLE) {
+                    const gate = document.getElementById('boot-gate');
+                    if (gate) gate.classList.add('hidden');
+                    runBoot();
+                    return;
+                }
+                if (gatePrepared) return;
+                gatePrepared = true;
+
+                const gate = document.getElementById('boot-gate');
+                const playBtn = document.getElementById('boot-play-btn');
+                if (!gate || !playBtn) {
+                    runBoot();
+                    return;
+                }
+
+                const startBoot = async () => {
+                    if (window.__RECLAIM_FORCE_BLOCK_BOOT__ === true) return;
+                    if (gateConsumed) return;
+                    gateConsumed = true;
+                    playBtn.disabled = true;
+
+                    await tryEnterFullscreen();
+                    await warmupAudioByGesture();
+
+                    gate.classList.add('hidden');
+                    runBoot();
+                };
+
+                playBtn.addEventListener('click', () => {
+                    startBoot();
+                }, { once: true });
+
+                gate.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        startBoot();
+                    }
+                });
+            };
+
+            if (document.readyState === 'loading') {
+                window.addEventListener('DOMContentLoaded', prepareBootGate, { once: true });
+            } else {
+                prepareBootGate();
+            }
+
+            // 비정상 상황에서 게이트 DOM이 없으면 자동 부팅 fallback
+            window.addEventListener('load', () => {
+                if (!gatePrepared) prepareBootGate();
+            }, { once: true });
+        })();
+    </script>
+    <script>
+        (() => {
+            const PRE_BATTLE_FLOW = Object.freeze({
+                BOOT: 'boot',
+                MAP_SELECT: 'map_select',
+                FACTION_PICK: 'faction_pick',
+                MAP_INTRO: 'map_intro',
+                BATTLE: 'battle'
+            });
+            const MAP_FLOW_CONFIG_BY_MAP = Object.freeze({
+                skirmish_kabul: Object.freeze({
+                    mapId: 'skirmish_kabul',
+                    requireFaction: true,
+                    introVideo: '',
+                    introBgm: ''
+                }),
+                skirmish_coast: Object.freeze({
+                    mapId: 'skirmish_coast',
+                    requireFaction: true,
+                    introVideo: '',
+                    introBgm: ''
+                })
+            });
+            const DEFAULT_MAP_FLOW_CONFIG = Object.freeze({
+                mapId: '',
+                requireFaction: true,
+                introVideo: '',
+                introBgm: ''
+            });
+            const FLOW_TRACE_LIMIT = 120;
+
+            let mapIntroPlaying = false;
+            let mapIntroMapId = '';
+            let flowPhase = PRE_BATTLE_FLOW.BOOT;
+            let flowPrevPhase = '';
+            let flowToken = 0;
+            let duplicateTransitionCount = 0;
+            const flowTrace = [];
+            const FLOW_VALUES = new Set(Object.values(PRE_BATTLE_FLOW));
+
+            const toSource = (raw, fallback = 'flow.transition') => {
+                const source = String(raw || fallback).trim();
+                return source || fallback;
+            };
+            const setHidden = (el, hidden) => {
+                if (!el) return;
+                if (hidden) el.classList.add('hidden');
+                else el.classList.remove('hidden');
+            };
+            const applyPhaseUi = (phase) => {
+                const mapSelectScreen = document.getElementById('map-select-screen');
+                const factionScreen = document.getElementById('team-color-screen');
+                const introModal = document.getElementById('map-intro-modal');
+
+                if (phase === PRE_BATTLE_FLOW.BOOT) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, true);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.MAP_SELECT) {
+                    setHidden(mapSelectScreen, false);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, true);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.FACTION_PICK) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, false);
+                    setHidden(introModal, true);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.MAP_INTRO) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, false);
+                    return;
+                }
+                if (phase === PRE_BATTLE_FLOW.BATTLE) {
+                    setHidden(mapSelectScreen, true);
+                    setHidden(factionScreen, true);
+                    setHidden(introModal, true);
+                }
+            };
+            const pushFlowTrace = (kind, prev, next, source, detail = null) => {
+                const entry = {
+                    at: new Date().toISOString(),
+                    kind: String(kind || '').trim() || 'transition',
+                    prev: String(prev || '').trim(),
+                    next: String(next || '').trim(),
+                    source: toSource(source),
+                    token: flowToken
+                };
+                if (detail && typeof detail === 'object') {
+                    Object.assign(entry, detail);
+                }
+                flowTrace.push(entry);
+                if (flowTrace.length > FLOW_TRACE_LIMIT) flowTrace.shift();
+            };
+            const syncFlowGlobals = (source = 'flow.sync') => {
+                if (typeof window === 'undefined') return;
+                window.__RECLAIM_FLOW_PHASE__ = flowPhase;
+                window.__RECLAIM_FLOW_PREV_PHASE__ = flowPrevPhase;
+                window.__RECLAIM_FLOW_LAST_SOURCE__ = toSource(source, 'flow.sync');
+                window.__RECLAIM_FLOW_TRACE__ = flowTrace.slice();
+                window.__RECLAIM_FLOW_DUPLICATE_COUNT__ = duplicateTransitionCount;
+                window.__RECLAIM_FLOW_AVAILABLE_PHASES__ = Array.from(FLOW_VALUES);
+            };
+            const transitionTo = (phase, options = null) => {
+                const opts = (options && typeof options === 'object') ? options : {};
+                const source = toSource(opts.source);
+                const allowReenter = opts.allowReenter === true;
+                const nextPhase = String(phase || '').trim();
+
+                if (!FLOW_VALUES.has(nextPhase)) {
+                    pushFlowTrace('invalid', flowPhase, nextPhase || '(empty)', source);
+                    syncFlowGlobals(source);
+                    return flowPhase;
+                }
+
+                if (flowPhase === nextPhase && !allowReenter) {
+                    duplicateTransitionCount += 1;
+                    pushFlowTrace('duplicate', flowPhase, nextPhase, source, {
+                        duplicateCount: duplicateTransitionCount
+                    });
+                    syncFlowGlobals(source);
+                    return flowPhase;
+                }
+
+                const prevPhase = flowPhase;
+                flowPrevPhase = prevPhase;
+                flowPhase = nextPhase;
+                applyPhaseUi(nextPhase);
+                if (nextPhase === PRE_BATTLE_FLOW.MAP_SELECT) {
+                    if (typeof game !== 'undefined' && game && typeof game.updateMapSelectLocks === 'function') {
+                        game.updateMapSelectLocks();
+                    }
+                    if (typeof game !== 'undefined' && game && typeof game.playMapSelectBgm === 'function') {
+                        try { game.playMapSelectBgm(); } catch (_) { }
+                    }
+                }
+                pushFlowTrace('transition', prevPhase, nextPhase, source);
+                syncFlowGlobals(source);
+                return flowPhase;
+            };
+            const resolveMapFlowConfig = (mapId) => {
+                const key = String(mapId || '').trim();
+                const base = MAP_FLOW_CONFIG_BY_MAP[key];
+                if (!base) {
+                    return {
+                        ...DEFAULT_MAP_FLOW_CONFIG,
+                        mapId: key
+                    };
+                }
+                return {
+                    ...DEFAULT_MAP_FLOW_CONFIG,
+                    ...base,
+                    mapId: key || String(base.mapId || '').trim()
+                };
+            };
+
+            const stopMapSelectBgm = () => {
+                if (typeof game !== 'undefined' && game && typeof game.stopMapSelectBgm === 'function') {
+                    try { game.stopMapSelectBgm(); } catch (_) { }
+                }
+            };
+
+            const startMapGame = (mapId) => {
+                const target = String(mapId || '').trim();
+                if (!target) {
+                    if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = false;
+                    if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
+                    transitionTo(PRE_BATTLE_FLOW.MAP_SELECT, {
+                        source: 'flow.startMapGame.invalidTarget',
+                        allowReenter: true
+                    });
+                    return;
+                }
+                if (typeof game === 'undefined' || !game || typeof game.startGame !== 'function') {
+                    if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = false;
+                    if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
+                    transitionTo(PRE_BATTLE_FLOW.MAP_SELECT, {
+                        source: 'flow.startMapGame.gameUnavailable',
+                        allowReenter: true
+                    });
+                    return;
+                }
+                transitionTo(PRE_BATTLE_FLOW.BATTLE, { source: 'flow.startMapGame.start' });
+                game.startGame(target);
+            };
+
+            const playMapIntroAndStart = (mapId, flowConfig = null, requestToken = flowToken) => {
+                if (requestToken !== flowToken) return;
+                const target = String(mapId || '').trim();
+                const mapFlow = flowConfig || resolveMapFlowConfig(target);
+                const videoPath = String(mapFlow.introVideo || '').trim();
+                const bgmPath = String(mapFlow.introBgm || '').trim();
+                if (!target || !videoPath) {
+                    startMapGame(target);
+                    return;
+                }
+                if (mapIntroPlaying) return;
+
+                const video = document.getElementById('map-intro-video');
+                const skipBtn = document.getElementById('map-intro-skip-btn');
+                if (!video || !skipBtn) {
+                    startMapGame(target);
+                    return;
+                }
+
+                transitionTo(PRE_BATTLE_FLOW.MAP_INTRO, { source: 'flow.playMapIntroAndStart' });
+                mapIntroPlaying = true;
+                mapIntroMapId = target;
+                stopMapSelectBgm();
+                let introAudio = null;
+                let finalized = false;
+
+                const stopIntroAudio = () => {
+                    if (!introAudio) return;
+                    try {
+                        introAudio.pause();
+                        introAudio.currentTime = 0;
+                    } catch (_) { }
+                    introAudio.onended = null;
+                    introAudio.onerror = null;
+                    introAudio = null;
+                };
+
+                const cleanup = () => {
+                    video.onended = null;
+                    video.onerror = null;
+                    skipBtn.onclick = null;
+                    stopIntroAudio();
+                    try {
+                        video.pause();
+                        video.currentTime = 0;
+                    } catch (_) { }
+                    try {
+                        video.removeAttribute('src');
+                        video.load();
+                    } catch (_) { }
+                    mapIntroPlaying = false;
+                };
+
+                const finish = () => {
+                    if (finalized) return;
+                    finalized = true;
+                    if (requestToken !== flowToken) {
+                        mapIntroMapId = '';
+                        cleanup();
+                        return;
+                    }
+                    const nextMapId = mapIntroMapId;
+                    mapIntroMapId = '';
+                    cleanup();
+                    startMapGame(nextMapId);
+                };
+
+                skipBtn.onclick = () => finish();
+                video.onended = () => finish();
+                video.onerror = () => {
+                    console.warn('[MapIntro] video playback failed. Fallback to start game.');
+                    finish();
+                };
+
+                try {
+                    video.pause();
+                    video.currentTime = 0;
+                    video.src = videoPath;
+                    // Keep map-intro video audio audible even when external BGM is playing.
+                    video.defaultMuted = false;
+                    video.muted = false;
+                    video.volume = 1;
+                    video.setAttribute('playsinline', '');
+                    video.load();
+                } catch (err) {
+                    console.warn('[MapIntro] video init failed:', err);
+                    finish();
+                    return;
+                }
+
+                const playPromise = video.play();
+                if (playPromise && typeof playPromise.catch === 'function') {
+                    playPromise.catch((err) => {
+                        console.warn('[MapIntro] autoplay blocked or failed:', err);
+                        finish();
+                    });
+                }
+                if (bgmPath) {
+                    try {
+                        introAudio = new Audio(bgmPath);
+                        introAudio.preload = 'auto';
+                        introAudio.loop = false;
+                        introAudio.volume = 1;
+                        const audioPlayPromise = introAudio.play();
+                        if (audioPlayPromise && typeof audioPlayPromise.catch === 'function') {
+                            audioPlayPromise.catch((err) => {
+                                console.warn('[MapIntro] BGM autoplay blocked or failed:', err);
+                            });
+                        }
+                    } catch (err) {
+                        console.warn('[MapIntro] BGM init failed:', err);
+                    }
+                }
+            };
+
+            const playMapFromSelect = (mapId) => {
+                const targetMapId = String(mapId || '').trim();
+                if (!targetMapId) return;
+                const mapFlow = resolveMapFlowConfig(targetMapId);
+                if (flowPhase !== PRE_BATTLE_FLOW.MAP_SELECT) return;
+                if (typeof window !== 'undefined' && window.__RECLAIM_MAP_START_LOCK__ === true) return;
+                if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = true;
+                const token = ++flowToken;
+                transitionTo(PRE_BATTLE_FLOW.FACTION_PICK, { source: 'flow.playMapFromSelect' });
+
+                const start = () => {
+                    if (token !== flowToken) return;
+                    if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = true;
+                    playMapIntroAndStart(targetMapId, mapFlow, token);
+                };
+                if (mapFlow.requireFaction !== true) {
+                    start();
+                    return;
+                }
+                const openFaction = window.__RECLAIM_SHOW_FACTION_SELECTION__;
+                if (typeof openFaction !== 'function') {
+                    start();
+                    return;
+                }
+
+                Promise.resolve(openFaction({ force: true }))
+                    .catch((err) => {
+                        console.warn('[MapSelect] faction selection failed before map start:', err);
+                    })
+                    .finally(() => {
+                        start();
+                    });
+            };
+
+            const playKabulMapFromSelect = () => {
+                playMapFromSelect('skirmish_kabul');
+            };
+
+            const bindMapSelectHandlers = () => {
+                const cards = document.querySelectorAll('.map-card[data-map]');
+                cards.forEach((card) => {
+                    if (!card) return;
+                    if (card.dataset.boundMapFlow === '1') return;
+                    card.dataset.boundMapFlow = '1';
+                    card.addEventListener('click', (event) => {
+                        event.preventDefault();
+                        if (card.classList.contains('locked')) return;
+                        if (card.getAttribute('aria-disabled') === 'true') return;
+                        if ('disabled' in card && card.disabled) return;
+                        const mapId = String(card.dataset.map || '').trim();
+                        playMapFromSelect(mapId);
+                    });
+                });
+            };
+            const runMapContractChecks = () => {
+                const warnings = [];
+                const cards = Array.from(document.querySelectorAll('.map-card[data-map]'));
+                const hasScript = (suffix) => {
+                    const scripts = Array.from(document.scripts || []);
+                    return scripts.some((s) => String(s && s.src ? s.src : '').includes(suffix));
+                };
+                const mapIds = [];
+                if (cards.length === 0) {
+                    warnings.push('[MapContract] no map-card[data-map] entries found');
+                }
+
+                cards.forEach((card, index) => {
+                    const mapId = String(card && card.dataset ? card.dataset.map || '' : '').trim();
+                    if (!mapId) {
+                        warnings.push(`[MapContract] card[${index}] missing data-map`);
+                        return;
+                    }
+                    mapIds.push(mapId);
+                    if (!MAP_FLOW_CONFIG_BY_MAP[mapId]) {
+                        warnings.push(`[MapContract] ${mapId}: MAP_FLOW_CONFIG_BY_MAP entry missing`);
+                    }
+                    if (!hasScript(`/${mapId}/definition.js`)) {
+                        warnings.push(`[MapContract] ${mapId}: definition.js script missing`);
+                    }
+                    if (!hasScript(`/${mapId}/render_base.js`)) {
+                        warnings.push(`[MapContract] ${mapId}: render_base.js script missing`);
+                    }
+                    if (!hasScript(`/${mapId}/render_decor.js`)) {
+                        warnings.push(`[MapContract] ${mapId}: render_decor.js script missing`);
+                    }
+                    const def = (window.MapRegistry && typeof window.MapRegistry.getMapDefinition === 'function')
+                        ? window.MapRegistry.getMapDefinition(mapId)
+                        : null;
+                    if (!def) {
+                        warnings.push(`[MapContract] ${mapId}: MapRegistry definition missing`);
+                    }
+                    const baseHook = (window.MapRegistry && typeof window.MapRegistry.getMapHook === 'function')
+                        ? window.MapRegistry.getMapHook(mapId, 'renderBase')
+                        : null;
+                    const decorHook = (window.MapRegistry && typeof window.MapRegistry.getMapHook === 'function')
+                        ? window.MapRegistry.getMapHook(mapId, 'renderDecor')
+                        : null;
+                    if (typeof baseHook !== 'function') {
+                        warnings.push(`[MapContract] ${mapId}: renderBase hook missing`);
+                    }
+                    if (typeof decorHook !== 'function') {
+                        warnings.push(`[MapContract] ${mapId}: renderDecor hook missing`);
+                    }
+                    const flow = resolveMapFlowConfig(mapId);
+                    // introVideo/introBgm can be intentionally empty when map intro trailer is disabled.
+                    const preview = card.querySelector('img');
+                    if (!preview || !String(preview.getAttribute('src') || '').trim()) {
+                        warnings.push(`[MapContract] ${mapId}: preview image src missing`);
+                    }
+                });
+
+                const uniqueMapCount = new Set(mapIds).size;
+                if (uniqueMapCount !== mapIds.length) {
+                    warnings.push('[MapContract] duplicate data-map values found in map cards');
+                }
+                if (typeof window !== 'undefined') {
+                    window.__RECLAIM_MAP_CONTRACT_WARNINGS__ = warnings.slice();
+                }
+                if (warnings.length > 0) {
+                    console.warn('[MapContract] map contract warnings detected:', warnings);
+                }
+            };
+            const resetPreBattleFlow = () => {
+                flowToken += 1;
+                mapIntroPlaying = false;
+                mapIntroMapId = '';
+                if (typeof window !== 'undefined') window.__RECLAIM_MAP_START_LOCK__ = false;
+                if (typeof window !== 'undefined') window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
+                const video = document.getElementById('map-intro-video');
+                const skipBtn = document.getElementById('map-intro-skip-btn');
+                if (skipBtn) skipBtn.onclick = null;
+                if (video) {
+                    video.onended = null;
+                    video.onerror = null;
+                    try {
+                        video.pause();
+                        video.currentTime = 0;
+                    } catch (_) { }
+                    try {
+                        video.removeAttribute('src');
+                        video.load();
+                    } catch (_) { }
+                }
+                transitionTo(PRE_BATTLE_FLOW.MAP_SELECT, {
+                    source: 'flow.resetPreBattleFlow',
+                    allowReenter: true
+                });
+            };
+            let preBattleFlowInitialized = false;
+            const initializePreBattleFlow = () => {
+                if (preBattleFlowInitialized) return;
+                preBattleFlowInitialized = true;
+                bindMapSelectHandlers();
+                runMapContractChecks();
+                transitionTo(PRE_BATTLE_FLOW.BOOT, {
+                    source: 'flow.init',
+                    allowReenter: true
+                });
+                const pending = (typeof window !== 'undefined' && window.__RECLAIM_PENDING_FLOW_REQUEST__)
+                    ? window.__RECLAIM_PENDING_FLOW_REQUEST__
+                    : null;
+                if (pending && pending.phase) {
+                    transitionTo(String(pending.phase || '').trim(), {
+                        source: toSource(pending.source, 'flow.pending'),
+                        allowReenter: pending.allowReenter === true
+                    });
+                    window.__RECLAIM_PENDING_FLOW_REQUEST__ = null;
+                }
+            };
+
+            if (document.readyState === 'loading') {
+                window.addEventListener('DOMContentLoaded', initializePreBattleFlow, { once: true });
+            } else {
+                initializePreBattleFlow();
+            }
+
+            window.playMapIntroAndStart = playMapIntroAndStart;
+            window.playMapFromSelect = playMapFromSelect;
+            window.playKabulMapFromSelect = playKabulMapFromSelect;
+            window.__RECLAIM_MAP_FLOW_CONFIG_BY_MAP__ = MAP_FLOW_CONFIG_BY_MAP;
+            window.__RECLAIM_TRANSITION_FLOW__ = transitionTo;
+            window.__RECLAIM_RESET_PRE_BATTLE_FLOW__ = resetPreBattleFlow;
+        })();
+    </script>
+    <script>
+        (() => {
+            if (window.__RECLAIM_DEV_ENTRY__ !== true) return;
+
+            const MAX_DEV_LOGS = 80;
+            const devLogs = [];
+
+            const safeStringify = (value) => {
+                try {
+                    if (typeof value === 'string') return value;
+                    if (value instanceof Error) return value.stack || value.message || String(value);
+                    return JSON.stringify(value);
+                } catch (_) {
+                    try { return String(value); } catch (__){ return '[unserializable]'; }
+                }
+            };
+
+            const pushLog = (level, args) => {
+                const line = (Array.isArray(args) ? args : [args]).map(safeStringify).join(' | ');
+                devLogs.push({
+                    time: new Date().toISOString(),
+                    level: level,
+                    line: line
+                });
+                if (devLogs.length > MAX_DEV_LOGS) devLogs.shift();
+            };
+
+            ['error', 'warn'].forEach((level) => {
+                const original = console[level];
+                if (typeof original !== 'function') return;
+                console[level] = (...args) => {
+                    try { pushLog(level, args); } catch (_) { }
+                    return original.apply(console, args);
+                };
+            });
+
+            window.addEventListener('error', (ev) => {
+                pushLog('window.error', [
+                    ev && ev.message ? ev.message : '(no message)',
+                    ev && ev.filename ? (ev.filename + ':' + ev.lineno + ':' + ev.colno) : '',
+                    ev && ev.error && ev.error.stack ? ev.error.stack : ''
+                ]);
+            });
+
+            window.addEventListener('unhandledrejection', (ev) => {
+                const reason = ev && 'reason' in ev ? ev.reason : '(no reason)';
+                if (reason && reason.stack) {
+                    pushLog('unhandledrejection', [reason.stack]);
+                } else {
+                    pushLog('unhandledrejection', [reason]);
+                }
+            });
+
+            const style = document.createElement('style');
+            style.textContent = `
+                #reclaim-dev-badge {
+                    position: fixed;
+                    top: 10px;
+                    left: 10px;
+                    z-index: 2147483000;
+                    padding: 4px 8px;
+                    border-radius: 999px;
+                    border: 1px solid #ef4444;
+                    background: rgba(127, 29, 29, 0.92);
+                    color: #fff;
+                    font: 700 11px/1 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                    letter-spacing: 0.04em;
+                }
+                #reclaim-dev-dock {
+                    position: fixed;
+                    left: 12px;
+                    right: 12px;
+                    bottom: 12px;
+                    z-index: 2147483000;
+                    background: rgba(10, 14, 24, 0.96);
+                    border: 1px solid #334155;
+                    border-radius: 12px;
+                    padding: 10px;
+                    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+                    display: grid;
+                    gap: 8px;
+                }
+                #reclaim-dev-dock .dev-row {
+                    display: flex;
+                    gap: 6px;
+                    flex-wrap: wrap;
+                }
+                #reclaim-dev-dock button {
+                    border: 1px solid #475569;
+                    background: #111827;
+                    color: #e5e7eb;
+                    border-radius: 8px;
+                    padding: 6px 9px;
+                    font: 600 12px/1.2 ui-sans-serif, -apple-system, Segoe UI, sans-serif;
+                    cursor: pointer;
+                }
+                #reclaim-dev-dock button:hover {
+                    border-color: #60a5fa;
+                }
+                #reclaim-dev-dock textarea {
+                    width: 100%;
+                    min-height: 120px;
+                    resize: vertical;
+                    border: 1px solid #334155;
+                    border-radius: 8px;
+                    background: #020617;
+                    color: #cbd5e1;
+                    padding: 8px;
+                    font: 500 11px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+                }
+                #reclaim-dev-dock.collapsed textarea {
+                    display: none;
+                }
+                @media (max-width: 700px) {
+                    #reclaim-dev-dock {
+                        left: 8px;
+                        right: 8px;
+                        bottom: 8px;
+                        padding: 8px;
+                    }
+                    #reclaim-dev-dock textarea {
+                        min-height: 96px;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
+
+            const badge = document.createElement('div');
+            badge.id = 'reclaim-dev-badge';
+            badge.textContent = 'DEV TEST ENTRY';
+            document.body.appendChild(badge);
+
+            const dock = document.createElement('section');
+            dock.id = 'reclaim-dev-dock';
+            dock.innerHTML = `
+                <div class="dev-row">
+                    <button type="button" data-dev-action="toggle">도크닫기</button>
+                    <button type="button" data-dev-action="map">맵선택</button>
+                    <button type="button" data-dev-action="faction">진영선택</button>
+                    <button type="button" data-dev-action="quick-kabul">카불즉시실행</button>
+                    <button type="button" data-dev-action="quick-coast">해안즉시실행</button>
+                    <button type="button" data-dev-action="reset">플로우리셋</button>
+                    <button type="button" data-dev-action="report">리포트생성</button>
+                    <button type="button" data-dev-action="copy">리포트복사</button>
+                    <button type="button" data-dev-action="clear">로그지우기</button>
+                </div>
+                <textarea id="reclaim-dev-report" spellcheck="false" placeholder="리포트 생성 후 내용을 그대로 붙여넣어 보내면 됩니다."></textarea>
+            `;
+            document.body.appendChild(dock);
+
+            const reportBox = dock.querySelector('#reclaim-dev-report');
+            const toggleBtn = dock.querySelector('button[data-dev-action="toggle"]');
+            const DEV_DOCK_COLLAPSE_KEY = 'RECLAIM_DEV_DOCK_COLLAPSED';
+
+            const setDockCollapsed = (collapsed) => {
+                dock.classList.toggle('collapsed', !!collapsed);
+                if (toggleBtn) {
+                    toggleBtn.textContent = collapsed ? '도크열기' : '도크닫기';
+                }
+                try {
+                    localStorage.setItem(DEV_DOCK_COLLAPSE_KEY, collapsed ? '1' : '0');
+                } catch (_) { }
+            };
+
+            try {
+                const saved = localStorage.getItem(DEV_DOCK_COLLAPSE_KEY);
+                setDockCollapsed(saved === '1');
+            } catch (_) {
+                setDockCollapsed(false);
+            }
+
+            const isVisible = (selector) => {
+                const el = document.querySelector(selector);
+                if (!el) return false;
+                return !el.classList.contains('hidden');
+            };
+
+            const pickMapId = () => {
+                if (window.__RECLAIM_SELECTED_MAP_ID__) return window.__RECLAIM_SELECTED_MAP_ID__;
+                if (window.game && window.game.currentMapId) return window.game.currentMapId;
+                if (window.game && window.game.mapId) return window.game.mapId;
+                if (window.game && window.game.selectedMapId) return window.game.selectedMapId;
+                return null;
+            };
+
+            const buildReport = () => ({
+                ts: new Date().toISOString(),
+                href: location.href,
+                mapId: pickMapId(),
+                flags: {
+                    devEntry: window.__RECLAIM_DEV_ENTRY__ === true,
+                    disableSW: window.__RECLAIM_DISABLE_SW__ === true,
+                    disableVersionGuard: window.__RECLAIM_DISABLE_VERSION_GUARD__ === true,
+                    forceBlockBoot: window.__RECLAIM_FORCE_BLOCK_BOOT__ === true
+                },
+                flowApi: {
+                    transition: typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function',
+                    reset: typeof window.__RECLAIM_RESET_PRE_BATTLE_FLOW__ === 'function',
+                    playMapFromSelect: typeof window.playMapFromSelect === 'function'
+                },
+                flowState: {
+                    current: window.__RECLAIM_FLOW_PHASE__ || null,
+                    previous: window.__RECLAIM_FLOW_PREV_PHASE__ || null,
+                    lastSource: window.__RECLAIM_FLOW_LAST_SOURCE__ || null,
+                    duplicateCount: Number(window.__RECLAIM_FLOW_DUPLICATE_COUNT__ || 0),
+                    mapStartLock: window.__RECLAIM_MAP_START_LOCK__ === true,
+                    blockFactionPopup: window.__RECLAIM_BLOCK_FACTION_POPUP__ === true
+                },
+                game: window.game ? {
+                    running: !!window.game.running,
+                    paused: !!window.game.paused,
+                    map: window.game.currentMapId || window.game.mapId || null
+                } : null,
+                uiVisible: {
+                    mapSelect: isVisible('#map-select-screen'),
+                    factionModal: isVisible('#team-color-screen'),
+                    introModal: isVisible('#map-intro-modal'),
+                    loadingOverlay: isVisible('#loading-screen')
+                },
+                flowTrace: Array.isArray(window.__RECLAIM_FLOW_TRACE__) ? window.__RECLAIM_FLOW_TRACE__.slice(-30) : [],
+                recentLogs: devLogs.slice(-30)
+            });
+
+            const writeReport = () => {
+                reportBox.value = JSON.stringify(buildReport(), null, 2);
+            };
+
+            const copyReport = async () => {
+                if (!reportBox.value.trim()) writeReport();
+                const text = reportBox.value;
+                try {
+                    await navigator.clipboard.writeText(text);
+                } catch (_) {
+                    reportBox.focus();
+                    reportBox.select();
+                    try { document.execCommand('copy'); } catch (__){ }
+                }
+            };
+
+            const forceAutoFaction = (faction = 'usa') => {
+                const api = window.TeamColors;
+                if (!api || typeof api.ensure !== 'function' || typeof api.setFaction !== 'function') return;
+                try { api.ensure(); } catch (_) { }
+                try { api.setFaction(String(faction || 'usa').trim() || 'usa', true); } catch (_) { }
+                if (typeof ui !== 'undefined' && ui && typeof ui.refreshUnitButtonIconTheme === 'function') {
+                    try { ui.refreshUnitButtonIconTheme(true); } catch (_) { }
+                }
+            };
+
+            const quickStartBattle = (mapId) => {
+                const targetMapId = String(mapId || '').trim();
+                if (!targetMapId) return;
+                forceAutoFaction('usa');
+                window.__RECLAIM_BLOCK_FACTION_POPUP__ = true;
+                window.__RECLAIM_MAP_START_LOCK__ = false;
+                if (typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function') {
+                    window.__RECLAIM_TRANSITION_FLOW__('battle', {
+                        source: 'dev.quickStartBattle',
+                        allowReenter: true
+                    });
+                }
+                if (window.game && typeof window.game.startGame === 'function') {
+                    try {
+                        window.game.startGame(targetMapId);
+                    } catch (err) {
+                        console.warn('[DEV] quick start failed:', err);
+                    }
+                    return;
+                }
+                if (typeof window.playMapFromSelect === 'function') {
+                    if (typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function') {
+                        window.__RECLAIM_TRANSITION_FLOW__('map_select', {
+                            source: 'dev.quickStartBattle.fallback',
+                            allowReenter: true
+                        });
+                    }
+                    try {
+                        window.playMapFromSelect(targetMapId);
+                    } catch (err) {
+                        console.warn('[DEV] quick start fallback failed:', err);
+                    }
+                }
+            };
+
+            dock.addEventListener('click', async (ev) => {
+                const btn = ev.target && ev.target.closest ? ev.target.closest('button[data-dev-action]') : null;
+                if (!btn) return;
+                const action = btn.getAttribute('data-dev-action');
+                if (action === 'toggle') {
+                    const next = !dock.classList.contains('collapsed');
+                    setDockCollapsed(next);
+                    return;
+                }
+                if (action === 'map') {
+                    if (typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function') {
+                        window.__RECLAIM_TRANSITION_FLOW__('map_select');
+                    }
+                    return;
+                }
+                if (action === 'faction') {
+                    if (typeof window.__RECLAIM_TRANSITION_FLOW__ === 'function') {
+                        window.__RECLAIM_TRANSITION_FLOW__('faction_pick');
+                    }
+                    return;
+                }
+                if (action === 'quick-kabul') {
+                    quickStartBattle('skirmish_kabul');
+                    return;
+                }
+                if (action === 'quick-coast') {
+                    quickStartBattle('skirmish_coast');
+                    return;
+                }
+                if (action === 'reset') {
+                    if (typeof window.__RECLAIM_RESET_PRE_BATTLE_FLOW__ === 'function') {
+                        window.__RECLAIM_RESET_PRE_BATTLE_FLOW__();
+                    }
+                    return;
+                }
+                if (action === 'report') {
+                    writeReport();
+                    return;
+                }
+                if (action === 'copy') {
+                    await copyReport();
+                    return;
+                }
+                if (action === 'clear') {
+                    devLogs.length = 0;
+                    reportBox.value = '';
+                }
+            });
+
+            writeReport();
+        })();
+    </script>
+    <script>
+        (() => {
+            const DEV_ENTRY = window.__RECLAIM_DEV_ENTRY__ === true || /\bdev=1\b/.test(location.search);
+            if (DEV_ENTRY || window.__RECLAIM_DISABLE_SW__ === true) {
+                window.addEventListener('load', async () => {
+                    try {
+                        if ('serviceWorker' in navigator) {
+                            const regs = await navigator.serviceWorker.getRegistrations();
+                            await Promise.all(regs.map((reg) => reg.unregister()));
+                        }
+                    } catch (_) { }
+                    try {
+                        if ('caches' in window) {
+                            const keys = await caches.keys();
+                            await Promise.all(keys.map((k) => caches.delete(k)));
+                        }
+                    } catch (_) { }
+                }, { once: true });
+                return;
+            }
+            if (!('serviceWorker' in navigator)) return;
+            const isSecureContextLike = location.protocol === 'https:'
+                || location.hostname === 'localhost'
+                || location.hostname === '127.0.0.1';
+            if (!isSecureContextLike) return;
+
+            window.addEventListener('load', async () => {
+                try {
+                    const guard = window.__RECLAIM_VERSION_GUARD__;
+                    if (guard && typeof guard.then === 'function') {
+                        const result = await guard.catch(() => ({ blocked: false }));
+                        if (result && result.blocked) return;
+                    }
+                } catch (_) { }
+                if (window.__RECLAIM_FORCE_BLOCK_BOOT__ === true) return;
+                navigator.serviceWorker.register('./sw.js').catch((err) => {
+                    console.warn('[PWA] service worker registration failed:', err);
+                });
+            }, { once: true });
+        })();
+    </script>
+    <script type="module">
+        const guard = window.__RECLAIM_VERSION_GUARD__;
+        if (guard && typeof guard.then === 'function') {
+            const result = await guard.catch(() => ({ blocked: false }));
+            if (result && result.blocked) {
+                // 구버전 차단 상태에서는 부트스트랩 실행하지 않음.
+            } else {
+                await import('./src/core/bootstrap.js');
+            }
+        } else if (window.__RECLAIM_FORCE_BLOCK_BOOT__ !== true) {
+            await import('./src/core/bootstrap.js');
+        }
+    </script>
+</body>
+
+</html>
+
+

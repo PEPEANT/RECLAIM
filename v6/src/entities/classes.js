@@ -13,6 +13,95 @@ function getTeamColor(team, variant = 'primary') {
 // Lower aerial lane slightly for current battle framing and reduce visual footprint.
 const AIR_ALTITUDE_DROP_PX = 70;
 const AIR_RENDER_SCALE_MULTIPLIER = 0.86;
+const RANGE_TARGET_MIN_BY_ID = Object.freeze({
+    infantry: 500,
+    engineer: 610,
+    rpg: 670,
+    drone_operator: 540,
+    special_ops: 760,
+    sniper: 1900,
+    humvee: 650,
+    apc: 520,
+    mbt: 1100,
+    aa_tank: 1050,
+    apache: 900,
+    blackhawk: 650,
+    fighter: 1800,
+    spg: 2200
+});
+const INFANTRY_SUPPRESSION_V1 = Object.freeze({
+    maxLevel: 100,
+    movePenaltyCombat: 0.58,
+    movePenaltyMarch: 0.45,
+    moveFloorCombat: 0.36,
+    moveFloorMarch: 0.52,
+    rangePenalty: 0.22,
+    rangeRecoverCrouch: 0.11,
+    rangeRecoverProne: 0.24,
+    rangeFloor: 0.78,
+    rangeCeil: 1.10,
+    hitPenalty: 0.38,
+    hitRecoverCrouch: 0.10,
+    hitRecoverProne: 0.17,
+    hitFloor: 0.48,
+    hitCeil: 1.08,
+    gainDefault: 5.8,
+    gainSmallArms: 8.2,
+    gainHeavyImpact: 12.8,
+    gainBlast: 16.0,
+    gainBurstBonus: 2.8,
+    burstWindowFrames: 54,
+    gainMoveMult: 1.12,
+    gainDmgRef: 26,
+    gainDmgMinMul: 0.65,
+    gainDmgMaxMul: 1.95,
+    gainThreatMult: 1.12,
+    recoverBlockDefault: 64,
+    recoverBlockHeavy: 88,
+    recoverBlockBlast: 104,
+    decayMoving: 0.08,
+    decayStationary: 0.12,
+    decayCrouchingBonus: 0.08,
+    decayProneBonus: 0.14,
+    decaySafeBonus: 0.10,
+    decayRetreatBonus: 0.08,
+    decaySafeFrames: 210,
+    nonCombatHoldThreshold: 52
+});
+
+function getFeatureFlagsSnapshot() {
+    if (typeof globalThis !== 'undefined'
+        && globalThis
+        && globalThis.RECLAIM_FEATURE_FLAGS
+        && typeof globalThis.RECLAIM_FEATURE_FLAGS === 'object') {
+        return globalThis.RECLAIM_FEATURE_FLAGS;
+    }
+    if (typeof FeatureFlags !== 'undefined'
+        && FeatureFlags
+        && typeof FeatureFlags.getAll === 'function') {
+        try {
+            return FeatureFlags.getAll();
+        } catch (_) { }
+    }
+    return null;
+}
+
+function isFeatureFlagEnabled(flagName, snapshot = null) {
+    const key = String(flagName || '').trim();
+    if (!key) return false;
+    const flags = snapshot && typeof snapshot === 'object' ? snapshot : getFeatureFlagsSnapshot();
+    if (!flags || typeof flags !== 'object') return false;
+    return flags[key] === true;
+}
+
+function nextSeed(seed) {
+    return ((seed * 1664525) + 1013904223) >>> 0;
+}
+
+function seeded01(seed) {
+    const safe = Number(seed) >>> 0;
+    return safe / 4294967295;
+}
 
 class Entity {
     constructor(x, y, team, hp, width, height) {
@@ -111,12 +200,25 @@ class Unit extends Entity {
         this.flareUsed = false; // [NEW] Air units can flare once
         this.exiting = false; // [NEW] Transport exit state
         this.targetX = null;
+        this.commandTargetX = null;
         this.targetY = null;
+        this._airFormationOffsetY = 0;
+        this._airFormationSlot = null;
+        this._airFormationDir = null;
+        this._airFormationAnchorX = null;
         this.depthZ = 0;
         this._groundLaneUid = null;
         this._groundLaneOffset = null;
         this._groundLaneOffsetInitialized = false;
         this._marchSpeedMul = null;
+        this._spawnSeed = (Math.random() * 0xFFFFFFFF) >>> 0;
+        this._infantryCombatProfile = null;
+        this.infantrySuppression = 0;
+        this.infantrySuppressionLastHitFrame = -9999;
+        this.infantrySuppressionRecoverBlockUntil = 0;
+        this._infantrySuppressionActive = false;
+        this._infantrySuppressionLevel = 0;
+        this._infantrySuppressionRatio = 0;
         if (typeof game !== 'undefined' && game && typeof game._allocGroundLaneUid === 'function') {
             game._allocGroundLaneUid(this);
         }
@@ -285,6 +387,290 @@ class Unit extends Entity {
         return Math.max(6, Math.min(12, base + jitter));
     }
 
+    _buildInfantryCombatProfile() {
+        if (!this.stats || this.stats.category !== 'infantry') return null;
+
+        const id = String(this.stats.id || '').trim().toLowerCase();
+        const baseById = {
+            infantry: { hit: 0.94, range: 1.00, damage: 1.00 },
+            engineer: { hit: 0.92, range: 1.03, damage: 0.95 },
+            rpg: { hit: 0.91, range: 1.04, damage: 0.97 },
+            sniper: { hit: 1.18, range: 1.22, damage: 1.12 },
+            special_ops: { hit: 1.05, range: 1.05, damage: 1.06 },
+            drone_operator: { hit: 0.88, range: 0.95, damage: 0.90 },
+            worker: { hit: 0.80, range: 0.80, damage: 0.80 },
+            bagpiper: { hit: 0.78, range: 0.82, damage: 0.78 }
+        };
+        const base = baseById[id] || { hit: 0.96, range: 1.00, damage: 1.00 };
+
+        let seed = Number(this._spawnSeed) >>> 0;
+        if (!seed) {
+            const xSeed = (Math.abs(Math.floor(Number(this.x) || 0)) & 0xFFFF) << 8;
+            const ySeed = (Math.abs(Math.floor(Number(this.y) || 0)) & 0xFFFF);
+            const teamSeed = (String(this.team || '') === 'enemy') ? 0x9E37 : 0x7F4A;
+            seed = (xSeed ^ ySeed ^ teamSeed ^ 0xA341316C) >>> 0;
+        }
+
+        seed = nextSeed(seed);
+        const r1 = seeded01(seed);
+        seed = nextSeed(seed);
+        const r2 = seeded01(seed);
+        seed = nextSeed(seed);
+        const r3 = seeded01(seed);
+
+        const hitChanceMul = Math.max(0.65, Math.min(1.32, base.hit + ((r1 - 0.5) * 0.34)));
+        const rangeMul = Math.max(0.84, Math.min(1.30, base.range + ((r2 - 0.5) * 0.24)));
+        const damageMul = Math.max(0.85, Math.min(1.20, base.damage + ((r3 - 0.5) * 0.16)));
+        return { hitChanceMul, rangeMul, damageMul };
+    }
+
+    _getInfantryCombatProfile() {
+        if (!this.stats || this.stats.category !== 'infantry') return null;
+        if (!this._infantryCombatProfile || typeof this._infantryCombatProfile !== 'object') {
+            this._infantryCombatProfile = this._buildInfantryCombatProfile();
+        }
+        return this._infantryCombatProfile;
+    }
+
+    _getInfantryRenderState() {
+        if (!this.stats || this.stats.category !== 'infantry') return null;
+        const store = this._renderV2State;
+        if (!store || typeof store !== 'object') return null;
+
+        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
+        const preferredById = {
+            infantry: 'infantry',
+            bagpiper: 'infantry',
+            worker: 'infantry',
+            engineer: 'engineer',
+            rpg: 'engineer',
+            sniper: 'sniper',
+            special_ops: 'special_ops',
+            drone_operator: 'drone_operator'
+        };
+        const primaryKey = preferredById[id] || 'infantry';
+        const candidates = [
+            primaryKey,
+            'infantry',
+            'sniper',
+            'special_ops',
+            'engineer',
+            'drone_operator'
+        ];
+
+        for (let i = 0; i < candidates.length; i++) {
+            const key = candidates[i];
+            const state = store[key];
+            if (state && typeof state === 'object') return state;
+        }
+
+        for (const k in store) {
+            if (!Object.prototype.hasOwnProperty.call(store, k)) continue;
+            const state = store[k];
+            if (!state || typeof state !== 'object') continue;
+            if (typeof state.stance === 'string') return state;
+        }
+        return null;
+    }
+
+    _getInfantryCurrentStance() {
+        if (!this.stats || this.stats.category !== 'infantry') return '';
+        const forced = String(this._forcedInfantryStance || '').trim().toLowerCase();
+        if (forced === 'standing' || forced === 'crouching' || forced === 'prone') {
+            return forced;
+        }
+        const runtimeState = this._getInfantryRenderState();
+        const runtime = String((runtimeState && runtimeState.stance) || '').trim().toLowerCase();
+        if (runtime === 'standing' || runtime === 'crouching' || runtime === 'prone') {
+            return runtime;
+        }
+        return '';
+    }
+
+    _isInfantrySuppressionEnabled(flags = null) {
+        if (!this.stats || this.stats.category !== 'infantry') return false;
+        return isFeatureFlagEnabled('infantrySuppressionV1', flags);
+    }
+
+    _getInfantrySuppressionLevel(flags = null) {
+        if (!this._isInfantrySuppressionEnabled(flags)) return 0;
+        const raw = Number(this.infantrySuppression);
+        if (!Number.isFinite(raw) || raw <= 0) return 0;
+        return Math.max(0, Math.min(Number(INFANTRY_SUPPRESSION_V1.maxLevel) || 100, raw));
+    }
+
+    _getInfantrySuppressionMoveMul(flags = null, inCombat = false) {
+        const level = this._getInfantrySuppressionLevel(flags);
+        if (level <= 0) return 1;
+        const ratio = level / (Number(INFANTRY_SUPPRESSION_V1.maxLevel) || 100);
+        let mul = inCombat
+            ? (1 - (ratio * (Number(INFANTRY_SUPPRESSION_V1.movePenaltyCombat) || 0.58)))
+            : (1 - (ratio * (Number(INFANTRY_SUPPRESSION_V1.movePenaltyMarch) || 0.45)));
+        if (this.commandMode === 'retreat') {
+            mul = Math.max(mul, 0.78);
+        }
+        const floor = inCombat
+            ? (Number(INFANTRY_SUPPRESSION_V1.moveFloorCombat) || 0.36)
+            : (Number(INFANTRY_SUPPRESSION_V1.moveFloorMarch) || 0.52);
+        return Math.max(floor, Math.min(1, mul));
+    }
+
+    _getInfantrySuppressionRangeMul(flags = null) {
+        const level = this._getInfantrySuppressionLevel(flags);
+        if (level <= 0) return 1;
+        const ratio = level / (Number(INFANTRY_SUPPRESSION_V1.maxLevel) || 100);
+        let mul = 1 - (ratio * (Number(INFANTRY_SUPPRESSION_V1.rangePenalty) || 0.22));
+        const stance = this._getInfantryCurrentStance();
+        if (stance === 'crouching') {
+            mul += ratio * (Number(INFANTRY_SUPPRESSION_V1.rangeRecoverCrouch) || 0.11);
+        } else if (stance === 'prone') {
+            mul += ratio * (Number(INFANTRY_SUPPRESSION_V1.rangeRecoverProne) || 0.24);
+        }
+        return Math.max(
+            Number(INFANTRY_SUPPRESSION_V1.rangeFloor) || 0.78,
+            Math.min(Number(INFANTRY_SUPPRESSION_V1.rangeCeil) || 1.10, mul)
+        );
+    }
+
+    _getInfantrySuppressionHitMul(flags = null) {
+        const level = this._getInfantrySuppressionLevel(flags);
+        if (level <= 0) return 1;
+        const ratio = level / (Number(INFANTRY_SUPPRESSION_V1.maxLevel) || 100);
+        let mul = 1 - (ratio * (Number(INFANTRY_SUPPRESSION_V1.hitPenalty) || 0.38));
+        const stance = this._getInfantryCurrentStance();
+        if (stance === 'crouching') {
+            mul += ratio * (Number(INFANTRY_SUPPRESSION_V1.hitRecoverCrouch) || 0.10);
+        } else if (stance === 'prone') {
+            mul += ratio * (Number(INFANTRY_SUPPRESSION_V1.hitRecoverProne) || 0.17);
+        }
+        return Math.max(
+            Number(INFANTRY_SUPPRESSION_V1.hitFloor) || 0.48,
+            Math.min(Number(INFANTRY_SUPPRESSION_V1.hitCeil) || 1.08, mul)
+        );
+    }
+
+    _applyInfantrySuppressionOnHit(dmgApplied, attackType = null, attacker = null, flags = null) {
+        if (!this._isInfantrySuppressionEnabled(flags)) return;
+        if (this.dead || !this.stats || this.stats.category !== 'infantry') return;
+
+        const frameNow = (typeof game !== 'undefined' && Number.isFinite(game.frame))
+            ? game.frame
+            : 0;
+        const attack = String(attackType || '').trim().toLowerCase();
+        let gain = Number(INFANTRY_SUPPRESSION_V1.gainDefault) || 5.8;
+
+        if (attack === 'machinegun' || attack === 'bullet' || attack === 'humvee_burst' || attack === 'aa_shell') {
+            gain = Number(INFANTRY_SUPPRESSION_V1.gainSmallArms) || 8.2;
+        } else if (attack === 'tank_shell' || attack === 'artillery') {
+            gain = Number(INFANTRY_SUPPRESSION_V1.gainHeavyImpact) || 12.8;
+        } else if (attack === 'explosion' || attack === 'splash' || attack === 'drone_explosion' || attack === 'nuke') {
+            gain = Number(INFANTRY_SUPPRESSION_V1.gainBlast) || 16.0;
+        }
+
+        const dmg = Number(dmgApplied);
+        if (Number.isFinite(dmg) && dmg > 0) {
+            const dmgMul = Math.max(
+                Number(INFANTRY_SUPPRESSION_V1.gainDmgMinMul) || 0.65,
+                Math.min(
+                    Number(INFANTRY_SUPPRESSION_V1.gainDmgMaxMul) || 1.95,
+                    dmg / (Number(INFANTRY_SUPPRESSION_V1.gainDmgRef) || 26)
+                )
+            );
+            gain *= dmgMul;
+        }
+
+        if (attacker && attacker.stats) {
+            const attackerType = String(attacker.stats.type || '').trim().toLowerCase();
+            const attackerCategory = String(attacker.stats.category || '').trim().toLowerCase();
+            if (attackerType === 'air' || attackerType === 'mech' || attackerCategory === 'armored') {
+                gain *= Number(INFANTRY_SUPPRESSION_V1.gainThreatMult) || 1.12;
+            }
+        }
+
+        const lastHit = Number(this.infantrySuppressionLastHitFrame);
+        const burstWindow = Number(INFANTRY_SUPPRESSION_V1.burstWindowFrames) || 54;
+        if (Number.isFinite(lastHit) && (frameNow - lastHit) <= burstWindow) {
+            gain += Number(INFANTRY_SUPPRESSION_V1.gainBurstBonus) || 2.8;
+        }
+
+        if (this.commandMode === 'move') {
+            gain *= Number(INFANTRY_SUPPRESSION_V1.gainMoveMult) || 1.12;
+        }
+
+        const maxLevel = Number(INFANTRY_SUPPRESSION_V1.maxLevel) || 100;
+        const nextLevel = Math.max(0, Math.min(maxLevel, this._getInfantrySuppressionLevel(flags) + gain));
+        this.infantrySuppression = nextLevel;
+        this.infantrySuppressionLastHitFrame = frameNow;
+
+        let recoverBlockFrames = Number(INFANTRY_SUPPRESSION_V1.recoverBlockDefault) || 64;
+        if (attack === 'explosion' || attack === 'splash' || attack === 'drone_explosion' || attack === 'artillery' || attack === 'nuke') {
+            recoverBlockFrames = Number(INFANTRY_SUPPRESSION_V1.recoverBlockBlast) || 104;
+        } else if (attack === 'tank_shell') {
+            recoverBlockFrames = Number(INFANTRY_SUPPRESSION_V1.recoverBlockHeavy) || 88;
+        }
+        this.infantrySuppressionRecoverBlockUntil = Math.max(
+            Number(this.infantrySuppressionRecoverBlockUntil) || 0,
+            frameNow + recoverBlockFrames
+        );
+
+        this._infantrySuppressionActive = true;
+        this._infantrySuppressionLevel = nextLevel;
+        this._infantrySuppressionRatio = nextLevel / 100;
+    }
+
+    _updateInfantrySuppression(flags = null) {
+        if (!this.stats || this.stats.category !== 'infantry') return;
+        if (!this._isInfantrySuppressionEnabled(flags)) {
+            this.infantrySuppression = 0;
+            this.infantrySuppressionLastHitFrame = -9999;
+            this.infantrySuppressionRecoverBlockUntil = 0;
+            this._infantrySuppressionActive = false;
+            this._infantrySuppressionLevel = 0;
+            this._infantrySuppressionRatio = 0;
+            return;
+        }
+
+        const frameNow = (typeof game !== 'undefined' && Number.isFinite(game.frame))
+            ? game.frame
+            : 0;
+        let level = this._getInfantrySuppressionLevel(flags);
+        const recoverBlockUntil = Number(this.infantrySuppressionRecoverBlockUntil);
+        const canRecover = !Number.isFinite(recoverBlockUntil) || frameNow > recoverBlockUntil;
+
+        if (canRecover && level > 0) {
+            const stance = this._getInfantryCurrentStance();
+            const moving = (
+                this.commandMode === 'move'
+                || Math.abs(Number(this.vx) || 0) > 0.05
+            );
+
+            let decay = moving
+                ? (Number(INFANTRY_SUPPRESSION_V1.decayMoving) || 0.08)
+                : (Number(INFANTRY_SUPPRESSION_V1.decayStationary) || 0.12);
+            if (stance === 'crouching') {
+                decay += Number(INFANTRY_SUPPRESSION_V1.decayCrouchingBonus) || 0.08;
+            } else if (stance === 'prone') {
+                decay += Number(INFANTRY_SUPPRESSION_V1.decayProneBonus) || 0.14;
+            }
+
+            const lastHit = Number(this.infantrySuppressionLastHitFrame);
+            const safeFrames = Number(INFANTRY_SUPPRESSION_V1.decaySafeFrames) || 210;
+            if (!Number.isFinite(lastHit) || (frameNow - lastHit) > safeFrames) {
+                decay += Number(INFANTRY_SUPPRESSION_V1.decaySafeBonus) || 0.10;
+            }
+            if (this.commandMode === 'retreat') {
+                decay += Number(INFANTRY_SUPPRESSION_V1.decayRetreatBonus) || 0.08;
+            }
+
+            level = Math.max(0, level - decay);
+        }
+
+        this.infantrySuppression = level;
+        this._infantrySuppressionActive = true;
+        this._infantrySuppressionLevel = level;
+        this._infantrySuppressionRatio = level / 100;
+    }
+
     getRangeBonus() {
         const now = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
         const until = Number(this.tempRangeBonusUntil);
@@ -303,54 +689,63 @@ class Unit extends Entity {
         const base = Number(this.stats && this.stats.range) || 0;
         const id = String((this.stats && this.stats.id) || '');
         const s = this.stats || {};
+        const flags = getFeatureFlagsSnapshot();
+        const useInfantryAccuracyV2 = isFeatureFlagEnabled('infantryAccuracyV2', flags);
         const bonus = this.getRangeBonus();
         if (base <= 0) return Math.max(0, bonus);
-
-        // Range profile targets: keep combat readable on large maps without unit-level hardcoding.
-        const targetMinById = {
-            infantry: 340,
-            engineer: 390,
-            rpg: 390,
-            drone_operator: 360,
-            special_ops: 520,
-            sniper: 1500,
-            humvee: 650,
-            apc: 520,
-            mbt: 1100,
-            aa_tank: 1050,
-            apache: 900,
-            blackhawk: 650,
-            fighter: 1800,
-            spg: 2200
-        };
 
         // Baseline tuning + global range inflation.
         let tunedBase = base;
         if (id === 'spg') tunedBase = Math.round(base * 1.20);
 
         let globalMult = 1.24;
-        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.38);
+        if (s.category === 'infantry') globalMult = Math.max(globalMult, 1.46);
         if (s.type === 'mech' || s.category === 'armored') globalMult = Math.max(globalMult, 1.26);
         if (s.type === 'air' || s.category === 'air') globalMult = Math.max(globalMult, 1.28);
         if (id === 'bomber') globalMult = 1.28;
         if (id === 'worker' || id === 'recon') globalMult = 1.00;
 
         let scaled = Math.round(tunedBase * globalMult);
-        const targetMin = Number(targetMinById[id]);
+        const targetMin = Number(RANGE_TARGET_MIN_BY_ID[id]);
         if (Number.isFinite(targetMin) && targetMin > 0) {
             scaled = Math.max(scaled, targetMin);
         }
 
-        // Infantry stance bonus: holding position while firing grants extra effective range.
-        if (s.category === 'infantry' && this.commandMode !== 'move' && this.commandMode !== 'retreat') {
-            const infState = this._renderV2State && this._renderV2State.infantry;
-            if (infState) {
+        if (s.category === 'infantry' && useInfantryAccuracyV2) {
+            const profile = this._getInfantryCombatProfile();
+            if (profile && Number.isFinite(Number(profile.rangeMul))) {
+                scaled = Math.round(scaled * Number(profile.rangeMul));
+            }
+        }
+
+        // Infantry stance/range profile
+        if (s.category === 'infantry') {
+            const infState = this._getInfantryRenderState();
+            if (infState && this.commandMode !== 'retreat') {
                 const stance = String(infState.stance || '').trim().toLowerCase();
                 const stationaryFrames = Number(infState.stationaryFrames) || 0;
-                if (stationaryFrames >= 24) {
-                    if (stance === 'prone') scaled = Math.round(scaled * 1.30);
-                    else if (stance === 'crouching') scaled = Math.round(scaled * 1.18);
+                if (useInfantryAccuracyV2) {
+                    // V2: crouch can contest at medium-long range, prone excels at long-range hold.
+                    if (stationaryFrames >= 10) {
+                        if (stance === 'prone') scaled = Math.round(scaled * 1.36);
+                        else if (stance === 'crouching') scaled = Math.round(scaled * 1.20);
+                    } else if (this.commandMode === 'move') {
+                        scaled = Math.round(scaled * 0.92);
+                    }
+                } else if (this.commandMode !== 'move') {
+                    // Legacy stance bonus
+                    if (stationaryFrames >= 24) {
+                        if (stance === 'prone') scaled = Math.round(scaled * 1.30);
+                        else if (stance === 'crouching') scaled = Math.round(scaled * 1.18);
+                    }
                 }
+            }
+        }
+
+        if (s.category === 'infantry') {
+            const suppressionRangeMul = this._getInfantrySuppressionRangeMul(flags);
+            if (suppressionRangeMul !== 1) {
+                scaled = Math.round(scaled * suppressionRangeMul);
             }
         }
 
@@ -827,6 +1222,7 @@ class Unit extends Entity {
 
         // [NEW] 피격 프레임 기록 (이동 중 공격받으면 전투 전환용)
         this.lastDamagedFrame = game.frame;
+        this._applyInfantrySuppressionOnHit(dmg, cleanAttackType, attacker, getFeatureFlagsSnapshot());
 
         // [NEW] 플레이어 MBT에 맞은 적 유닛은 잠시 사거리 버프를 얻는다.
         if (attacker
@@ -1122,21 +1518,8 @@ class Unit extends Entity {
         return (this.team === 'player') ? 1 : -1;
     }
 
-    _beginCrashDescent(hitVx = null, hitVy = null) {
-        if (this.dead || this.crashState || this._forceDirectDeath) return false;
-        if (!this._canUseCrashDescent()) return false;
-
-        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
-        const isDrone = id.includes('drone');
-        const isFighter = id === 'fighter';
-        const isHeli = (id === 'apache' || id === 'blackhawk' || id === 'chinook' || id === 'uh60');
-        const kind = isDrone ? 'drone' : (isFighter ? 'fighter' : (isHeli ? 'heli' : 'aircraft'));
-        const speed = Math.max(0.6, Number(this.stats?.speed) || 0.6);
-        const dir = this._resolveCrashForwardDir();
-        const rawInertiaVx = Number.isFinite(Number(hitVx)) ? Number(hitVx) * 0.07 : 0;
-        const inertiaVy = Number.isFinite(Number(hitVy)) ? Math.abs(Number(hitVy)) * 0.05 : 0;
-
-        // Per-airframe tuning: readable falling without changing gameplay too much.
+    _resolveCrashDescentBaseTuning(kind, speed, dir, useAirCrashV2 = false) {
+        // Baseline crash tuning (current live behavior).
         let baseVx = dir * Math.max(0.95, speed * 0.46);
         let baseVy = 0.9;
         let gravity = 0.2;
@@ -1157,6 +1540,50 @@ class Unit extends Entity {
             baseVy = 0.95;
             gravity = 0.2;
         }
+
+        if (useAirCrashV2) {
+            // V2: keep forward momentum for a brief glide, then transition to steeper dive.
+            if (kind === 'drone') {
+                baseVx = dir * Math.max(0.95, speed * 0.42);
+                baseVy = 0.62;
+                gravity = 0.17;
+            } else if (kind === 'heli') {
+                baseVx = dir * Math.max(1.15, speed * 0.47);
+                baseVy = 0.68;
+                gravity = 0.16;
+            } else if (kind === 'aircraft') {
+                baseVx = dir * Math.max(1.55, speed * 0.60);
+                baseVy = 0.64;
+                gravity = 0.14;
+            } else if (kind === 'fighter') {
+                baseVx = dir * Math.max(1.85, speed * 0.72);
+                baseVy = 0.60;
+                gravity = 0.13;
+            }
+        }
+        return { baseVx, baseVy, gravity };
+    }
+
+    _beginCrashDescent(hitVx = null, hitVy = null) {
+        if (this.dead || this.crashState || this._forceDirectDeath) return false;
+        if (!this._canUseCrashDescent()) return false;
+
+        const flags = getFeatureFlagsSnapshot();
+        const useAirCrashV2 = isFeatureFlagEnabled('airCrashV2', flags);
+        const id = String((this.stats && this.stats.id) || '').trim().toLowerCase();
+        const isDrone = id.includes('drone');
+        const isFighter = id === 'fighter';
+        const isHeli = (id === 'apache' || id === 'blackhawk' || id === 'chinook' || id === 'uh60');
+        const kind = isDrone ? 'drone' : (isFighter ? 'fighter' : (isHeli ? 'heli' : 'aircraft'));
+        const speed = Math.max(0.6, Number(this.stats?.speed) || 0.6);
+        const dir = this._resolveCrashForwardDir();
+        const rawInertiaVx = Number.isFinite(Number(hitVx)) ? Number(hitVx) * 0.07 : 0;
+        const inertiaVy = Number.isFinite(Number(hitVy)) ? Math.abs(Number(hitVy)) * 0.05 : 0;
+
+        const baseTuning = this._resolveCrashDescentBaseTuning(kind, speed, dir, useAirCrashV2);
+        const baseVx = Number(baseTuning.baseVx) || 0;
+        const baseVy = Number(baseTuning.baseVy) || 0.9;
+        const gravity = Number(baseTuning.gravity) || 0.2;
 
         // Keep crash direction consistent with the current attack/nose direction.
         // Hit inertia can bias speed, but should not flip the direction.
@@ -1181,6 +1608,15 @@ class Unit extends Entity {
             rollVisual: dir * 0.24,
             burnLevel: 0.18
         };
+        if (useAirCrashV2) {
+            this.crashState.v2 = true;
+            this.crashState.forwardBias = dir * ((kind === 'fighter' || kind === 'aircraft') ? 0.024 : 0.015);
+            this.crashState.forwardBiasDecay = 0.985;
+            this.crashState.drag = (kind === 'fighter' || kind === 'aircraft') ? 0.9965 : 0.9952;
+            this.crashState.minForwardVx = Math.max(0.46, Math.abs(baseVx) * 0.38);
+            this.crashState.gravityGrow = (kind === 'drone') ? 0.0020 : 0.00135;
+            this.crashState.maxGravity = (kind === 'drone') ? 0.34 : 0.30;
+        }
 
         this.hp = Math.max(1, Number(this.hp) || 1);
         this.commandMode = 'stop';
@@ -1227,7 +1663,28 @@ class Unit extends Entity {
         this.x += Number(state.vx) || 0;
         this.y += Number(state.vy) || 0;
         state.vy = (Number(state.vy) || 0) + (Number(state.gravity) || 0.2);
-        state.vx *= 0.992;
+        if (state.v2 === true) {
+            const gravityGrow = Number(state.gravityGrow) || 0;
+            const maxGravity = Number(state.maxGravity) || 0.3;
+            state.gravity = Math.min(maxGravity, (Number(state.gravity) || 0.2) + gravityGrow);
+
+            const bias = Number(state.forwardBias) || 0;
+            const decay = Number(state.forwardBiasDecay) || 1;
+            const drag = Number(state.drag) || 0.995;
+            state.vx = (Number(state.vx) || 0) + bias;
+            state.vx *= drag;
+            state.forwardBias = bias * decay;
+
+            const minForward = Number(state.minForwardVx) || 0;
+            if (minForward > 0 && Math.abs(Number(state.vx) || 0) < minForward) {
+                const fallbackDir = (Math.abs(Number(state.forwardBias) || 0.0001) >= 0.0001)
+                    ? ((Number(state.forwardBias) || 0) >= 0 ? 1 : -1)
+                    : (((Number(state.vx) || 0) >= 0) ? 1 : -1);
+                state.vx = fallbackDir * minForward;
+            }
+        } else {
+            state.vx *= 0.992;
+        }
         this.rotorAngle += Number(state.spin) || 0;
         if (Math.abs(Number(state.vx) || 0) > 0.04) {
             this.facing = (Number(state.vx) >= 0) ? 1 : -1;
@@ -1815,9 +2272,9 @@ class Unit extends Entity {
         if (!this.isBagpiperUnit()) return;
         if (this.bagpipeActive !== true) return;
         if (this.bagpipeEffectActive !== true) return;
-        if (typeof game === 'undefined' || !game || !Array.isArray(game.units)) return;
+        if (typeof game === 'undefined' || !game) return;
 
-        const tickFrames = Math.max(8, Math.floor(Number(this.stats?.bagpipeHealTickFrames) || 30));
+        const tickFrames = Math.max(8, Math.floor(Number(this.stats?.bagpipeBuffTickFrames) || Number(this.stats?.bagpipeHealTickFrames) || 30));
         if (!Number.isFinite(this.bagpipeHealTick) || this.bagpipeHealTick <= 0) {
             this.bagpipeHealTick = tickFrames;
         }
@@ -1825,37 +2282,63 @@ class Unit extends Entity {
         if (this.bagpipeHealTick > 0) return;
         this.bagpipeHealTick = tickFrames;
 
-        const radius = Math.max(40, Number(this.stats?.bagpipeHealRadius) || 180);
-        const flatHeal = Math.max(1, Math.floor(Number(this.stats?.bagpipeHealFlat) || 2));
-        let healedCount = 0;
-        for (let i = 0; i < game.units.length; i += 1) {
-            const ally = game.units[i];
-            if (!ally || ally.dead || ally === this) continue;
-            if (ally.team !== this.team) continue;
-            const allyCategory = String(ally.stats?.category || '').trim().toLowerCase();
-            if (allyCategory !== 'infantry') continue;
-            const dx = Math.abs((Number(ally.x) || 0) - (Number(this.x) || 0));
-            if (dx > radius) continue;
-            const dy = Math.abs((Number(ally.y) || 0) - (Number(this.y) || 0));
-            if (dy > 140) continue;
+        const radius = Math.max(40, Number(this.stats?.bagpipeSpeedRadius) || Number(this.stats?.bagpipeHealRadius) || 180);
+        const speedMul = Math.max(1.02, Math.min(2.2, Number(this.stats?.bagpipeSpeedMul) || 1.3));
+        const durationFrames = Math.max(10, Math.floor(Number(this.stats?.bagpipeSpeedDurationFrames) || (tickFrames + 8)));
+        const nowFrame = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? Number(game.frame) : 0;
+        const unitSources = Array.isArray(game.units)
+            ? [game.units]
+            : [this.team === 'player' ? game.players : game.enemies];
+        let buffedCount = 0;
 
-            const maxHp = Math.max(1, Number(ally.maxHp) || 1);
-            const nowHp = Math.max(0, Number(ally.hp) || 0);
-            if (nowHp >= maxHp) continue;
-            const healAmount = Math.max(flatHeal, Math.floor(maxHp * 0.03));
-            const nextHp = Math.min(maxHp, nowHp + healAmount);
-            if (nextHp <= nowHp) continue;
-            ally.hp = nextHp;
-            healedCount += 1;
+        for (let si = 0; si < unitSources.length; si += 1) {
+            const list = unitSources[si];
+            if (!Array.isArray(list)) continue;
+            for (let i = 0; i < list.length; i += 1) {
+                const ally = list[i];
+                if (!ally || ally.dead || ally === this) continue;
+                if (ally.team !== this.team) continue;
 
-            if (typeof game.createParticles === 'function') {
-                game.createParticles(ally.x, ally.y - 8, 3, '#4ade80');
+                const allyType = String(ally.stats?.type || '').trim().toLowerCase();
+                const allyCategory = String(ally.stats?.category || '').trim().toLowerCase();
+                if (allyType === 'air') continue;
+                if (allyCategory === 'civilian') continue;
+
+                const dx = Math.abs((Number(ally.x) || 0) - (Number(this.x) || 0));
+                if (dx > radius) continue;
+                const dy = Math.abs((Number(ally.y) || 0) - (Number(this.y) || 0));
+                if (dy > 150) continue;
+
+                const prevMul = Math.max(1, Number(ally._bagpipeSpeedMul) || 1);
+                const prevUntil = Number(ally._bagpipeSpeedBuffUntilFrame);
+                ally._bagpipeSpeedMul = Math.max(prevMul, speedMul);
+                ally._bagpipeSpeedBuffUntilFrame = Math.max(
+                    Number.isFinite(prevUntil) ? prevUntil : 0,
+                    nowFrame + durationFrames
+                );
+                buffedCount += 1;
+
+                if (typeof game.createParticles === 'function') {
+                    game.createParticles(ally.x, ally.y - 8, 3, '#93c5fd');
+                }
             }
         }
 
-        if (healedCount > 0 && typeof game.createParticles === 'function') {
+        if (buffedCount > 0 && typeof game.createParticles === 'function') {
             game.createParticles(this.x, this.y - 16, 4, '#fde047');
         }
+    }
+
+    _getBagpipeSpeedMul() {
+        const nowFrame = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? Number(game.frame) : 0;
+        const untilFrame = Number(this._bagpipeSpeedBuffUntilFrame);
+        if (!Number.isFinite(untilFrame) || untilFrame <= nowFrame) {
+            this._bagpipeSpeedBuffUntilFrame = 0;
+            this._bagpipeSpeedMul = 1;
+            return 1;
+        }
+        const mul = Number(this._bagpipeSpeedMul);
+        return Math.max(1, Number.isFinite(mul) ? mul : 1);
     }
 
     _syncBagpipeLoopAudio() {
@@ -2005,6 +2488,8 @@ class Unit extends Entity {
             this._syncBagpipeLoopAudio();
             this._applyBagpipeAura();
         }
+        const flags = getFeatureFlagsSnapshot();
+        this._updateInfantrySuppression(flags);
 
         // ?ㅽ꽩 ?곹깭 (EMP ??
         if (this.stunTimer > 0) {
@@ -2018,6 +2503,7 @@ class Unit extends Entity {
         }
 
         const isDroneUnit = (this.stats.category === 'drone' || (this.stats.id && this.stats.id.includes('drone'))) && !this.stats.operator;
+        const useAirFormation = isFeatureFlagEnabled('airFormation', flags);
         if (this.stats.type === 'air' && !isDroneUnit) {
             this.rotorAngle += 0.8;
             const groundRefY = (typeof game !== 'undefined' && Number.isFinite(game.groundY)) ? game.groundY : null;
@@ -2037,6 +2523,21 @@ class Unit extends Entity {
                     desiredAirY = groundRefY - 450 + AIR_ALTITUDE_DROP_PX;
                 } else {
                     desiredAirY = groundRefY - 430 + AIR_ALTITUDE_DROP_PX;
+                }
+                if (useAirFormation) {
+                    const rawOffsetY = Number(this._airFormationOffsetY);
+                    if (Number.isFinite(rawOffsetY)) {
+                        let offsetY = Math.max(-132, Math.min(132, rawOffsetY));
+                        // Keep formation only while moving in formation; otherwise relax back to base lane.
+                        if (this.commandMode !== 'move') {
+                            offsetY *= 0.92;
+                            if (Math.abs(offsetY) < 0.6) offsetY = 0;
+                            this._airFormationOffsetY = offsetY;
+                        }
+                        desiredAirY += offsetY;
+                    }
+                } else if (Number(this._airFormationOffsetY) !== 0) {
+                    this._airFormationOffsetY = 0;
                 }
                 if (Number.isFinite(desiredAirY)) {
                     this.y += (desiredAirY - this.y) * 0.12;
@@ -2322,7 +2823,8 @@ class Unit extends Entity {
                 this.attackTarget = enemies.find(e =>
                     !e.dead && e.stats && !e.stats.invulnerable &&
                     (e.stats.type === 'air' || e.stats.id === 'aa_tank') &&
-                    e.stats.category !== 'drone' &&
+                    String(e.stats.category || '').toLowerCase() !== 'drone' &&
+                    !String(e.stats.id || '').toLowerCase().includes('drone') &&
                     (!(fighterRestrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(e.x, 20))) &&
                     Math.abs(e.x - this.x) < fighterScanRange
                 );
@@ -2406,6 +2908,13 @@ class Unit extends Entity {
         const extraCivilianTargets = (this.team === 'enemy' && typeof game !== 'undefined' && Array.isArray(game.civilians) && game.civilians.length)
             ? game.civilians
             : null;
+        const blockDroneTargets = (unitId === 'apache' || unitId === 'fighter');
+        const isDroneLikeTarget = (t) => {
+            if (!t || !t.stats) return false;
+            const tid = String(t.stats.id || '').toLowerCase();
+            const tcat = String(t.stats.category || '').toLowerCase();
+            return tcat === 'drone' || tid.includes('drone') || tid === 'tactical_drone';
+        };
         const onlyAir = !!this.stats.onlyAir;
         const restrictForward = (typeof this.shouldRestrictRearTargeting === 'function')
             ? this.shouldRestrictRearTargeting()
@@ -2429,6 +2938,7 @@ class Unit extends Entity {
                 dist > effRange + 50 ||
                 this.attackTarget.team === this.team ||
                 this.attackTarget.team === 'neutral' ||
+                (blockDroneTargets && isDroneLikeTarget(this.attackTarget)) ||
                 (isCivilianTarget && this.team === 'player') ||
                 isInvulnerable ||
                 lockConflict ||
@@ -2459,6 +2969,7 @@ class Unit extends Entity {
                     if (e.stats && e.stats.stealth) continue;
                     if (onlyAir && (!e.stats || e.stats.type !== 'air')) continue;
                     if (e.stats && e.stats.invulnerable) continue;
+                    if (blockDroneTargets && isDroneLikeTarget(e)) continue;
                     if (this.stats.id === 'humvee' && e.stats.id === 'fighter') continue;
                     if (e.stats.type === 'air' && !canHitAir) continue;
                     if (restrictForward && isBehind(e.x)) continue;
@@ -2481,6 +2992,7 @@ class Unit extends Entity {
                         if (!e || e.dead) continue;
                         if (e.stats && e.stats.stealth) continue;
                         if (e.stats && e.stats.invulnerable) continue;
+                        if (blockDroneTargets && isDroneLikeTarget(e)) continue;
                         if (e.stats && e.stats.type === 'air' && !canHitAir) continue;
                         if (restrictForward && isBehind(e.x)) continue;
                         const dist = Math.abs(e.x - this.x);
@@ -2593,13 +3105,44 @@ class Unit extends Entity {
 
             const speed = Number(this.stats.speed) || 0;
             const moveSpeedMul = this._getMarchSpeedMul();
-            const moveSpeed = speed * moveSpeedMul;
+            const bagpipeSpeedMul = this._getBagpipeSpeedMul();
+            const suppressionMoveMul = this._getInfantrySuppressionMoveMul(flags, false);
+            const moveSpeed = speed * moveSpeedMul * bagpipeSpeedMul * suppressionMoveMul;
             const cmd = this.commandMode;
+            const holdStance = this._getInfantryCurrentStance();
+            const suppressionHoldThreshold = Number(INFANTRY_SUPPRESSION_V1.nonCombatHoldThreshold) || 52;
+            const suppressionHold = (
+                this.stats
+                && this.stats.category === 'infantry'
+                && cmd === 'attack'
+                && this._getInfantrySuppressionLevel(flags) >= suppressionHoldThreshold
+            );
+            const stanceHold = (
+                this.stats
+                && this.stats.category === 'infantry'
+                && cmd === 'attack'
+                && this.commandMode !== 'retreat'
+                && !this.returnToBase
+                && (holdStance === 'crouching' || holdStance === 'prone')
+            );
 
             // 공격 타겟이 없으면 기본 전진 대신 commandMode(stop/move)를 우선 적용
-            if (this.commandMode === 'stop') {
+            if (suppressionHold || stanceHold) {
+                // Suppressed infantry briefly hold position to recover posture/aim.
+                if (stanceHold) {
+                    if (!Number.isFinite(Number(this._infantryStanceHoldX))) {
+                        this._infantryStanceHoldX = this.x;
+                    }
+                    this._infantryStanceHoldTarget = null;
+                    this.x = Number(this._infantryStanceHoldX);
+                }
+            } else if (this.commandMode === 'stop') {
                 // 정지 유지
             } else if (this.commandMode === 'move') {
+                if (Number.isFinite(Number(this._infantryStanceHoldX)) || this._infantryStanceHoldTarget) {
+                    this._infantryStanceHoldX = null;
+                    this._infantryStanceHoldTarget = null;
+                }
                 const moveX = Number.isFinite(this.commandTargetX) ? this.commandTargetX : this.targetX;
                 if (Number.isFinite(moveX)) {
                     const dx = moveX - this.x;
@@ -2616,6 +3159,10 @@ class Unit extends Entity {
                     this.commandTargetX = null;
                 }
             } else {
+                if (Number.isFinite(Number(this._infantryStanceHoldX)) || this._infantryStanceHoldTarget) {
+                    this._infantryStanceHoldX = null;
+                    this._infantryStanceHoldTarget = null;
+                }
                 const moveDir = this.team === 'player' ? 1 : -1;
                 this.x += moveSpeed * moveDir;
             }
@@ -4107,7 +4654,7 @@ class Unit extends Entity {
         if (isInfantry) {
             const forcedStance = String(this._forcedInfantryStance || '').trim().toLowerCase();
             const shouldHoldByForcedStance = (
-                (forcedStance === 'standing' || forcedStance === 'crouching' || forcedStance === 'prone')
+                (forcedStance === 'crouching' || forcedStance === 'prone')
                 && this.commandMode !== 'move'
                 && this.commandMode !== 'retreat'
                 && !this.returnToBase
@@ -4120,22 +4667,20 @@ class Unit extends Entity {
                 this.x = Number(this._infantryStanceHoldX);
                 return;
             }
-            const stateStore = this._renderV2State && this._renderV2State.infantry;
+            const stateStore = this._getInfantryRenderState();
             if (stateStore) {
-                const stance = String(stateStore.stance || '');
+                const stance = String(stateStore.stance || '').trim().toLowerCase();
                 const desiredStance = String(stateStore.desiredStance || '');
                 const stationaryFrames = Number(stateStore.stationaryFrames) || 0;
                 const pronePrepHoldFrames = 48; // 0.8s at 60fps.
-                const targetDist = Math.abs(targetX - this.x);
-                const stanceHoldRange = Math.max(36, (Number(effectiveRange) || 0) + 50);
                 const shouldHoldByStance = (
                     (stance === 'crouching' || stance === 'prone')
-                    && targetDist <= stanceHoldRange
-                    && this.commandMode !== 'move'
                     && this.commandMode !== 'retreat'
                     && !this.returnToBase
                 );
                 if (shouldHoldByStance) {
+                    // Explicit rule: crouching/prone infantry must fire from fixed position.
+                    if (this.commandMode === 'move') this.commandMode = 'attack';
                     if (this._infantryStanceHoldTarget !== target || !Number.isFinite(Number(this._infantryStanceHoldX))) {
                         this._infantryStanceHoldTarget = target;
                         this._infantryStanceHoldX = this.x;
@@ -4144,6 +4689,7 @@ class Unit extends Entity {
                     return;
                 }
                 if (stance === 'crouching' && desiredStance === 'prone' && stationaryFrames < pronePrepHoldFrames) {
+                    if (this.commandMode === 'move') this.commandMode = 'attack';
                     if (!Number.isFinite(Number(this._infantryStanceHoldX))) {
                         this._infantryStanceHoldX = this.x;
                     }
@@ -4287,7 +4833,9 @@ class Unit extends Entity {
         const deadZone = isAir ? 12 : (isInfantry ? 14 : 8);
         if (Math.abs(dxMove) <= deadZone) return;
 
-        const step = Math.min(Math.max(speed * 0.8, 0.2), Math.abs(dxMove));
+        const baseStep = Math.min(Math.max(speed * 0.8, 0.2), Math.abs(dxMove));
+        const suppressionMoveMul = this._getInfantrySuppressionMoveMul(null, true);
+        const step = Math.max(0.08, baseStep * suppressionMoveMul);
         const dir = Math.sign(dxMove);
         const nextX = this.x + (dir * step);
 
@@ -4320,9 +4868,51 @@ class Unit extends Entity {
         if (!game || !game.projectiles) return;
         if (this.stats.onlyAir && (!target || !target.stats || target.stats.type !== 'air')) return;
         if (target && target.stats && target.stats.invulnerable) return;
+        const flags = getFeatureFlagsSnapshot();
+        const useInfantryAccuracyV2 = isFeatureFlagEnabled('infantryAccuracyV2', flags);
+        const useInfantrySuppressionV1 = this._isInfantrySuppressionEnabled(flags);
         const id = this.stats.id;
         if (id === 'bagpiper') return;
+        if (id === 'apache' || id === 'fighter') {
+            const targetId = String((target && target.stats && target.stats.id) || '').toLowerCase();
+            const targetCategory = String((target && target.stats && target.stats.category) || '').toLowerCase();
+            const isDroneLikeTarget = targetCategory === 'drone' || targetId.includes('drone') || targetId === 'tactical_drone';
+            if (isDroneLikeTarget) return;
+        }
         let dmg = this.stats.damage;
+        let infantryShotHitChanceMul = 1;
+        if (useInfantryAccuracyV2 && this.stats && this.stats.category === 'infantry') {
+            const profile = this._getInfantryCombatProfile();
+            if (profile) {
+                const profileDamageMul = Number(profile.damageMul);
+                if (Number.isFinite(profileDamageMul)) {
+                    dmg = Math.max(1, Math.round((Number(dmg) || 0) * profileDamageMul));
+                }
+                const profileHitMul = Number(profile.hitChanceMul);
+                if (Number.isFinite(profileHitMul)) {
+                    infantryShotHitChanceMul *= profileHitMul;
+                }
+            }
+
+            const infState = this._getInfantryRenderState();
+            if (infState) {
+                const stance = String(infState.stance || '').trim().toLowerCase();
+                const stationaryFrames = Number(infState.stationaryFrames) || 0;
+                if (stationaryFrames >= 14) {
+                    if (stance === 'prone') infantryShotHitChanceMul *= 1.24;
+                    else if (stance === 'crouching') infantryShotHitChanceMul *= 1.12;
+                } else if (this.commandMode === 'move') {
+                    infantryShotHitChanceMul *= 0.88;
+                }
+            }
+        }
+
+        if (useInfantrySuppressionV1 && this.stats && this.stats.category === 'infantry') {
+            infantryShotHitChanceMul *= this._getInfantrySuppressionHitMul(flags);
+        }
+        if (this.stats && this.stats.category === 'infantry') {
+            infantryShotHitChanceMul = Math.max(0.45, Math.min(1.45, infantryShotHitChanceMul));
+        }
 
         if (target?.stats?.type === 'air' && this.stats.damageAir != null) {
             dmg = this.stats.damageAir;
@@ -4708,6 +5298,13 @@ class Unit extends Entity {
                 }
             }
             const finalOpts = Object.assign({ source: this }, shotOpts || {}, shotExtras || {});
+            if ((useInfantryAccuracyV2 || useInfantrySuppressionV1)
+                && this.stats
+                && this.stats.category === 'infantry'
+                && (type === 'bullet' || type === 'machinegun')
+                && Number.isFinite(Number(infantryShotHitChanceMul))) {
+                finalOpts.hitChanceMul = Math.max(0.45, Math.min(1.45, Number(infantryShotHitChanceMul)));
+            }
             game.projectiles.push(new Projectile(spawnX, spawnY, projectileTarget, dmg, this.team, type, finalOpts));
             if (id === 'spg' && type === 'artillery') {
                 const nowFrame = (game && Number.isFinite(game.frame)) ? game.frame : 0;
@@ -4781,14 +5378,7 @@ class Unit extends Entity {
             const baseY = (renderY + snapDy);
             let cy = baseY - (h * 0.46);
             if (isInfantryMarker) {
-                const infantryState = (this._renderV2State && this._renderV2State.infantry && typeof this._renderV2State.infantry === 'object')
-                    ? this._renderV2State.infantry
-                    : null;
-                const stanceRaw = String(
-                    (infantryState && infantryState.stance)
-                    || this._forcedInfantryStance
-                    || 'standing'
-                ).trim().toLowerCase();
+                const stanceRaw = this._getInfantryCurrentStance() || 'standing';
                 let headOffset = h * 1.88;
                 if (stanceRaw === 'crouching') headOffset = h * 1.52;
                 else if (stanceRaw === 'prone') headOffset = h * 1.08;
@@ -4960,7 +5550,11 @@ class Unit extends Entity {
         // Player armored V2 (MBT/SPG) already applies barrel-only recoil in renderer.
         if (!useV2Armor && recoilX) ctx.translate(recoilX, 0);
 
-        const renderedWithSkin = (typeof UnitRenderUtils !== 'undefined' && UnitRenderUtils.renderSkinLayers)
+        // Chinook must always use V2 renderer to avoid legacy/custom skin mast-dot artifacts.
+        const allowSkinRender = (id !== 'chinook');
+        const renderedWithSkin = (allowSkinRender
+            && typeof UnitRenderUtils !== 'undefined'
+            && UnitRenderUtils.renderSkinLayers)
             ? UnitRenderUtils.renderSkinLayers(this, ctx, skin)
             : false;
         if (renderedWithSkin) {
@@ -5298,32 +5892,55 @@ class Unit extends Entity {
             ctx.fillRect(-2, -20, 4, 4);
         }
         else if (id === 'bagpiper') {
-            const uniformColor = '#556b2f';
-            const vestColor = '#3e4e26';
-            const helmetColor = '#3a4a20';
+            const teamPrimary = getTeamColor(this.team, 'primary');
+            const teamDark = getTeamColor(this.team, 'dark');
+            const teamSoft = getTeamColor(this.team, 'soft');
+            const teamLight = getTeamColor(this.team, 'light');
             const active = this.bagpipeActive === true;
+            const frameNow = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
+            const pulse = 0.5 + (Math.sin(frameNow * 0.14) * 0.25);
 
-            // Infantry-aligned olive uniform palette.
-            ctx.fillStyle = uniformColor;
-            ctx.fillRect(-6, -20, 12, 20);
-            ctx.fillStyle = vestColor;
-            ctx.fillRect(-7, -19, 14, 12);
+            // Legs and boots
+            ctx.fillStyle = '#1f2937';
+            ctx.fillRect(-5, -8, 3, 8);
+            ctx.fillRect(2, -8, 3, 8);
+            ctx.fillStyle = '#0f172a';
+            ctx.fillRect(-6, -1, 4, 2);
+            ctx.fillRect(2, -1, 4, 2);
+
+            // Body + tactical vest
+            ctx.fillStyle = teamPrimary;
+            ctx.fillRect(-6, -20, 12, 18);
+            ctx.fillStyle = teamDark;
+            ctx.fillRect(-7, -19, 14, 11);
+            ctx.fillStyle = teamLight;
+            ctx.fillRect(-6, -14, 12, 2);
+
+            // Kilt (team-soft plaid feel)
+            ctx.fillStyle = teamSoft;
+            ctx.fillRect(-6, -9, 12, 7);
+            ctx.fillStyle = teamDark;
+            ctx.fillRect(-4, -9, 1, 7);
+            ctx.fillRect(-1, -9, 1, 7);
+            ctx.fillRect(2, -9, 1, 7);
 
             ctx.fillStyle = '#ffdbac';
             ctx.beginPath();
             ctx.arc(0, -24, 5, 0, Math.PI * 2);
             ctx.fill();
-            ctx.fillStyle = helmetColor;
+            ctx.fillStyle = teamDark;
             ctx.beginPath();
             ctx.arc(0, -25, 6, Math.PI, 0);
             ctx.fill();
+            ctx.fillStyle = '#111827';
+            ctx.fillRect(-6, -25, 12, 2);
 
-            // Bag + pipes
-            ctx.fillStyle = '#b91c1c';
+            // Bag
+            ctx.fillStyle = active ? '#be123c' : '#9f1239';
             ctx.beginPath();
             ctx.ellipse(-2, -13, 8, 6, Math.PI / 8, 0, Math.PI * 2);
             ctx.fill();
-            ctx.strokeStyle = '#7f1d1d';
+            ctx.strokeStyle = '#701a75';
             ctx.lineWidth = 1;
             ctx.beginPath();
             ctx.moveTo(-8, -15);
@@ -5332,6 +5949,7 @@ class Unit extends Entity {
             ctx.lineTo(3, -15);
             ctx.stroke();
 
+            // Pipes
             ctx.strokeStyle = '#111827';
             ctx.lineWidth = 2;
             ctx.lineCap = 'round';
@@ -5347,10 +5965,18 @@ class Unit extends Entity {
             ctx.moveTo(1, -11);
             ctx.lineTo(12, -2);
             ctx.stroke();
+            ctx.fillStyle = '#334155';
+            ctx.fillRect(-11, -38, 2, 3);
+            ctx.fillRect(-4, -36, 2, 3);
+            ctx.fillRect(3, -32, 2, 3);
+            ctx.fillRect(11, -3, 2, 3);
+
+            // Hands
+            ctx.fillStyle = '#ffdbac';
+            ctx.fillRect(-8, -12, 3, 3);
+            ctx.fillRect(4, -14, 3, 3);
 
             if (active) {
-                const t = (typeof game !== 'undefined' && Number.isFinite(game.frame)) ? game.frame : 0;
-                const pulse = 0.45 + (Math.sin(t * 0.18) * 0.25);
                 ctx.save();
                 ctx.globalAlpha = Math.max(0.2, Math.min(0.9, pulse));
                 ctx.fillStyle = '#facc15';
@@ -5792,32 +6418,50 @@ class Unit extends Entity {
             ctx.restore();
         }
         else if (id === 'icbm' || id === 'icbm_enemy') {
+            const flags = getFeatureFlagsSnapshot();
+            const useIcbmTeamColorFix = isFeatureFlagEnabled('icbmTeamColorFix', flags);
             const isEnemyIcbm = (this.team === 'enemy' || id === 'icbm_enemy');
-            const icbmPalette = isEnemyIcbm
+            const paletteTeam = (id === 'icbm_enemy')
+                ? 'enemy'
+                : ((id === 'icbm') ? 'player' : (isEnemyIcbm ? 'enemy' : 'player'));
+            const icbmPalette = useIcbmTeamColorFix
                 ? {
-                    hullMain: '#8b7a5a',
-                    hullPanel: '#6f5f45',
-                    cab: '#7a6a4f',
-                    window: 'rgba(92, 84, 70, 0.86)',
-                    windowFrame: '#4b3f2f',
-                    canister: '#7a6b52',
-                    canisterRib: '#5f523f',
-                    cap: '#665944',
-                    support: '#4a3f30',
-                    mark: '#5a4630'
-                }
-                : {
-                    hullMain: '#4E5B31',
-                    hullPanel: '#3D4825',
-                    cab: '#425239',
+                    hullMain: getTeamColor(paletteTeam, 'primary'),
+                    hullPanel: getTeamColor(paletteTeam, 'dark'),
+                    cab: getTeamColor(paletteTeam, 'soft'),
                     window: 'rgba(59, 77, 89, 0.85)',
-                    windowFrame: '#2C3519',
-                    canister: '#4A5D23',
-                    canisterRib: '#324016',
-                    cap: '#3D4825',
-                    support: '#2C3519',
-                    mark: '#3f2f1d'
-                };
+                    windowFrame: '#1e293b',
+                    canister: getTeamColor(paletteTeam, 'dark'),
+                    canisterRib: getTeamColor(paletteTeam, 'hp'),
+                    cap: getTeamColor(paletteTeam, 'dark'),
+                    support: '#2f3a2b',
+                    mark: getTeamColor(paletteTeam, 'light')
+                }
+                : (isEnemyIcbm
+                    ? {
+                        hullMain: '#8b7a5a',
+                        hullPanel: '#6f5f45',
+                        cab: '#7a6a4f',
+                        window: 'rgba(92, 84, 70, 0.86)',
+                        windowFrame: '#4b3f2f',
+                        canister: '#7a6b52',
+                        canisterRib: '#5f523f',
+                        cap: '#665944',
+                        support: '#4a3f30',
+                        mark: '#5a4630'
+                    }
+                    : {
+                        hullMain: '#4E5B31',
+                        hullPanel: '#3D4825',
+                        cab: '#425239',
+                        window: 'rgba(59, 77, 89, 0.85)',
+                        windowFrame: '#2C3519',
+                        canister: '#4A5D23',
+                        canisterRib: '#324016',
+                        cap: '#3D4825',
+                        support: '#2C3519',
+                        mark: '#3f2f1d'
+                    });
             const TEL_WIDTH = 360;
             const TEL_HEIGHT = 50;
             const WHEEL_RADIUS = 16;

@@ -1078,20 +1078,55 @@
                         const moveTargetY = (typeof this.clampGroundLaneY === 'function')
                             ? this.clampGroundLaneY(worldY)
                             : worldY;
+                        const useAirFormation = (typeof this.isFeatureFlagEnabled === 'function')
+                            ? this.isFeatureFlagEnabled('airFormation')
+                            : false;
+                        const unitList = Array.from(this.selectedUnits).filter(u => !!(u && !u.dead));
+                        const formationPlan = (useAirFormation && typeof this.planAirFormationAssignments === 'function')
+                            ? this.planAirFormationAssignments(unitList, worldX)
+                            : null;
+                        const mapW = Number((typeof CONFIG !== 'undefined' && CONFIG) ? CONFIG.mapWidth : NaN);
 
-                        this.selectedUnits.forEach(u => {
+                        unitList.forEach(u => {
                             if (!u || u.dead) return;
                             if (typeof this.setDirectControlReleaseHold === 'function') {
                                 this.setDirectControlReleaseHold(u, false);
                             }
                             u.commandMode = 'move';
-                            u.commandTargetX = worldX; // ???熬곣뫖利??レ벁?????醫딆┣???(facing??
-                            u.targetX = worldX;
-                            u.targetY = (u.stats && u.stats.type === 'air') ? null : moveTargetY;
+                            const isAirUnit = !!(u.stats && u.stats.type === 'air');
+                            if (useAirFormation && isAirUnit && formationPlan && formationPlan.has(u)) {
+                                const info = formationPlan.get(u);
+                                const formationTargetX = Number(info && info.targetX);
+                                const safeFormationTargetX = Number.isFinite(formationTargetX)
+                                    ? formationTargetX
+                                    : (Number.isFinite(mapW) && mapW > 0
+                                        ? Math.max(24, Math.min(mapW - 24, Number(worldX)))
+                                        : Number(worldX));
+                                u.commandTargetX = safeFormationTargetX;
+                                u.targetX = safeFormationTargetX;
+                                u.targetY = null;
+                                u._airFormationOffsetY = Number(info && info.offsetY) || 0;
+                                u._airFormationSlot = Number(info && info.slot) || 0;
+                                u._airFormationDir = Number(info && info.dir) || 0;
+                                u._airFormationAnchorX = Number(info && info.anchorX);
+                            } else {
+                                const clampedX = Number.isFinite(mapW) && mapW > 0
+                                    ? Math.max(24, Math.min(mapW - 24, Number(worldX)))
+                                    : Number(worldX);
+                                u.commandTargetX = clampedX; // ???熬곣뫖利??レ벁?????醫딆┣???(facing??
+                                u.targetX = clampedX;
+                                u.targetY = isAirUnit ? null : moveTargetY;
+                                if (typeof this.clearAirFormationState === 'function') {
+                                    this.clearAirFormationState(u);
+                                }
+                            }
                             u.lockedTarget = null;
                             u.attackTarget = null;
                             if (u.stats && !u.stats.operator && (u.stats.category === 'drone' || (u.stats.id && u.stats.id.includes('drone')))) {
-                                u.swarmTarget = { x: worldX, y: moveTargetY };
+                                const droneTargetX = Number.isFinite(Number(u.commandTargetX))
+                                    ? Number(u.commandTargetX)
+                                    : Number(worldX);
+                                u.swarmTarget = { x: droneTargetX, y: moveTargetY };
                             }
                         });
 

@@ -1,4 +1,4 @@
-ï»¿(function (global) {
+(function (global) {
     'use strict';
 
     function updateUnitVelocity(unit, prevX, prevY) {
@@ -49,7 +49,7 @@
         }
         if (alpha <= 0.01) return;
 
-        const label = mode === 'enemy' ? 'ì ë ¹ ìœ„í—˜ë„' : 'ì ë ¹ë„';
+        const label = mode === 'enemy' ? 'Á¡·É À§Çèµµ' : 'Á¡·Éµµ';
         const barColor = mode === 'enemy' ? '#ef4444' : '#22c55e';
         const glowColor = mode === 'enemy' ? 'rgba(239,68,68,0.6)' : 'rgba(34,197,94,0.6)';
         const panelW = Math.max(240, Math.min(420, (Number(game.width) || 1280) * 0.42));
@@ -130,7 +130,7 @@
                 game.draw();
             } catch (e) {
                 game._reportLoopError('draw', e);
-                // ì²« í”„ë ˆì„ draw ì‹¤íŒ¨ ì‹œ ì™„ì „í•œ ê²€ì€ í™”ë©´ìœ¼ë¡œ ë³´ì´ëŠ” í˜„ìƒì„ ë°©ì§€í•œë‹¤.
+                // Ã¹ ÇÁ·¹ÀÓ draw ½ÇÆĞ ½Ã ¿ÏÀüÇÑ °ËÀº È­¸éÀ¸·Î º¸ÀÌ´Â Çö»óÀ» ¹æÁöÇÑ´Ù.
                 game._drawFallbackFrame();
             }
         }
@@ -154,6 +154,39 @@
         // Actually, if we skip update, frame doesn't increment.
         // If we double update, frame increments twice.
         // This is correct for game logic time.
+
+        if (game.landingIntroController && typeof game.landingIntroController.update === 'function') {
+            try {
+                game.landingIntroController.update(1 / 60);
+                if (typeof game.landingIntroController.isFinished === 'function' && game.landingIntroController.isFinished()) {
+                    if (typeof game._clearLandingIntroController === 'function') game._clearLandingIntroController();
+                    else game.landingIntroController = null;
+                }
+            } catch (e) {
+                game._reportLoopError('landing-intro:update', e);
+                if (typeof game._clearLandingIntroController === 'function') game._clearLandingIntroController();
+                else game.landingIntroController = null;
+            }
+        }
+
+        if (game._landingSpawnUiLocked === true) {
+            let shouldUnlock = false;
+            const ctrl = game.landingIntroController;
+            if (!ctrl) {
+                shouldUnlock = true;
+            } else if (typeof ctrl.getDebugState === 'function') {
+                const state = ctrl.getDebugState();
+                const crafts = Array.isArray(state && state.crafts) ? state.crafts : [];
+                shouldUnlock = crafts.some((c) => c && (c.state === 'ramp_open' || c.state === 'hold' || c.state === 'done'));
+            } else if (typeof window !== 'undefined') {
+                const state = window.__RECLAIM_LANDING_INTRO_STATE__;
+                const crafts = Array.isArray(state && state.crafts) ? state.crafts : [];
+                shouldUnlock = crafts.some((c) => c && (c.state === 'ramp_open' || c.state === 'hold' || c.state === 'done'));
+            }
+            if (shouldUnlock && typeof game._setLandingSpawnUiLocked === 'function') {
+                game._setLandingSpawnUiLocked(false, 'first-craft-ramp-open');
+            }
+        }
 
         const panLeft = !!game._cameraPanLeftKey;
         const panRight = !!game._cameraPanRightKey;
@@ -206,12 +239,12 @@
         for (let k in game.cooldowns) if (game.cooldowns[k] > 0) game.cooldowns[k]--;
         for (let k in game.enemyCooldowns) if (game.enemyCooldowns[k] > 0) game.enemyCooldowns[k]--;
 
-        // [NEW] ì‘ì—…ì ê±´ì„¤ ì¿¨íƒ€ì„ ê°ì†Œ
+        // [NEW] ÀÛ¾÷ÀÚ °Ç¼³ ÄğÅ¸ÀÓ °¨¼Ò
         if (game.builderCooldown > 0) game.builderCooldown--;
 
         if (game.empTimer > 0) {
             game.empTimer--;
-            // [P0-4] ìƒíƒœ ë³€í™” ì‹œì—ë§Œ class í† ê¸€ (DOM ì¿¼ë¦¬ ìºì‹±)
+            // [P0-4] »óÅÂ º¯È­ ½Ã¿¡¸¸ class Åä±Û (DOM Äõ¸® Ä³½Ì)
             const shouldBeActive = game.empTimer > 0;
             if (game._empWasActive !== shouldBeActive && game.$empFlash) {
                 game.$empFlash.classList.toggle('active', shouldBeActive);
@@ -226,7 +259,7 @@
             game.civilianGlobalPanic--;
         }
 
-        // [P0-2] ë‹¨ì¼ íŒ¨ìŠ¤: dead ì œê±° + player/enemy ë¶„ë¥˜ + HQ íƒìƒ‰
+        // [P0-2] ´ÜÀÏ ÆĞ½º: dead Á¦°Å + player/enemy ºĞ·ù + HQ Å½»ö
         game.playerBuildings.length = 0;
         game.enemyBuildings.length = 0;
         let playerHQ = null;
@@ -247,9 +280,9 @@
         }
         game.buildings.length = writeIdx;
 
-        const elapsedSeconds = game.frame / 60; // 60 FPS ê¸°ì¤€
+        const elapsedSeconds = game.frame / 60; // 60 FPS ±âÁØ
 
-        // ìƒì¡´í•œ ìœ ë‹› ìˆ˜ ê³„ì‚° (allocation-free)
+        // »ıÁ¸ÇÑ À¯´Ö ¼ö °è»ê (allocation-free)
         const alivePlayerUnits = countAliveUnits(game.players);
         const aliveEnemyUnits = countAliveUnits(game.enemies);
         if (alivePlayerUnits > 0) game.playerEverSeen = true;
@@ -264,10 +297,10 @@
         }
         if (game.isGameOver) return;
 
-        // [P1] ì‹œì²´ ìƒì„± ë²„ìŠ¤íŠ¸ ì™„í™”: í”„ë ˆì„ë‹¹ ì˜ˆì‚°ë§Œí¼ ì²˜ë¦¬
+        // [P1] ½ÃÃ¼ »ı¼º ¹ö½ºÆ® ¿ÏÈ­: ÇÁ·¹ÀÓ´ç ¿¹»ê¸¸Å­ Ã³¸®
         game._processCorpseSpawnQueue();
 
-        // êµ­ì§€ì „ ë°°ì¹˜/ì¹´ìš´íŠ¸ë‹¤ìš´ ì¤‘ì—ëŠ” ìœ ë‹› update ìŠ¤í‚µ (ì´ë™/ê³µê²© ê¸ˆì§€)
+        // ±¹ÁöÀü ¹èÄ¡/Ä«¿îÆ®´Ù¿î Áß¿¡´Â À¯´Ö update ½ºÅµ (ÀÌµ¿/°ø°İ ±İÁö)
         const skirmishPhase = (game._skirmishMode
             && typeof SkirmishMode !== 'undefined'
             && SkirmishMode
@@ -345,7 +378,7 @@
         }
         game.particles.length = writeParticle;
 
-        // [NEW] ì”í•´ ì—…ë°ì´íŠ¸
+        // [NEW] ÀÜÇØ ¾÷µ¥ÀÌÆ®
         let writeWreckage = 0;
         for (let i = 0; i < game.wreckages.length; i++) {
             const w = game.wreckages[i];
@@ -354,7 +387,7 @@
         }
         game.wreckages.length = writeWreckage;
 
-        // [NEW] ë³´ë³‘ ì‹œì²´ ì—…ë°ì´íŠ¸
+        // [NEW] º¸º´ ½ÃÃ¼ ¾÷µ¥ÀÌÆ®
         let writeCorpse = 0;
         for (let i = 0; i < game.corpses.length; i++) {
             const c = game.corpses[i];
@@ -369,7 +402,7 @@
         }
         game.corpses.length = writeCorpse;
 
-        // [NEW] ê±´ì„¤ ì¤‘ì¸ ê±´ë¬¼ ì—…ë°ì´íŠ¸
+        // [NEW] °Ç¼³ ÁßÀÎ °Ç¹° ¾÷µ¥ÀÌÆ®
         game.updateConstructions();
 
         // [NEW] Camera lock follow
@@ -389,14 +422,14 @@
             game.flash = 0;
         }
 
-        // êµ­ì§€ì „ ëª¨ë“œì—ì„œëŠ” AI ìŠ¤í° ì™„ì „ ì°¨ë‹¨ (ëª¨ë“  í˜ì´ì¦ˆ)
+        // ±¹ÁöÀü ¸ğµå¿¡¼­´Â AI ½ºÆù ¿ÏÀü Â÷´Ü (¸ğµç ÆäÀÌÁî)
         if (typeof AI !== 'undefined' && !game._skirmishMode) {
             AI.update(game.frame);
         }
 
-        // [FIX] ì¿¨íƒ€ì„/íê°€ ì§„í–‰ ì¤‘ì´ë©´ ë§¤ í”„ë ˆì„ UI ê°±ì‹  í•„ìš”
+        // [FIX] ÄğÅ¸ÀÓ/Å¥°¡ ÁøÇà ÁßÀÌ¸é ¸Å ÇÁ·¹ÀÓ UI °»½Å ÇÊ¿ä
         if (typeof app !== 'undefined') {
-            // ì¿¨íƒ€ì„ì´ ì§„í–‰ ì¤‘ì´ê±°ë‚˜ íê°€ ìˆìœ¼ë©´ uiDirty (allocation-free)
+            // ÄğÅ¸ÀÓÀÌ ÁøÇà ÁßÀÌ°Å³ª Å¥°¡ ÀÖÀ¸¸é uiDirty (allocation-free)
             const hasCooldown = hasPositiveValue(game.cooldowns);
             const hasQueue = hasPositiveValue(game.spawnQueue);
             if (hasCooldown || hasQueue) {
@@ -412,9 +445,9 @@
     }
 
     function renderUI(game) {
-        // [CHANGE][APP] UI ê°±ì‹  ê²½ë¡œ ë‹¨ì¼í™”
-        // - ê¸°ì¡´: ui.updateUnitButtons(), ui.setSkillCount() ... ë¶„ì‚° í˜¸ì¶œ
-        // - ë³€ê²½: app.commit() í•œ ë²ˆì—ì„œë§Œ UI + ì €ì¥ ì²˜ë¦¬
+        // [CHANGE][APP] UI °»½Å °æ·Î ´ÜÀÏÈ­
+        // - ±âÁ¸: ui.updateUnitButtons(), ui.setSkillCount() ... ºĞ»ê È£Ãâ
+        // - º¯°æ: app.commit() ÇÑ ¹ø¿¡¼­¸¸ UI + ÀúÀå Ã³¸®
         if (typeof app !== 'undefined') app.commit('tick');
     }
 
@@ -501,7 +534,17 @@
         ctx.translate(0, -cameraPivotY);
         ctx.translate(-Math.floor(game.cameraX), 0);
 
-        // [VFX] world-layer shake (screen ê¸°ì¤€ ê³ ì •)
+        if (game.landingIntroController && typeof game.landingIntroController.draw === 'function') {
+            try {
+                game.landingIntroController.draw(ctx);
+            } catch (e) {
+                game._reportLoopError('landing-intro:draw', e);
+                if (typeof game._clearLandingIntroController === 'function') game._clearLandingIntroController();
+                else game.landingIntroController = null;
+            }
+        }
+
+        // [VFX] world-layer shake (screen ±âÁØ °íÁ¤)
         if (game.shake > 0.01) {
             const j = game.shake / Math.max(0.01, Camera.zoom);
             ctx.translate((Math.random() - 0.5) * j * 2, (Math.random() - 0.5) * j * 2);
@@ -516,10 +559,10 @@
             }
         }
 
-        // [NEW] ì”í•´ ë Œë”ë§ (ìœ ë‹›ë³´ë‹¤ ë’¤, ê±´ë¬¼ ì•)
+        // [NEW] ÀÜÇØ ·»´õ¸µ (À¯´Öº¸´Ù µÚ, °Ç¹° ¾Õ)
         game.wreckages.forEach(w => w.draw(ctx));
 
-        // [NEW] ë³´ë³‘ ì‹œì²´ ë Œë”ë§ (ì”í•´ ìœ„, ìœ ë‹› ë’¤)
+        // [NEW] º¸º´ ½ÃÃ¼ ·»´õ¸µ (ÀÜÇØ À§, À¯´Ö µÚ)
         const doCorpseProfile = !!(game.debug && game.debug.corpseProfile && typeof performance !== 'undefined' && performance.now);
         const corpseProfileEvery = (game.debug && Number.isFinite(game.debug.corpseProfileEvery) && game.debug.corpseProfileEvery > 0)
             ? game.debug.corpseProfileEvery
@@ -543,7 +586,7 @@
 
         game.civilians.forEach(u => u.draw(ctx));
 
-        // [FIX] ê±´ì„¤ ì§„í–‰ UIëŠ” ìœ ë‹›ë³´ë‹¤ ë’¤(ë°°ê²½ ë ˆì´ì–´)ì— ë Œë”ë§
+        // [FIX] °Ç¼³ ÁøÇà UI´Â À¯´Öº¸´Ù µÚ(¹è°æ ·¹ÀÌ¾î)¿¡ ·»´õ¸µ
         if (game.constructingBuildings) {
             game.constructingBuildings.forEach(c => {
                 if (c.dead) return;
@@ -596,7 +639,7 @@
 
         game.drawSkirmishPlacementZone(ctx);
 
-        // [NEW] ê±´ì„¤ í”„ë¦¬ë·° ë Œë”ë§
+        // [NEW] °Ç¼³ ÇÁ¸®ºä ·»´õ¸µ
         if (game.buildMode.active && game.buildMode.type) {
             game.drawBuildPreview(ctx);
         }
@@ -605,7 +648,7 @@
 
         ctx.restore();
 
-        // [VFX] screen flash (screen-space) - í°ìƒ‰ë§Œ ì‚¬ìš©
+        // [VFX] screen flash (screen-space) - Èò»ö¸¸ »ç¿ë
         if (game.flash > 0.01) {
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -624,7 +667,7 @@
 
     function drawHUD(game) {
         const ctx = game.ctx;
-        // ëª¨ë°”ì¼ ê°€ë¡œ ëª¨ë“œì¸ì§€ ì²´í¬
+        // ¸ğ¹ÙÀÏ °¡·Î ¸ğµåÀÎÁö Ã¼Å©
         const isMobileLandscape = window.innerHeight < 600 && window.innerWidth > window.innerHeight;
 
         const fontSize = (game.width < 800) ? 16 : 24;
@@ -636,15 +679,15 @@
         ctx.shadowColor = 'black';
         ctx.shadowBlur = 4;
 
-        // [ë³€ê²½] ìì›(SUPPLY) í‘œì‹œ ìœ„ì¹˜
-        // ëª¨ë°”ì¼ ê°€ë¡œ ëª¨ë“œë©´ -> ì™¼ìª½ í•˜ë‹¨ (Bottom Left)
-        // ê·¸ ì™¸(PC/ì„¸ë¡œ) -> ì™¼ìª½ ìƒë‹¨ (Top Left)
+        // [º¯°æ] ÀÚ¿ø(SUPPLY) Ç¥½Ã À§Ä¡
+        // ¸ğ¹ÙÀÏ °¡·Î ¸ğµå¸é -> ¿ŞÂÊ ÇÏ´Ü (Bottom Left)
+        // ±× ¿Ü(PC/¼¼·Î) -> ¿ŞÂÊ »ó´Ü (Top Left)
         let supplyX = padding;
         let supplyY = padding;
 
         if (isMobileLandscape) {
             supplyX = padding;
-            supplyY = game.height - padding - 40; // ë°”ë‹¥ì—ì„œ ì¡°ê¸ˆ ìœ„
+            supplyY = game.height - padding - 40; // ¹Ù´Ú¿¡¼­ Á¶±İ À§
         }
 
         // 1. Supply Text
@@ -652,7 +695,7 @@
         ctx.textAlign = 'left';
         ctx.fillText(`SUPPLY: ${Math.floor(game.supply)}`, supplyX, supplyY);
 
-        // Supply Bar (Text ì•„ë˜ì—)
+        // Supply Bar (Text ¾Æ·¡¿¡)
         const barW = (game.width < 800) ? 100 : 150;
         const barH = (game.width < 800) ? 4 : 6;
         const ratio = Math.min(1, game.supply / CONFIG.maxSupply);
@@ -662,12 +705,12 @@
         ctx.fillStyle = '#fbbf24';
         ctx.fillRect(supplyX, supplyY + fontSize + 5, barW * ratio, barH);
 
-        // 2. Kill Count (ì˜¤ë¥¸ìª½ ìƒë‹¨ ìœ ì§€)
+        // 2. Kill Count (¿À¸¥ÂÊ »ó´Ü À¯Áö)
         ctx.textAlign = 'right';
         ctx.fillStyle = '#ef4444';
         ctx.fillText(`KILLS: ${game.killCount || 0}`, game.width - padding, padding);
 
-        // 3. Time (ì¤‘ì•™ ìƒë‹¨ ìœ ì§€)
+        // 3. Time (Áß¾Ó »ó´Ü À¯Áö)
         ctx.textAlign = 'center';
         ctx.fillStyle = 'white';
         const time = Math.floor(game.frame / 60);
@@ -675,14 +718,14 @@
         const sec = (time % 60).toString().padStart(2, '0');
         ctx.fillText(`${min}:${sec}`, game.width / 2, padding);
 
-        // [NEW] ê³µìŠµê²½ë³´ í‘œì‹œ
+        // [NEW] °ø½À°æº¸ Ç¥½Ã
         if (game.airRaidWarning) {
             const warn = game.airRaidWarning;
             const elapsed = (game.frame || 0) - warn.startFrame;
             const total = warn.endFrame - warn.startFrame;
             const progress = Math.min(1, elapsed / total);
 
-            // ê¹œë¹¡ì„ íš¨ê³¼
+            // ±ôºıÀÓ È¿°ú
             const blink = Math.floor(elapsed / 8) % 2 === 0;
 
             if (blink) {
@@ -690,25 +733,25 @@
                 ctx.font = `bold ${warnFontSize}px "Orbitron", sans-serif`;
                 ctx.textAlign = 'left';
 
-                // ë¹¨ê°„ìƒ‰ ê·¸ë¼ë°ì´ì…˜ íš¨ê³¼
+                // »¡°£»ö ±×¶óµ¥ÀÌ¼Ç È¿°ú
                 ctx.fillStyle = '#ef4444';
                 ctx.shadowColor = '#ff0000';
                 ctx.shadowBlur = 20;
 
-                // ì™¼ìª½ ì¤‘ì•™ì— í‘œì‹œ
+                // ¿ŞÂÊ Áß¾Ó¿¡ Ç¥½Ã
                 const warnX = padding + 10;
                 const warnY = game.height / 2 - warnFontSize;
 
-                ctx.fillText('ê³µìŠµê²½ë³´', warnX, warnY);
+                ctx.fillText('°ø½À°æº¸', warnX, warnY);
 
-                // ë¬´ê¸° ì¢…ë¥˜ í‘œì‹œ
+                // ¹«±â Á¾·ù Ç¥½Ã
                 const subFontSize = (game.width < 800) ? 16 : 24;
                 ctx.font = `bold ${subFontSize}px "Orbitron", sans-serif`;
                 ctx.fillStyle = '#fbbf24';
-                const weaponName = warn.type === 'nuke' ? 'ì „ìˆ í•µ ë°œì‚¬ ê°ì§€!' : 'ì „ìˆ ë¯¸ì‚¬ì¼ ë°œì‚¬ ê°ì§€!';
+                const weaponName = warn.type === 'nuke' ? 'Àü¼úÇÙ ¹ß»ç °¨Áö!' : 'Àü¼ú¹Ì»çÀÏ ¹ß»ç °¨Áö!';
                 ctx.fillText(weaponName, warnX, warnY + warnFontSize + 10);
 
-                // ë‚¨ì€ ì‹œê°„ ë°” í‘œì‹œ
+                // ³²Àº ½Ã°£ ¹Ù Ç¥½Ã
                 const barWidth = 150;
                 const barHeight = 8;
                 ctx.fillStyle = '#4b5563';
