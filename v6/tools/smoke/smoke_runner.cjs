@@ -133,12 +133,36 @@ async function runSmoke() {
     await page.click('#cinematic-skip-btn');
 
     await waitVisible(page, '#map-select-screen', 30000);
-    await page.click('.map-card[data-map="skirmish"]');
-    await page.waitForFunction(() => {
+    const selectedMapId = await page.evaluate(() => {
+      const cards = Array.from(document.querySelectorAll('.map-card[data-map]'));
+      const target = cards.find((card) => {
+        if (!card) return false;
+        if (card.classList.contains('locked')) return false;
+        if (card.getAttribute('aria-disabled') === 'true') return false;
+        if ('disabled' in card && card.disabled) return false;
+        return true;
+      });
+      if (!target) return '';
+      const mapId = String(target.dataset.map || '').trim();
+      target.click();
+      return mapId;
+    });
+    if (!selectedMapId) {
+      throw new Error('No selectable map card found on map-select screen');
+    }
+    let factionOpened = false;
+    try {
+      await waitVisible(page, '#team-color-screen', 5000);
+      factionOpened = true;
+    } catch (_) {}
+    if (factionOpened) {
+      await page.click('#faction-confirm-btn');
+    }
+    await page.waitForFunction((expectedMapId) => {
       const g = (typeof game !== 'undefined') ? game : (window.game || null);
       const mapId = (typeof Maps !== 'undefined' && Maps && Maps.currentMap) ? Maps.currentMap : '';
-      return !!(g && g.running === true && mapId === 'skirmish');
-    }, null, { timeout: 30000 });
+      return !!(g && g.running === true && mapId === expectedMapId);
+    }, selectedMapId, { timeout: 30000 });
 
     await finishBattle(page);
 
