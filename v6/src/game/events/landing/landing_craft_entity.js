@@ -26,10 +26,6 @@
             this.holdSec = Math.max(0.4, Number(options.holdSec) || 2.8);
             this.timeoutSec = Math.max(4, Number(options.timeoutSec) || 20);
             this.scale = Math.max(0.4, Number(options.scale) || 1);
-            this.maxHp = Math.max(1, Number(options.maxHp) || 1800);
-            this.hp = this.maxHp;
-            this.destroyed = false;
-            this.destroyReason = '';
 
             this.elapsedSec = 0;
             this.approachElapsedSec = 0;
@@ -48,42 +44,12 @@
 
         _fail(reason) {
             this.failedReason = String(reason || '').trim() || 'unknown';
-            this.active = false;
             this._setState(STATES.FAILED);
-        }
-
-        _destroy(reason) {
-            if (this.destroyed === true) return;
-            this.destroyed = true;
-            this.destroyReason = String(reason || '').trim() || 'destroyed';
-            this.hp = 0;
-            this._fail('destroyed');
-        }
-
-        applyDamage(amount, reason = 'damage') {
-            if (this.destroyed === true) return;
-            if (this.state === STATES.FAILED) return;
-            const dmg = Math.max(0, Number(amount) || 0);
-            if (dmg <= 0) return;
-            this.hp = Math.max(0, (Number(this.hp) || 0) - dmg);
-            if (this.hp <= 0) {
-                this._destroy(reason);
-            }
-        }
-
-        isDestroyed() {
-            return this.destroyed === true || (Number(this.hp) || 0) <= 0;
-        }
-
-        getHpRatio() {
-            const max = Math.max(1, Number(this.maxHp) || 1);
-            const hp = Math.max(0, Number(this.hp) || 0);
-            return Math.max(0, Math.min(1, hp / max));
         }
 
         update(dtSec) {
             const dt = Math.max(0, Number(dtSec) || 0);
-            if (this.destroyed === true || this.state === STATES.DONE || this.state === STATES.FAILED) return;
+            if (this.state === STATES.DONE || this.state === STATES.FAILED) return;
 
             this.elapsedSec += dt;
             if (this.elapsedSec > this.timeoutSec) {

@@ -202,9 +202,31 @@
         }
 
         const playerUnitCount = game.players.length;
+        const sumPositiveReserve = (bag) => {
+            if (!bag || typeof bag !== 'object') return 0;
+            let total = 0;
+            for (const k in bag) {
+                if (!Object.prototype.hasOwnProperty.call(bag, k)) continue;
+                const v = Number(bag[k]);
+                if (!Number.isFinite(v) || v <= 0) continue;
+                total += Math.floor(v);
+            }
+            return total;
+        };
         if (playerUnitCount > 10) {
             const reduction = Math.min(currentRate * 0.5, (playerUnitCount - 10) * 2);
             currentRate -= reduction;
+        }
+        const coastMap = String((game && game.currentMapId) || '').trim() === 'skirmish_coast';
+        if (coastMap) {
+            const playerTotalRemaining = playerUnitCount
+                + sumPositiveReserve(game.playerStock)
+                + sumPositiveReserve(game.spawnQueue);
+            if (playerTotalRemaining < 20) {
+                const deficit = Math.max(0, 20 - playerTotalRemaining);
+                const slowdownMul = 1 + Math.min(0.20, deficit * 0.02);
+                currentRate *= slowdownMul;
+            }
         }
 
         const massSpawnBoost = this._updateMassSpawnResponse(frame);

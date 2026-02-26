@@ -3,6 +3,7 @@
 
     const AI = global.AI;
     if (!AI) return;
+    const resolveRpgInfantryKey = () => ((CONFIG && CONFIG.units && CONFIG.units.rpg) ? 'rpg' : 'engineer');
 
     Object.assign(AI, {
     _pickWeighted(pool, weights) {
@@ -212,12 +213,13 @@
 
     _getTimeBasedSequence(frame) {
         const sec = (Number(frame) || 0) / 60;
+        const rpgKey = resolveRpgInfantryKey();
         // [NEW] 시간 기반 스폰 계획 (순차적 + 약간의 편차)
         if (sec < 30) {
             return { key: '00:00-00:30', sequence: ['infantry', 'humvee', 'infantry'] };
         }
         if (sec < 60) {
-            return { key: '00:30-01:00', sequence: ['infantry', 'humvee', 'engineer', 'drone_operator', 'rpg', 'infantry'] };
+            return { key: '00:30-01:00', sequence: ['infantry', 'humvee', 'engineer', 'drone_operator', rpgKey, 'infantry'] };
         }
         if (sec < 180) {
             return { key: '01:00-03:00', sequence: ['infantry', 'mbt', 'infantry', 'mbt', 'aa_tank'] };
@@ -228,7 +230,7 @@
         if (sec < 420) {
             return { key: '05:00-07:00', sequence: ['fighter', 'apache', 'spg', 'icbm_enemy', 'fighter', 'spg'] };
         }
-        return { key: '07:00+', sequence: ['bomber', 'fighter', 'apache', 'apc', 'mbt', 'spg', 'icbm_enemy', 'infantry', 'engineer', 'humvee', 'rpg', 'drone_operator', 'aa_tank'] };
+        return { key: '07:00+', sequence: ['bomber', 'fighter', 'apache', 'apc', 'mbt', 'spg', 'icbm_enemy', 'infantry', 'engineer', 'humvee', rpgKey, 'drone_operator', 'aa_tank'] };
     },
 
     _getSequentialUnit(frame) {

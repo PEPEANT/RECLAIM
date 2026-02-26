@@ -27,11 +27,7 @@
         beachGapX: 0,
         beachGapY: 74,
         baseYOffset: 62,
-        craftScale: 0.95,
-        craftHp: 1800,
-        enemyPressureDps: 18,
-        damageRadiusX: 280,
-        damageRadiusY: 170
+        craftScale: 0.95
     });
 
     function clampNumber(raw, fallback, min, max) {
@@ -79,11 +75,7 @@
             beachGapX: clampNumber(src.beachGapX, DEFAULT_CONFIG.beachGapX, -500, 500),
             beachGapY: clampNumber(src.beachGapY, DEFAULT_CONFIG.beachGapY, 20, 180),
             baseYOffset: clampNumber(src.baseYOffset, DEFAULT_CONFIG.baseYOffset, -60, 120),
-            craftScale: clampNumber(src.craftScale, DEFAULT_CONFIG.craftScale, 0.45, 1.6),
-            craftHp: clampNumber(src.craftHp, DEFAULT_CONFIG.craftHp, 200, 12000),
-            enemyPressureDps: clampNumber(src.enemyPressureDps, DEFAULT_CONFIG.enemyPressureDps, 1, 200),
-            damageRadiusX: clampNumber(src.damageRadiusX, DEFAULT_CONFIG.damageRadiusX, 60, 900),
-            damageRadiusY: clampNumber(src.damageRadiusY, DEFAULT_CONFIG.damageRadiusY, 40, 600)
+            craftScale: clampNumber(src.craftScale, DEFAULT_CONFIG.craftScale, 0.45, 1.6)
         };
     }
 

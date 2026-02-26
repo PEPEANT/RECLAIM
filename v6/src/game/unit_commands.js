@@ -6,6 +6,34 @@
 (function () {
     'use strict';
 
+    const resolveGameApi = () => (typeof game !== 'undefined' && game)
+        ? game
+        : ((typeof window !== 'undefined' && window.game) ? window.game : null);
+    const withGameApi = (label, installer) => {
+        const runInstall = () => {
+            const api = resolveGameApi();
+            if (!api) return false;
+            if (api[`__${label}Installed__`] === true) return true;
+            installer(api);
+            api[`__${label}Installed__`] = true;
+            return true;
+        };
+        if (runInstall()) return;
+        console.warn(`[${label}] game unavailable; waiting for late init.`);
+        let retries = 0;
+        const timer = setInterval(() => {
+            retries += 1;
+            if (runInstall() || retries >= 120) clearInterval(timer);
+        }, 50);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('reclaim:game-ready', () => {
+                if (runInstall()) clearInterval(timer);
+            }, { once: true });
+        }
+    };
+
+    withGameApi('UnitCommands', (game) => {
+
     // ============================================
     // A) ?곹깭 蹂??珥덇린??(?ㅼ쨷 ?좏깮)
     // ============================================
@@ -149,6 +177,24 @@
         return usesExtendedMissileRange ? Math.max(unitRange, missileRange) : unitRange;
     }
 
+    function canUnitEngageAir(unit, target = null) {
+        if (!unit || !unit.stats) return false;
+        if (typeof unit.canEngageAirTarget === 'function') {
+            try { return !!unit.canEngageAirTarget(target); } catch (_) { }
+        }
+
+        const id = String(unit.stats.id || '').trim().toLowerCase();
+        const category = String(unit.stats.category || '').trim().toLowerCase();
+        const unitType = String(unit.stats.type || '').trim().toLowerCase();
+
+        if (unitType === 'air' || category === 'air') return true;
+        if (id === 'aa_tank' || id === 'turret') return true;
+        if (id === 'humvee' || id === 'apc') return true;
+        if (id === 'rpg' || id === 'engineer') return true;
+        if (category === 'infantry') return false;
+        return !!unit.stats.antiAir;
+    }
+
     function isDirectControlTargetInRange(unit, target, maxRange) {
         if (!unit || !target || target.dead) return false;
         const tx = Number(target.x);
@@ -178,6 +224,8 @@
             for (let i = 0; i < candidates.length; i += 1) {
                 const candidate = candidates[i];
                 if (!candidate || candidate.dead) continue;
+                const candidateIsAir = !!(candidate.stats && candidate.stats.type === 'air');
+                if (candidateIsAir && !canUnitEngageAir(unit, candidate)) continue;
                 if (!isDirectControlTargetInRange(unit, candidate, maxRange)) continue;
                 if (restrictRear && typeof unit.isTargetBehindX === 'function' && unit.isTargetBehindX(candidate.x, 20)) continue;
 
@@ -202,6 +250,8 @@
 
         const target = unit.findNearestEnemy(pools.enemies, pools.enemyBuildings);
         if (!target || target.dead) return null;
+        const targetIsAir = !!(target.stats && target.stats.type === 'air');
+        if (targetIsAir && !canUnitEngageAir(unit, target)) return null;
         if (!isDirectControlTargetInRange(unit, target, maxRange)) return null;
         if (restrictRear && typeof unit.isTargetBehindX === 'function' && unit.isTargetBehindX(target.x, 20)) return null;
         return target;
@@ -1210,7 +1260,9 @@
                     ? this.shouldRestrictRearTargeting()
                     : (String((this.stats && this.stats.id) || '') !== 'aa_tank');
                 const targetBehind = !!(target && restrictRear && typeof this.isTargetBehindX === 'function' && this.isTargetBehindX(target.x, 20));
-                const canAttack = (target && !targetBehind && Math.abs(target.x - this.x) <= activeRange);
+                const targetIsAir = !!(target && target.stats && target.stats.type === 'air');
+                const canAttackAir = !targetIsAir || canUnitEngageAir(this, target);
+                const canAttack = (target && !targetBehind && canAttackAir && Math.abs(target.x - this.x) <= activeRange);
                 if (canAttack) {
                     this.attackTarget = target;
                     let rate = 60;
@@ -3287,4 +3339,5 @@
         setupHudCtrlPanel();
     }
 
+    });
 })();

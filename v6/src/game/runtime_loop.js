@@ -49,7 +49,9 @@
         }
         if (alpha <= 0.01) return;
 
-        const label = mode === 'enemy' ? 'Á¡·É À§Çèµµ' : 'Á¡·Éµµ';
+        const label = mode === 'enemy'
+            ? '\uC810\uB839 \uC704\uD5D8\uB3C4'
+            : '\uC810\uB839\uB3C4';
         const barColor = mode === 'enemy' ? '#ef4444' : '#22c55e';
         const glowColor = mode === 'enemy' ? 'rgba(239,68,68,0.6)' : 'rgba(34,197,94,0.6)';
         const panelW = Math.max(240, Math.min(420, (Number(game.width) || 1280) * 0.42));
@@ -77,7 +79,7 @@
         ctx.fillStyle = '#f8fafc';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.font = 'bold 16px "Orbitron", sans-serif';
+        ctx.font = 'bold 16px "Malgun Gothic", "Noto Sans KR", sans-serif';
         ctx.fillText(`${label} ${Math.round(value)}%`, x + panelW / 2, textY);
 
         ctx.shadowBlur = 0;
@@ -87,6 +89,141 @@
         ctx.fillRect(x + barPad, barY, barW * (value / 100), barH);
         ctx.strokeStyle = 'rgba(226,232,240,0.35)';
         ctx.strokeRect(x + barPad + 0.5, barY + 0.5, barW - 1, barH - 1);
+
+        ctx.restore();
+    }
+
+    let __reconHudHotkeyBound = false;
+
+    function isPlayerReconAlive(game) {
+        const list = Array.isArray(game && game.players) ? game.players : [];
+        for (let i = 0; i < list.length; i++) {
+            const u = list[i];
+            if (!u || u.dead) continue;
+            const id = String((u.stats && u.stats.id) || '').trim().toLowerCase();
+            if (id === 'recon') return true;
+        }
+        return false;
+    }
+
+    function isPlayerReconSelected(game) {
+        if (!game || !game.selectedUnits) return false;
+        const selected = game.selectedUnits;
+        if (typeof selected.forEach === 'function') {
+            let found = false;
+            selected.forEach((u) => {
+                if (found || !u || u.dead) return;
+                const id = String((u.stats && u.stats.id) || '').trim().toLowerCase();
+                if (id === 'recon') found = true;
+            });
+            return found;
+        }
+        return false;
+    }
+
+    function getReconEnemyCounts(game) {
+        const counts = { total: 0, infantry: 0, armored: 0, air: 0 };
+        const list = Array.isArray(game && game.enemies) ? game.enemies : [];
+        for (let i = 0; i < list.length; i++) {
+            const u = list[i];
+            if (!u || u.dead || !u.stats) continue;
+            if (u.isCameraman || u.stats.isCameraman) continue;
+            if (u.stats.civilian === true) continue;
+            counts.total += 1;
+            const category = String(u.stats.category || '').trim().toLowerCase();
+            const type = String(u.stats.type || '').trim().toLowerCase();
+            if (type === 'air' || category === 'air') {
+                counts.air += 1;
+            } else if (category === 'armored' || type === 'mech' || type === 'vehicle' || type === 'tank') {
+                counts.armored += 1;
+            } else if (category === 'infantry') {
+                counts.infantry += 1;
+            }
+        }
+        return counts;
+    }
+
+    function installReconHudHotkey(game) {
+        if (__reconHudHotkeyBound || typeof window === 'undefined') return;
+        window.addEventListener('keydown', (ev) => {
+            if (!ev) return;
+            const tag = String((ev.target && ev.target.tagName) || '').toLowerCase();
+            if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+            if (ev.key !== 'F6') return;
+            const g = (typeof global !== 'undefined' && global && global.game) ? global.game : game;
+            if (!g) return;
+            const next = !(g.reconHudEnabled !== false);
+            g.reconHudEnabled = next;
+            if (typeof window !== 'undefined') {
+                window.__RECLAIM_RECON_HUD_ENABLED__ = next;
+            }
+            if (typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
+                ui.showToast(next ? 'RECON HUD ON' : 'RECON HUD OFF');
+            }
+            ev.preventDefault();
+        }, { passive: false });
+
+        if (typeof window !== 'undefined') {
+            window.toggleReconHud = function toggleReconHud(force) {
+                const g = (typeof global !== 'undefined' && global && global.game) ? global.game : game;
+                if (!g) return false;
+                const next = (typeof force === 'boolean') ? force : !(g.reconHudEnabled !== false);
+                g.reconHudEnabled = !!next;
+                window.__RECLAIM_RECON_HUD_ENABLED__ = g.reconHudEnabled;
+                return g.reconHudEnabled;
+            };
+        }
+
+        __reconHudHotkeyBound = true;
+    }
+
+    function drawReconDroneHudOverlay(game, ctx) {
+        if (!game || !ctx) return;
+        installReconHudHotkey(game);
+
+        if (typeof game.reconHudEnabled !== 'boolean') {
+            const persisted = (typeof window !== 'undefined') ? window.__RECLAIM_RECON_HUD_ENABLED__ : undefined;
+            game.reconHudEnabled = (persisted !== false);
+        }
+        if (game.reconHudEnabled !== true) return;
+
+        const reconVisible = isPlayerReconAlive(game) || isPlayerReconSelected(game);
+        if (!reconVisible) return;
+
+        const counts = getReconEnemyCounts(game);
+        const rows = [
+            'RECON FEED',
+            `TOTAL  ${counts.total}`,
+            `INF    ${counts.infantry}`,
+            `ARM    ${counts.armored}`,
+            `AIR    ${counts.air}`,
+            'F6 TOGGLE'
+        ];
+
+        const lineH = 17;
+        const baseX = 16;
+        const bottomPad = 18;
+        const baseY = (Number(game.height) || 840) - bottomPad - ((rows.length - 1) * lineH);
+        const frame = Number(game.frame) || 0;
+        const pulse = 0.82 + (Math.sin(frame * 0.14) * 0.12);
+
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'alphabetic';
+        ctx.font = 'bold 14px "Consolas", "Courier New", monospace';
+
+        for (let i = 0; i < rows.length; i++) {
+            const y = baseY + (i * lineH);
+            ctx.shadowColor = 'rgba(16,255,96,0.72)';
+            ctx.shadowBlur = 8;
+            ctx.fillStyle = `rgba(112,255,140,${Math.max(0.35, Math.min(1, pulse))})`;
+            ctx.fillText(rows[i], baseX, y);
+
+            ctx.shadowBlur = 0;
+            ctx.fillStyle = 'rgba(20,120,45,0.38)';
+            ctx.fillText(rows[i], baseX + 0.7, y + 0.7);
+        }
 
         ctx.restore();
     }
@@ -130,7 +267,7 @@
                 game.draw();
             } catch (e) {
                 game._reportLoopError('draw', e);
-                // Ã¹ ÇÁ·¹ÀÓ draw ½ÇÆĞ ½Ã ¿ÏÀüÇÑ °ËÀº È­¸éÀ¸·Î º¸ÀÌ´Â Çö»óÀ» ¹æÁöÇÑ´Ù.
+                // ì²« í”„ë ˆì„ draw ì‹¤íŒ¨ ì‹œ ì™„ì „í•œ ê²€ì€ í™”ë©´ìœ¼ë¡œ ë³´ì´ëŠ” í˜„ìƒì„ ë°©ì§€í•œë‹¤.
                 game._drawFallbackFrame();
             }
         }
@@ -239,12 +376,12 @@
         for (let k in game.cooldowns) if (game.cooldowns[k] > 0) game.cooldowns[k]--;
         for (let k in game.enemyCooldowns) if (game.enemyCooldowns[k] > 0) game.enemyCooldowns[k]--;
 
-        // [NEW] ÀÛ¾÷ÀÚ °Ç¼³ ÄğÅ¸ÀÓ °¨¼Ò
+        // [NEW] ì‘ì—…ì ê±´ì„¤ ì¿¨íƒ€ì„ ê°ì†Œ
         if (game.builderCooldown > 0) game.builderCooldown--;
 
         if (game.empTimer > 0) {
             game.empTimer--;
-            // [P0-4] »óÅÂ º¯È­ ½Ã¿¡¸¸ class Åä±Û (DOM Äõ¸® Ä³½Ì)
+            // [P0-4] ìƒíƒœ ë³€í™” ì‹œì—ë§Œ class í† ê¸€ (DOM ì¿¼ë¦¬ ìºì‹±)
             const shouldBeActive = game.empTimer > 0;
             if (game._empWasActive !== shouldBeActive && game.$empFlash) {
                 game.$empFlash.classList.toggle('active', shouldBeActive);
@@ -259,7 +396,7 @@
             game.civilianGlobalPanic--;
         }
 
-        // [P0-2] ´ÜÀÏ ÆĞ½º: dead Á¦°Å + player/enemy ºĞ·ù + HQ Å½»ö
+        // [P0-2] ë‹¨ì¼ íŒ¨ìŠ¤: dead ì œê±° + player/enemy ë¶„ë¥˜ + HQ íƒìƒ‰
         game.playerBuildings.length = 0;
         game.enemyBuildings.length = 0;
         let playerHQ = null;
@@ -280,9 +417,9 @@
         }
         game.buildings.length = writeIdx;
 
-        const elapsedSeconds = game.frame / 60; // 60 FPS ±âÁØ
+        const elapsedSeconds = game.frame / 60; // 60 FPS ê¸°ì¤€
 
-        // »ıÁ¸ÇÑ À¯´Ö ¼ö °è»ê (allocation-free)
+        // ìƒì¡´í•œ ìœ ë‹› ìˆ˜ ê³„ì‚° (allocation-free)
         const alivePlayerUnits = countAliveUnits(game.players);
         const aliveEnemyUnits = countAliveUnits(game.enemies);
         if (alivePlayerUnits > 0) game.playerEverSeen = true;
@@ -297,10 +434,10 @@
         }
         if (game.isGameOver) return;
 
-        // [P1] ½ÃÃ¼ »ı¼º ¹ö½ºÆ® ¿ÏÈ­: ÇÁ·¹ÀÓ´ç ¿¹»ê¸¸Å­ Ã³¸®
+        // [P1] ì‹œì²´ ìƒì„± ë²„ìŠ¤íŠ¸ ì™„í™”: í”„ë ˆì„ë‹¹ ì˜ˆì‚°ë§Œí¼ ì²˜ë¦¬
         game._processCorpseSpawnQueue();
 
-        // ±¹ÁöÀü ¹èÄ¡/Ä«¿îÆ®´Ù¿î Áß¿¡´Â À¯´Ö update ½ºÅµ (ÀÌµ¿/°ø°İ ±İÁö)
+        // êµ­ì§€ì „ ë°°ì¹˜/ì¹´ìš´íŠ¸ë‹¤ìš´ ì¤‘ì—ëŠ” ìœ ë‹› update ìŠ¤í‚µ (ì´ë™/ê³µê²© ê¸ˆì§€)
         const skirmishPhase = (game._skirmishMode
             && typeof SkirmishMode !== 'undefined'
             && SkirmishMode
@@ -378,7 +515,7 @@
         }
         game.particles.length = writeParticle;
 
-        // [NEW] ÀÜÇØ ¾÷µ¥ÀÌÆ®
+        // [NEW] ì”í•´ ì—…ë°ì´íŠ¸
         let writeWreckage = 0;
         for (let i = 0; i < game.wreckages.length; i++) {
             const w = game.wreckages[i];
@@ -387,7 +524,7 @@
         }
         game.wreckages.length = writeWreckage;
 
-        // [NEW] º¸º´ ½ÃÃ¼ ¾÷µ¥ÀÌÆ®
+        // [NEW] ë³´ë³‘ ì‹œì²´ ì—…ë°ì´íŠ¸
         let writeCorpse = 0;
         for (let i = 0; i < game.corpses.length; i++) {
             const c = game.corpses[i];
@@ -402,7 +539,7 @@
         }
         game.corpses.length = writeCorpse;
 
-        // [NEW] °Ç¼³ ÁßÀÎ °Ç¹° ¾÷µ¥ÀÌÆ®
+        // [NEW] ê±´ì„¤ ì¤‘ì¸ ê±´ë¬¼ ì—…ë°ì´íŠ¸
         game.updateConstructions();
 
         // [NEW] Camera lock follow
@@ -422,14 +559,14 @@
             game.flash = 0;
         }
 
-        // ±¹ÁöÀü ¸ğµå¿¡¼­´Â AI ½ºÆù ¿ÏÀü Â÷´Ü (¸ğµç ÆäÀÌÁî)
+        // êµ­ì§€ì „ ëª¨ë“œì—ì„œëŠ” AI ìŠ¤í° ì™„ì „ ì°¨ë‹¨ (ëª¨ë“  í˜ì´ì¦ˆ)
         if (typeof AI !== 'undefined' && !game._skirmishMode) {
             AI.update(game.frame);
         }
 
-        // [FIX] ÄğÅ¸ÀÓ/Å¥°¡ ÁøÇà ÁßÀÌ¸é ¸Å ÇÁ·¹ÀÓ UI °»½Å ÇÊ¿ä
+        // [FIX] ì¿¨íƒ€ì„/íê°€ ì§„í–‰ ì¤‘ì´ë©´ ë§¤ í”„ë ˆì„ UI ê°±ì‹  í•„ìš”
         if (typeof app !== 'undefined') {
-            // ÄğÅ¸ÀÓÀÌ ÁøÇà ÁßÀÌ°Å³ª Å¥°¡ ÀÖÀ¸¸é uiDirty (allocation-free)
+            // ì¿¨íƒ€ì„ì´ ì§„í–‰ ì¤‘ì´ê±°ë‚˜ íê°€ ìˆìœ¼ë©´ uiDirty (allocation-free)
             const hasCooldown = hasPositiveValue(game.cooldowns);
             const hasQueue = hasPositiveValue(game.spawnQueue);
             if (hasCooldown || hasQueue) {
@@ -445,9 +582,9 @@
     }
 
     function renderUI(game) {
-        // [CHANGE][APP] UI °»½Å °æ·Î ´ÜÀÏÈ­
-        // - ±âÁ¸: ui.updateUnitButtons(), ui.setSkillCount() ... ºĞ»ê È£Ãâ
-        // - º¯°æ: app.commit() ÇÑ ¹ø¿¡¼­¸¸ UI + ÀúÀå Ã³¸®
+        // [CHANGE][APP] UI ê°±ì‹  ê²½ë¡œ ë‹¨ì¼í™”
+        // - ê¸°ì¡´: ui.updateUnitButtons(), ui.setSkillCount() ... ë¶„ì‚° í˜¸ì¶œ
+        // - ë³€ê²½: app.commit() í•œ ë²ˆì—ì„œë§Œ UI + ì €ì¥ ì²˜ë¦¬
         if (typeof app !== 'undefined') app.commit('tick');
     }
 
@@ -544,7 +681,7 @@
             }
         }
 
-        // [VFX] world-layer shake (screen ±âÁØ °íÁ¤)
+        // [VFX] world-layer shake (screen ê¸°ì¤€ ê³ ì •)
         if (game.shake > 0.01) {
             const j = game.shake / Math.max(0.01, Camera.zoom);
             ctx.translate((Math.random() - 0.5) * j * 2, (Math.random() - 0.5) * j * 2);
@@ -559,10 +696,10 @@
             }
         }
 
-        // [NEW] ÀÜÇØ ·»´õ¸µ (À¯´Öº¸´Ù µÚ, °Ç¹° ¾Õ)
+        // [NEW] ì”í•´ ë Œë”ë§ (ìœ ë‹›ë³´ë‹¤ ë’¤, ê±´ë¬¼ ì•)
         game.wreckages.forEach(w => w.draw(ctx));
 
-        // [NEW] º¸º´ ½ÃÃ¼ ·»´õ¸µ (ÀÜÇØ À§, À¯´Ö µÚ)
+        // [NEW] ë³´ë³‘ ì‹œì²´ ë Œë”ë§ (ì”í•´ ìœ„, ìœ ë‹› ë’¤)
         const doCorpseProfile = !!(game.debug && game.debug.corpseProfile && typeof performance !== 'undefined' && performance.now);
         const corpseProfileEvery = (game.debug && Number.isFinite(game.debug.corpseProfileEvery) && game.debug.corpseProfileEvery > 0)
             ? game.debug.corpseProfileEvery
@@ -586,7 +723,7 @@
 
         game.civilians.forEach(u => u.draw(ctx));
 
-        // [FIX] °Ç¼³ ÁøÇà UI´Â À¯´Öº¸´Ù µÚ(¹è°æ ·¹ÀÌ¾î)¿¡ ·»´õ¸µ
+        // [FIX] ê±´ì„¤ ì§„í–‰ UIëŠ” ìœ ë‹›ë³´ë‹¤ ë’¤(ë°°ê²½ ë ˆì´ì–´)ì— ë Œë”ë§
         if (game.constructingBuildings) {
             game.constructingBuildings.forEach(c => {
                 if (c.dead) return;
@@ -639,7 +776,7 @@
 
         game.drawSkirmishPlacementZone(ctx);
 
-        // [NEW] °Ç¼³ ÇÁ¸®ºä ·»´õ¸µ
+        // [NEW] ê±´ì„¤ í”„ë¦¬ë·° ë Œë”ë§
         if (game.buildMode.active && game.buildMode.type) {
             game.drawBuildPreview(ctx);
         }
@@ -648,7 +785,7 @@
 
         ctx.restore();
 
-        // [VFX] screen flash (screen-space) - Èò»ö¸¸ »ç¿ë
+        // [VFX] screen flash (screen-space) - í°ìƒ‰ë§Œ ì‚¬ìš©
         if (game.flash > 0.01) {
             ctx.save();
             ctx.setTransform(1, 0, 0, 1, 0, 0);
@@ -662,12 +799,13 @@
         }
 
         drawCaptureControlOverlay(game, ctx);
+        drawReconDroneHudOverlay(game, ctx);
 
     }
 
     function drawHUD(game) {
         const ctx = game.ctx;
-        // ¸ğ¹ÙÀÏ °¡·Î ¸ğµåÀÎÁö Ã¼Å©
+        // ëª¨ë°”ì¼ ê°€ë¡œ ëª¨ë“œì¸ì§€ ì²´í¬
         const isMobileLandscape = window.innerHeight < 600 && window.innerWidth > window.innerHeight;
 
         const fontSize = (game.width < 800) ? 16 : 24;
@@ -679,15 +817,15 @@
         ctx.shadowColor = 'black';
         ctx.shadowBlur = 4;
 
-        // [º¯°æ] ÀÚ¿ø(SUPPLY) Ç¥½Ã À§Ä¡
-        // ¸ğ¹ÙÀÏ °¡·Î ¸ğµå¸é -> ¿ŞÂÊ ÇÏ´Ü (Bottom Left)
-        // ±× ¿Ü(PC/¼¼·Î) -> ¿ŞÂÊ »ó´Ü (Top Left)
+        // [ë³€ê²½] ìì›(SUPPLY) í‘œì‹œ ìœ„ì¹˜
+        // ëª¨ë°”ì¼ ê°€ë¡œ ëª¨ë“œë©´ -> ì™¼ìª½ í•˜ë‹¨ (Bottom Left)
+        // ê·¸ ì™¸(PC/ì„¸ë¡œ) -> ì™¼ìª½ ìƒë‹¨ (Top Left)
         let supplyX = padding;
         let supplyY = padding;
 
         if (isMobileLandscape) {
             supplyX = padding;
-            supplyY = game.height - padding - 40; // ¹Ù´Ú¿¡¼­ Á¶±İ À§
+            supplyY = game.height - padding - 40; // ë°”ë‹¥ì—ì„œ ì¡°ê¸ˆ ìœ„
         }
 
         // 1. Supply Text
@@ -695,7 +833,7 @@
         ctx.textAlign = 'left';
         ctx.fillText(`SUPPLY: ${Math.floor(game.supply)}`, supplyX, supplyY);
 
-        // Supply Bar (Text ¾Æ·¡¿¡)
+        // Supply Bar (Text ì•„ë˜ì—)
         const barW = (game.width < 800) ? 100 : 150;
         const barH = (game.width < 800) ? 4 : 6;
         const ratio = Math.min(1, game.supply / CONFIG.maxSupply);
@@ -705,12 +843,12 @@
         ctx.fillStyle = '#fbbf24';
         ctx.fillRect(supplyX, supplyY + fontSize + 5, barW * ratio, barH);
 
-        // 2. Kill Count (¿À¸¥ÂÊ »ó´Ü À¯Áö)
+        // 2. Kill Count (ì˜¤ë¥¸ìª½ ìƒë‹¨ ìœ ì§€)
         ctx.textAlign = 'right';
         ctx.fillStyle = '#ef4444';
         ctx.fillText(`KILLS: ${game.killCount || 0}`, game.width - padding, padding);
 
-        // 3. Time (Áß¾Ó »ó´Ü À¯Áö)
+        // 3. Time (ì¤‘ì•™ ìƒë‹¨ ìœ ì§€)
         ctx.textAlign = 'center';
         ctx.fillStyle = 'white';
         const time = Math.floor(game.frame / 60);
@@ -718,14 +856,14 @@
         const sec = (time % 60).toString().padStart(2, '0');
         ctx.fillText(`${min}:${sec}`, game.width / 2, padding);
 
-        // [NEW] °ø½À°æº¸ Ç¥½Ã
+        // [NEW] ê³µìŠµê²½ë³´ í‘œì‹œ
         if (game.airRaidWarning) {
             const warn = game.airRaidWarning;
             const elapsed = (game.frame || 0) - warn.startFrame;
             const total = warn.endFrame - warn.startFrame;
             const progress = Math.min(1, elapsed / total);
 
-            // ±ôºıÀÓ È¿°ú
+            // ê¹œë¹¡ì„ íš¨ê³¼
             const blink = Math.floor(elapsed / 8) % 2 === 0;
 
             if (blink) {
@@ -733,25 +871,25 @@
                 ctx.font = `bold ${warnFontSize}px "Orbitron", sans-serif`;
                 ctx.textAlign = 'left';
 
-                // »¡°£»ö ±×¶óµ¥ÀÌ¼Ç È¿°ú
+                // ë¹¨ê°„ìƒ‰ ê·¸ë¼ë°ì´ì…˜ íš¨ê³¼
                 ctx.fillStyle = '#ef4444';
                 ctx.shadowColor = '#ff0000';
                 ctx.shadowBlur = 20;
 
-                // ¿ŞÂÊ Áß¾Ó¿¡ Ç¥½Ã
+                // ì™¼ìª½ ì¤‘ì•™ì— í‘œì‹œ
                 const warnX = padding + 10;
                 const warnY = game.height / 2 - warnFontSize;
 
-                ctx.fillText('°ø½À°æº¸', warnX, warnY);
+                ctx.fillText('ê³µìŠµê²½ë³´', warnX, warnY);
 
-                // ¹«±â Á¾·ù Ç¥½Ã
+                // ë¬´ê¸° ì¢…ë¥˜ í‘œì‹œ
                 const subFontSize = (game.width < 800) ? 16 : 24;
                 ctx.font = `bold ${subFontSize}px "Orbitron", sans-serif`;
                 ctx.fillStyle = '#fbbf24';
-                const weaponName = warn.type === 'nuke' ? 'Àü¼úÇÙ ¹ß»ç °¨Áö!' : 'Àü¼ú¹Ì»çÀÏ ¹ß»ç °¨Áö!';
+                const weaponName = warn.type === 'nuke' ? 'ì „ìˆ í•µ ë°œì‚¬ ê°ì§€!' : 'ì „ìˆ ë¯¸ì‚¬ì¼ ë°œì‚¬ ê°ì§€!';
                 ctx.fillText(weaponName, warnX, warnY + warnFontSize + 10);
 
-                // ³²Àº ½Ã°£ ¹Ù Ç¥½Ã
+                // ë‚¨ì€ ì‹œê°„ ë°” í‘œì‹œ
                 const barWidth = 150;
                 const barHeight = 8;
                 ctx.fillStyle = '#4b5563';
@@ -772,3 +910,5 @@
         drawHUD
     };
 })(window);
+
+

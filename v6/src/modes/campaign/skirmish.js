@@ -260,18 +260,18 @@
 
             const stageId = this._getStageId();
             let stageBgm = '';
-            if (stageId === 101) stageBgm = 'bgm/ost/storegraphic.mp3';
-            else if (stageId === 102) stageBgm = 'bgm/ost/hitslabwar.mp3';
-            else if (stageId === 103) stageBgm = 'bgm/ost/williamhector.mp3';
-            else if (stageId === 104) stageBgm = 'bgm/ost/mfcc-egypt-egypt.mp3';
-            else if (stageId === 105) stageBgm = 'bgm/ost/rinesh3031.mp3';
+            if (stageId === 101) stageBgm = 'bgm/ost/maps/map_select.mp3';
+            else if (stageId === 102) stageBgm = 'bgm/ost/maps/city_intro.mp3';
+            else if (stageId === 103) stageBgm = 'bgm/ost/maps/cinematic_engine.mp3';
+            else if (stageId === 104) stageBgm = 'bgm/ost/maps/city_intro.mp3';
+            else if (stageId === 105) stageBgm = 'bgm/ost/maps/cinematic_engine.mp3';
 
             try {
                 if (typeof AudioSystem.setBGMLock === 'function') AudioSystem.setBGMLock('');
                 if (stageBgm && typeof AudioSystem.playBGMFile === 'function') {
                     AudioSystem.playBGMFile(stageBgm);
                     this._stageBgmPath = stageBgm;
-                    this._storegraphicActive = stageBgm === 'bgm/ost/storegraphic.mp3';
+                    this._storegraphicActive = stageId === 101;
                     this._fadeOnFirstShotActive = stageId === 104;
                 }
             } catch (_) { }
@@ -279,7 +279,7 @@
             if (stageId === 101) {
                 // Stage 1 city ambience (stops at countdown start).
                 try {
-                    const azan = new Audio('bgm/ost/AzanAdhan.mp3');
+                    const azan = new Audio('bgm/ost/maps/map_select.mp3');
                     azan.loop = true;
                     azan.preload = 'auto';
                     azan.volume = this._calcAuxVolume(0.95);

@@ -632,7 +632,7 @@ const HUD = {
         });
 
         if (canceled > 0 && typeof ui !== 'undefined' && ui && typeof ui.showToast === 'function') {
-            ui.showToast(`?꾧뎔 紐낅졊 痍⑥냼 (${canceled})`);
+            ui.showToast(`명령 취소 (${canceled})`);
         }
         // X(cancel) acts as "cancel control/selection" as requested.
         if (game && typeof game.clearAllSelection === 'function') {
@@ -935,6 +935,13 @@ const HUD = {
                 return { key: 'cmd_move', fallback: 'MOVE', icon: 'fa-solid fa-up-down-left-right', targetingType: '__move__' };
             case 'recon':
                 return { key: 'cmd_recon', fallback: 'RECON', icon: 'fa-solid fa-binoculars' };
+            case 'recon_lock_strike':
+                return {
+                    key: 'cmd_recon_lock_strike',
+                    fallback: 'LOCK STRIKE',
+                    icon: 'fa-solid fa-crosshairs',
+                    targetingType: '__recon_lock_strike__'
+                };
             case 'smoke':
                 return { key: 'cmd_smoke', fallback: 'SMOKE', icon: 'fa-solid fa-smog', targetingType: '__smoke__' };
             case 'medkit':
@@ -1039,6 +1046,7 @@ const HUD = {
         }
 
         let hasRecon = false;
+        let hasReconLockStrike = false;
         let hasSmokeCharge = false;
         let canDrop = false;
         let hasMissileCharge = false;
@@ -1110,8 +1118,16 @@ const HUD = {
         const canIcbmEmp = this.isIcbmPayloadReady('emp');
         const canIcbmNuke = this.isIcbmPayloadReady('nuke');
         const bagpipeCooldownFrames = Math.max(0, Number(game.cooldowns?.bagpipe_skill) || 0);
+        const reconLockStrikeCooldownFrames = (typeof game.getReconLockStrikeCooldownLeftFrames === 'function')
+            ? Math.max(0, Number(game.getReconLockStrikeCooldownLeftFrames()) || 0)
+            : 0;
         // Battle-only policy: bagpipe can be retriggered whenever bagpiper is selected.
         const canUseBagpipe = hasBagpiperSelection;
+        hasReconLockStrike = hasRecon && (
+            (typeof game.isReconLockStrikeAvailable === 'function')
+                ? game.isReconLockStrikeAvailable()
+                : true
+        );
 
         const cameraLocked = (typeof game.isCameraLocked === 'function') ? game.isCameraLocked() : false;
 
@@ -1148,6 +1164,8 @@ const HUD = {
             selectedUnits,
             hasSelection: selectedUnits.length > 0,
             hasRecon,
+            hasReconLockStrike,
+            reconLockStrikeCooldownFrames,
             hasSmokeCharge,
             hasMedkitCharge,
             hasBagpiperSelection,
@@ -1199,6 +1217,7 @@ const HUD = {
         switch (cmd) {
             case 'move': return !!ctx.canMove;
             case 'recon': return !!ctx.hasRecon;
+            case 'recon_lock_strike': return !!ctx.hasReconLockStrike;
             case 'smoke': return !!ctx.hasSmokeCharge;
             case 'medkit': return !!ctx.hasMedkitCharge;
             case 'bagpipe': return !!ctx.hasBagpiperSelection && !!ctx.canUseBagpipe;
@@ -1295,6 +1314,7 @@ const HUD = {
 
             placeSkill('drop', ['skill1', 'skill2', 'skill3']);
             placeSkill('missile', ['skill2', 'skill3', 'skill1']);
+            placeSkill('recon_lock_strike', ['skill1', 'skill2', 'skill3']);
             placeSkill('smoke', ['skill2', 'skill3', 'skill1']);
             placeSkill('medkit', ['skill3', 'skill2', 'skill1']);
             placeSkill('recon', ['skill3', 'skill2', 'skill1']);
@@ -1305,6 +1325,10 @@ const HUD = {
 
         if (ctx.hasBagpiperSelection) {
             placeSkill('bagpipe', ['skill1', 'skill2', 'skill3']);
+        }
+        if (ctx.hasRecon) {
+            placeSkill('recon_lock_strike', ['skill1', 'skill2', 'skill3']);
+            placeSkill('recon', ['skill2', 'skill3', 'skill1']);
         }
 
         if (ctx.hasOperatorSelection) {
@@ -1465,6 +1489,12 @@ const HUD = {
                     return true;
                 }
                 return false;
+            case 'recon_lock_strike':
+                if (typeof game.prepareReconLockStrikeCommand === 'function') {
+                    game.prepareReconLockStrikeCommand();
+                    return true;
+                }
+                return false;
             case 'smoke':
                 if (typeof game.prepareSmokeCommand === 'function') {
                     game.prepareSmokeCommand();
@@ -1569,7 +1599,7 @@ const HUD = {
                 );
                 if (!canEject || typeof b.ejectAllGarrison !== 'function') return false;
                 b.ejectAllGarrison();
-                ui.showToast('???녿뮝?筌믩끃異?????ル뒇嶺?????썹땟???熬곣뫖利???');
+                ui.showToast('주둔 병력 전원 하차');
                 if (typeof game.updateHUDSelection === 'function') game.updateHUDSelection();
                 return true;
             }
@@ -1620,6 +1650,8 @@ const HUD = {
             `t:${ctx.targetingType || '-'}`,
             `build:${ctx.buildModeActive ? 1 : 0}`,
             `recon:${ctx.hasRecon ? 1 : 0}`,
+            `reconStrike:${ctx.hasReconLockStrike ? 1 : 0}`,
+            `reconStrikeCd:${Math.max(0, Number(ctx.reconLockStrikeCooldownFrames) || 0)}`,
             `smoke:${ctx.hasSmokeCharge ? 1 : 0}`,
             `medkit:${ctx.hasMedkitCharge ? 1 : 0}`,
             `bagSel:${ctx.hasBagpiperSelection ? 1 : 0}`,
@@ -1861,7 +1893,7 @@ const HUD = {
                         const unitType = btn.dataset.ejectType;
                         if (b.ejectOneByType) {
                             b.ejectOneByType(unitType);
-                            ui.showToast(`${unitType} 1???熬곣뫖利???`);
+                            ui.showToast(`${unitType} 1기 하차`);
                             game.updateHUDSelection();
                         }
                     });
@@ -1874,7 +1906,7 @@ const HUD = {
                         e.stopPropagation();
                         if (b.ejectAllGarrison) {
                             b.ejectAllGarrison();
-                            ui.showToast('???녿뮝?筌믩끃異?????ル뒇嶺?????썹땟???熬곣뫖利???');
+                            ui.showToast('주둔 병력 전원 하차');
                             game.updateHUDSelection();
                         }
                     });
@@ -2292,11 +2324,11 @@ const HUD = {
                     // ?轅몄뫅??????????????ル뭸癲??????怨뺤쭕
                     this.spawnFromBuilding(building, key);
                 } else if (onCooldown) {
-                    ui.showToast('???쒓턁????嚥?');
+                    ui.showToast('쿨타임 중입니다.');
                 } else if (!inStock) {
-                    ui.showToast('????????ㅼ굡??');
+                    ui.showToast('재고가 없습니다.');
                 } else {
-                    ui.showToast('????????낇뀘???');
+                    ui.showToast('자원이 부족합니다.');
                 }
             });
 
@@ -2433,13 +2465,13 @@ const HUD = {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 if (alreadyBuilt) {
-                    ui.showToast('??醫딆┫????? 1??????꿸쑨?????鍮???醫딆쓧??嚥싳쇎紐???????딅젩!');
+                    ui.showToast('감시탑은 1개만 건설 가능합니다.');
                 } else if (worker && canAfford && !onCooldown) {
                     game.enterBuildMode(key, worker);
                 } else if (onCooldown) {
-                    ui.showToast('?꿸쑨?????鍮????쒓턁????嚥?');
+                    ui.showToast('감시탑 건설 쿨타임 중입니다.');
                 } else if (!canAfford) {
-                    ui.showToast('????????낇뀘???');
+                    ui.showToast('자원이 부족합니다.');
                 }
             });
 

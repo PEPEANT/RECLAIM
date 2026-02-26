@@ -69,7 +69,7 @@
         ctx.scale(state.facing, 1);
 
         deps.bodyApi.drawBody(unit, ctx, state, palette);
-        deps.weaponApi.drawWeapon(ctx, state.stance, palette, state.recoil, state);
+        deps.weaponApi.drawWeapon(ctx, state.stance, palette, state.recoil, state, unit);
         deps.fxApi.drawFx(unit, ctx, state);
 
         ctx.restore();

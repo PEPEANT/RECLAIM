@@ -3,8 +3,8 @@
     const CITY_SCALE_MIN = 0.9;
     const CITY_SCALE_MAX = 2.4;
     const CITY_SCALE_STEP = 0.05;
-    const CITY_BGM_INTRO_FILE = 'bgm/ost/tunetank2.mp3';
-    const CITY_BGM_LOOP_FILE = 'bgm/ost/tunetank.mp3';
+    const CITY_BGM_INTRO_FILE = 'bgm/ost/maps/city_intro.mp3';
+    const CITY_BGM_LOOP_FILE = 'bgm/ost/maps/city_intro.mp3';
     const CITY_BGM_INTRO_PLAYED_KEY = 'reclaim_city_bgm_intro_played_v1';
     const CITY_EVENT_V62_ID = 'v62_update';
     const CITY_EVENT_V62_OVERLAY_ID = 'city-event-v62-overlay';

@@ -62,23 +62,6 @@
         ctx.lineTo(127, rampTopY + 2);
         ctx.stroke();
 
-        const hpMax = Math.max(0, Number(craft.maxHp) || 0);
-        if (hpMax > 0) {
-            const hp = Math.max(0, Number(craft.hp) || 0);
-            const hpRatio = clamp01(hp / hpMax);
-            const barX = -116;
-            const barY = -86;
-            const barW = 216;
-            const barH = 7;
-            ctx.fillStyle = 'rgba(15,23,42,0.92)';
-            ctx.fillRect(barX, barY, barW, barH);
-            ctx.fillStyle = hpRatio > 0.6 ? '#22c55e' : (hpRatio > 0.32 ? '#f59e0b' : '#ef4444');
-            ctx.fillRect(barX, barY, barW * hpRatio, barH);
-            ctx.strokeStyle = 'rgba(148,163,184,0.7)';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(barX + 0.5, barY + 0.5, barW - 1, barH - 1);
-        }
-
         ctx.restore();
     }
 

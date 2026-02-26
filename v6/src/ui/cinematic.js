@@ -9,7 +9,7 @@
     const CINEMATIC_KEY = 'reclaim_cinematic_watched';
     const INTRO_LOGO_BGM_PATH = '';
     const MAIN_CINEMATIC_BGM_PATH = '';
-    const CINEMATIC_ENGINE_PATH = 'bgm/ost/806143.mp3';
+    const CINEMATIC_ENGINE_PATH = 'bgm/ost/maps/cinematic_engine.mp3';
     const INTRO_LOGO_VIDEO_PATH = 'assets/tutorial/videos/grok_war.mp4';
     const CINEMATIC_VIDEO_PATH = 'assets/tutorial/videos/grok_war.mp4';
     const INTRO_LOGO_MAX_SECONDS = 3;
@@ -1019,7 +1019,7 @@
                 impactSfxAudio.pause();
                 impactSfxAudio.currentTime = 0;
             }
-            impactSfxAudio = new Audio('bgm/boom/death-exp.mp3');
+            impactSfxAudio = new Audio('bgm/sfx/boom/medium/death_exp.mp3');
             impactSfxAudio.volume = 0.85;
             if (cinematicStopped) return;
             impactSfxAudio.play().catch(err => {

@@ -4,9 +4,36 @@
 (function () {
     'use strict';
 
-    const DRONE_IDS = new Set(['drone_suicide', 'drone_at']);
+    const resolveGameApi = () => (typeof game !== 'undefined' && game)
+        ? game
+        : ((typeof window !== 'undefined' && window.game) ? window.game : null);
+    const withGameApi = (label, installer) => {
+        const runInstall = () => {
+            const api = resolveGameApi();
+            if (!api) return false;
+            if (api[`__${label}Installed__`] === true) return true;
+            installer(api);
+            api[`__${label}Installed__`] = true;
+            return true;
+        };
+        if (runInstall()) return;
+        console.warn(`[${label}] game unavailable; waiting for late init.`);
+        let retries = 0;
+        const timer = setInterval(() => {
+            retries += 1;
+            if (runInstall() || retries >= 120) clearInterval(timer);
+        }, 50);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('reclaim:game-ready', () => {
+                if (runInstall()) clearInterval(timer);
+            }, { once: true });
+        }
+    };
 
-    Object.assign(game, {
+    withGameApi('DroneControl', (game) => {
+        const DRONE_IDS = new Set(['drone_suicide', 'drone_at']);
+
+        Object.assign(game, {
         droneControlMode: 'auto', // 'auto' | 'manual'
 
         getDroneControlMode() {
@@ -178,5 +205,6 @@
 
             ctx.restore();
         },
+        });
     });
 })();

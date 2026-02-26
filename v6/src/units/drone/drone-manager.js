@@ -5,7 +5,34 @@
 (function () {
     'use strict';
 
-    Object.assign(game, {
+    const resolveGameApi = () => (typeof game !== 'undefined' && game)
+        ? game
+        : ((typeof window !== 'undefined' && window.game) ? window.game : null);
+    const withGameApi = (label, installer) => {
+        const runInstall = () => {
+            const api = resolveGameApi();
+            if (!api) return false;
+            if (api[`__${label}Installed__`] === true) return true;
+            installer(api);
+            api[`__${label}Installed__`] = true;
+            return true;
+        };
+        if (runInstall()) return;
+        console.warn(`[${label}] game unavailable; waiting for late init.`);
+        let retries = 0;
+        const timer = setInterval(() => {
+            retries += 1;
+            if (runInstall() || retries >= 120) clearInterval(timer);
+        }, 50);
+        if (typeof window !== 'undefined') {
+            window.addEventListener('reclaim:game-ready', () => {
+                if (runInstall()) clearInterval(timer);
+            }, { once: true });
+        }
+    };
+
+    withGameApi('DroneManager', (game) => {
+        Object.assign(game, {
 
         getSelectedOperators() {
             if (!this.selectedUnits || this.selectedUnits.size === 0) return [];
@@ -165,5 +192,6 @@
             return operators.filter((op) => this._canOperatorLaunchDrone(op));
         },
 
+        });
     });
 })();

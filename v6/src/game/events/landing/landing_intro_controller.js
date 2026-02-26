@@ -22,8 +22,8 @@
         const startedAt = Date.now();
         let finished = false;
         let disabled = false;
-        const MOVE_AUDIO_PATH = 'bgm/mov/tank_moving2.mp3';
-        const SEA_AUDIO_PATH = 'bgm/mov/solarmusic.mp3';
+        const MOVE_AUDIO_PATH = resolveManifestPath('sfx.movement.humvee', 'bgm/sfx/movement/humvee_moving.mp3');
+        const SEA_AUDIO_PATH = resolveManifestPath('sfx.ambient.sea_surf', 'bgm/sfx/ambient/sea_surf.mp3');
         const seaWindowEndMs = Date.now() + 7000;
         let moveAudio = null;
         let seaAudio = null;
@@ -77,8 +77,7 @@
                 rampOpenSec: cfg.rampOpenSec,
                 holdSec: cfg.holdSec,
                 timeoutSec: cfg.timeoutSec,
-                scale: cfg.craftScale,
-                maxHp: cfg.craftHp
+                scale: cfg.craftScale
             }));
         }
 
@@ -87,6 +86,26 @@
                 if (typeof AudioSystem !== 'undefined' && AudioSystem) return AudioSystem;
             } catch (_) { }
             return (global && global.AudioSystem) ? global.AudioSystem : null;
+        }
+
+        function resolveManifestPath(dotPath, fallbackPath) {
+            if (!dotPath) return fallbackPath;
+            try {
+                const manifest = (global && global.RECLAIM_AUDIO_MANIFEST)
+                    ? global.RECLAIM_AUDIO_MANIFEST
+                    : null;
+                if (!manifest) return fallbackPath;
+                const parts = String(dotPath).split('.');
+                let cur = manifest;
+                for (let i = 0; i < parts.length; i += 1) {
+                    const key = parts[i];
+                    if (!cur || typeof cur !== 'object' || !(key in cur)) return fallbackPath;
+                    cur = cur[key];
+                }
+                return (typeof cur === 'string' && cur.trim()) ? cur : fallbackPath;
+            } catch (_) {
+                return fallbackPath;
+            }
         }
 
         function getSfxMix() {
@@ -165,61 +184,6 @@
             }
         }
 
-        function getEnemyPressureWeight(unit, nowFrame) {
-            if (!unit || !unit.stats) return 0;
-            const type = String(unit.stats.type || '').trim().toLowerCase();
-            const category = String(unit.stats.category || '').trim().toLowerCase();
-            let weight = 0.8;
-            if (category === 'infantry') weight = 0.55;
-            else if (category === 'armored' || type === 'mech' || type === 'vehicle') weight = 1.55;
-            else if (category === 'air' || type === 'air') weight = 1.15;
-            const lastAttack = Math.max(0, Math.floor(Number(unit.lastAttack) || 0));
-            if (nowFrame - lastAttack <= 45) {
-                weight *= 1.32;
-            }
-            return weight;
-        }
-
-        function applyCraftCombatPressure(dt) {
-            if (!game || !Array.isArray(game.enemies) || game.enemies.length <= 0) return;
-            const delta = Math.max(0, Number(dt) || 0);
-            if (delta <= 0) return;
-
-            const radiusX = Math.max(60, Number(cfg.damageRadiusX) || 280);
-            const radiusY = Math.max(40, Number(cfg.damageRadiusY) || 170);
-            const pressureDps = Math.max(1, Number(cfg.enemyPressureDps) || 18);
-            const nowFrame = Math.max(0, Math.floor(Number(game.frame) || 0));
-
-            for (let i = 0; i < crafts.length; i += 1) {
-                const craft = crafts[i];
-                if (!craft || craft.active !== true) continue;
-                if (craft.state === STATES.APPROACH || craft.state === STATES.FAILED) continue;
-                if (typeof craft.isDestroyed === 'function' && craft.isDestroyed()) continue;
-
-                const cx = Number(craft.x) || 0;
-                const cy = Number(craft.y) || 0;
-                let pressure = 0;
-
-                for (let j = 0; j < game.enemies.length; j += 1) {
-                    const enemy = game.enemies[j];
-                    if (!enemy || enemy.dead || !enemy.stats) continue;
-                    const ex = Number(enemy.x);
-                    if (!Number.isFinite(ex)) continue;
-                    const eyRaw = Number(enemy.y);
-                    const ey = Number.isFinite(eyRaw) ? eyRaw : cy;
-                    if (Math.abs(ex - cx) > radiusX) continue;
-                    if (Math.abs(ey - cy) > radiusY) continue;
-                    pressure += getEnemyPressureWeight(enemy, nowFrame);
-                    if (pressure >= 16) break;
-                }
-
-                if (pressure <= 0) continue;
-                if (typeof craft.applyDamage === 'function') {
-                    craft.applyDamage(Math.min(16, pressure) * pressureDps * delta, 'enemy-fire');
-                }
-            }
-        }
-
         function stopLandingAudio(resetTime) {
             pauseAudio(moveAudio, resetTime);
             pauseAudio(seaAudio, resetTime);
@@ -250,10 +214,6 @@
                     state: c.state,
                     x: Math.round(Number(c.x) || 0),
                     y: Math.round(Number(c.y) || 0),
-                    hp: Math.max(0, Math.round(Number(c.hp) || 0)),
-                    maxHp: Math.max(1, Math.round(Number(c.maxHp) || 1)),
-                    destroyed: !!(typeof c.isDestroyed === 'function' ? c.isDestroyed() : c.destroyed === true),
-                    destroyReason: c.destroyReason || '',
                     rampOpenT: Number((Number(c.rampOpenT) || 0).toFixed(3)),
                     active: c.active === true,
                     failedReason: c.failedReason || ''
@@ -268,7 +228,6 @@
                 for (let i = 0; i < crafts.length; i += 1) {
                     crafts[i].update(dt);
                 }
-                applyCraftCombatPressure(dt);
                 syncLandingAudio();
                 if (typeof window !== 'undefined') {
                     window.__RECLAIM_LANDING_INTRO_STATE__ = getDebugState();
@@ -288,7 +247,7 @@
                 syncLandingAudio();
                 for (let i = 0; i < crafts.length; i += 1) {
                     const c = crafts[i];
-                    if (c.state === STATES.FAILED && c.destroyed !== true) continue;
+                    if (c.state === STATES.FAILED) continue;
                     renderer.drawLandingCraft(ctx, c);
                 }
             } catch (err) {

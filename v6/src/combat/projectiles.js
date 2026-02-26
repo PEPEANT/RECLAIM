@@ -127,6 +127,17 @@ class Projectile {
         const dx = this.targetX - x; const dy = this.targetY - y;
         let dist = Math.sqrt(dx * dx + dy * dy);
         if (!dist) dist = 0.001;
+        const mapId = String(
+            (typeof game !== 'undefined' && game && game.currentMapId)
+            || (typeof Maps !== 'undefined' && Maps && Maps.currentMap)
+            || ''
+        ).trim();
+        const isCoastBallisticsMap = mapId === 'skirmish_coast';
+        const isSmallArmsBallistic = (type === 'machinegun' || type === 'bullet' || type === 'humvee_burst');
+        this.coastBallistics = false; // coast small-arms experimental ballistics rollback
+        this.travelDistance = dist;
+        this.noHoming = false;
+        this.ballisticDrop = 0;
 
         if (type === 'artillery') {
             const dxAbs = Math.abs(dx);
@@ -223,10 +234,30 @@ class Projectile {
         }
         else {
             this.speed =
-                (type === 'machinegun') ? 22 :
-                    (type === 'bullet') ? 18 :
+                (type === 'machinegun') ? 30 :
+                    (type === 'bullet') ? 32 :
                         (type === 'aa_shell') ? 25 : 15;
             this.vx = (dx / dist) * this.speed; this.vy = (dy / dist) * this.speed;
+            if (this.coastBallistics) {
+                const srcVxAbs = Math.abs(Number(this.source && this.source.vx) || 0);
+                const distNorm = Math.max(0, Math.min(1, (dist - 150) / 980));
+                const spreadX = 4 + (distNorm * 20) + Math.min(9, srcVxAbs * 7);
+                const spreadY = 1.5 + (distNorm * 6) + Math.min(3.5, srcVxAbs * 2.2);
+                this.targetX += ((Math.random() * 2) - 1) * spreadX;
+                this.targetY += ((Math.random() * 2) - 1) * spreadY;
+                const coastDx = this.targetX - x;
+                const coastDy = this.targetY - y;
+                let coastDist = Math.sqrt((coastDx * coastDx) + (coastDy * coastDy));
+                if (!coastDist) coastDist = 0.001;
+                const speedMul = (type === 'machinegun')
+                    ? 0.68
+                    : ((type === 'humvee_burst') ? 0.74 : 0.80);
+                this.speed = Math.max(8, this.speed * speedMul);
+                this.vx = (coastDx / coastDist) * this.speed;
+                this.vy = (coastDy / coastDist) * this.speed;
+                this.noHoming = true;
+                this.ballisticDrop = 0.012 + (distNorm * 0.022);
+            }
         }
 
         // [New] Bomb Whistle SFX
@@ -437,7 +468,7 @@ class Projectile {
             game.createParticles(missileX, missileY, 7, '#e5e7eb');
         }
         if (typeof AudioSystem !== 'undefined') {
-            if (typeof AudioSystem.playGun === 'function') AudioSystem.playGun('flak', missileX);
+            if (typeof AudioSystem.playGun === 'function') AudioSystem.playGun('flak', missileX, { unitId: 'flak_turret' });
             if (typeof AudioSystem.playBoom === 'function') AudioSystem.playBoom('death_exp2', missileX);
         }
         return true;
@@ -585,6 +616,20 @@ class Projectile {
             if ((dx2 * dx2 + dy2 * dy2) < 25 * 25) this.hit();
             if (this.x < 0 || this.x > CONFIG.mapWidth) this.dead = true;
         } else {
+            if (this.noHoming === true) {
+                this.x += this.vx;
+                this.y += this.vy;
+                const drop = Number(this.ballisticDrop);
+                if (Number.isFinite(drop) && drop > 0) {
+                    this.vy += drop;
+                }
+                const hitRadius = (this.type === 'machinegun' || this.type === 'bullet' || this.type === 'humvee_burst') ? 20 : 30;
+                if (Math.abs(this.x - this.targetX) < hitRadius && Math.abs(this.y - this.targetY) < hitRadius) this.hit();
+                const gy = Number(game && game.groundY);
+                const maxY = Number.isFinite(gy) ? (gy + 180) : (Number(this.targetY) + 200);
+                if (this.x < -40 || this.x > (CONFIG.mapWidth + 40) || this.y < -120 || this.y > maxY) this.dead = true;
+                return;
+            }
             // Homing Logic
             // [FIX] Target Validity Check
             if (this.target && !this.target.dead && this.target.stats) {
@@ -1101,6 +1146,18 @@ class Projectile {
                     // Machinegun vs Drone -> High Miss rate
                     hitChance = 0.3;
                 }
+                if (this.coastBallistics === true) {
+                    const distRaw = Number(this.travelDistance);
+                    const distNorm = Number.isFinite(distRaw)
+                        ? Math.max(0, Math.min(1, (distRaw - 140) / 940))
+                        : 0.4;
+                    let coastMiss = 0.04 + (distNorm * 0.20);
+                    const srcVxAbs = Math.abs(Number(this.source && this.source.vx) || 0);
+                    if (srcVxAbs > 0.08) coastMiss += Math.min(0.12, srcVxAbs * 0.06);
+                    const tgtVxAbs = Math.abs(Number(closest && closest.vx) || 0);
+                    if (tgtVxAbs > 0.08) coastMiss += Math.min(0.08, tgtVxAbs * 0.05);
+                    hitChance *= Math.max(0.08, 1 - coastMiss);
+                }
                 hitChance *= Number(this.hitChanceMul) || 1;
                 hitChance = Math.max(0.03, Math.min(0.995, hitChance));
                 if (Math.random() < hitChance) {
@@ -1109,6 +1166,16 @@ class Projectile {
                     }
                 } else {
                     if (game.createParticles) game.createParticles(closest.x, closest.y - 10, 2, '#fff');
+                    if (typeof AudioSystem !== 'undefined' && typeof AudioSystem.playSFX === 'function') {
+                        const whizzChance = (this.type === 'bullet') ? 0.22 : 0.14;
+                        let visibleNow = true;
+                        if (typeof AudioSystem._isWorldXVisible === 'function' && typeof game !== 'undefined' && game) {
+                            visibleNow = !!AudioSystem._isWorldXVisible(Number(this.x) || 0, 0, game);
+                        }
+                        if (visibleNow && Math.random() < whizzChance) {
+                            AudioSystem.playSFX('bullet_whizz', this.x);
+                        }
+                    }
                 }
             }
 
@@ -1219,7 +1286,21 @@ class Projectile {
             ctx.fillRect(-len * 0.42, -0.8, len * 0.52, 1.6);
             ctx.restore();
         }
-        else if (this.type === 'bullet') { ctx.fillStyle = '#e5e7eb'; ctx.fillRect(this.x, this.y, 3, 3); }
+        else if (this.type === 'bullet') {
+            const vx = Number.isFinite(this.vx) ? this.vx : 0;
+            const vy = Number.isFinite(this.vy) ? this.vy : 0;
+            const ang = Math.atan2(vy, vx || 0.0001);
+            const len = 16;
+            const w = 2.2;
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(ang);
+            ctx.fillStyle = 'rgba(255,242,204,0.95)';
+            ctx.fillRect(-len * 0.55, -w * 0.5, len, w);
+            ctx.fillStyle = 'rgba(255,255,255,0.9)';
+            ctx.fillRect(-len * 0.15, -0.55, len * 0.65, 1.1);
+            ctx.restore();
+        }
         else if (this.type === 'shell') { ctx.fillStyle = '#fbbf24'; ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill(); }
         else if (this.type === 'aa_shell') { ctx.fillStyle = '#f472b6'; ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill(); }
         else if (this.type === 'rocket') { ctx.fillStyle = '#f87171'; ctx.fillRect(this.x - 4, this.y - 2, 8, 4); }

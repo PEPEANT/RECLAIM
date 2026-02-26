@@ -179,7 +179,7 @@ const CONFIG = {
         },
         aa_tank: {
             id: 'aa_tank', name: '대공전차', cost: 75, cooldown: 150, maxCount: 4,
-            hp: 500, damage: 30, damageGround: 0, damageAir: 39, range: 520, speed: 0.5,
+            hp: 500, damage: 30, damageGround: 0, damageAir: 39, range: 660, speed: 0.5,
             width: 58, height: 41, color: '#ec4899', type: 'mech', antiAir: true, onlyAir: true, category: 'armored',
             role: '대공 방어', description: '강력한 유도 미사일로 항공기를 격추합니다. (지상 공격 불가)'
         },
@@ -187,7 +187,7 @@ const CONFIG = {
         // [AIR]
         fighter: {
             id: 'fighter', name: '전투기', cost: 160, cooldown: 300, maxCount: 5,
-            hp: 300, damage: 80, range: 600, speed: 3.0,
+            hp: 300, damage: 80, range: 600, speed: 4.4,
             width: 70, height: 18, color: '#0ea5e9', type: 'air', category: 'air',
             role: '제공권 장악', description: '적 항공기(헬기, 폭격기)만 전문적으로 요격합니다. (드론 무시)',
             missileCommand: true, missileCount: 1, missileProjectile: 'fighter_missile', missileSpeed: 400

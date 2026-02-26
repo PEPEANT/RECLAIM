@@ -68,6 +68,14 @@
     _orderAssaultTo(xTarget) {
         for (const u of game.enemies) {
             if (!u || u.dead) continue;
+            if (u._coastStaticGuard === true) {
+                u.commandMode = 'stop';
+                u.returnToBase = false;
+                u.targetX = null;
+                u.targetY = (Number.isFinite(Number(u._coastStaticGuardAnchorY)) ? Number(u._coastStaticGuardAnchorY) : u.targetY);
+                u.commandTargetX = null;
+                continue;
+            }
             if (u.stats && u.stats.id === 'icbm_enemy') {
                 u.commandMode = 'stop';
                 u.returnToBase = false;
@@ -278,6 +286,13 @@
         // 거점 주변에 모여서 stop(방어)
         for (const u of game.enemies) {
             if (!u || u.dead) continue;
+            if (u._coastStaticGuard === true) {
+                u.commandMode = 'stop';
+                u.targetX = null;
+                u.targetY = (Number.isFinite(Number(u._coastStaticGuardAnchorY)) ? Number(u._coastStaticGuardAnchorY) : u.targetY);
+                u.commandTargetX = null;
+                continue;
+            }
             if (u.stats && u.stats.id === 'icbm_enemy') {
                 u.commandMode = 'stop';
                 u.targetX = null;
@@ -310,6 +325,13 @@
     _orderRetreatTo(xBack) {
         for (const u of game.enemies) {
             if (!u || u.dead) continue;
+            if (u._coastStaticGuard === true) {
+                u.commandMode = 'stop';
+                u.targetX = null;
+                u.targetY = (Number.isFinite(Number(u._coastStaticGuardAnchorY)) ? Number(u._coastStaticGuardAnchorY) : u.targetY);
+                u.commandTargetX = null;
+                continue;
+            }
             if (u.stats && u.stats.id === 'icbm_enemy') {
                 u.commandMode = 'stop';
                 u.targetX = null;
@@ -343,7 +365,7 @@
         }
 
         // 적 유닛을 섞어서 남김(탱크/지상 우선 남기고 공중은 전진시키는 것도 가능)
-        const units = game.enemies.filter(u => u && !u.dead);
+        const units = game.enemies.filter(u => u && !u.dead && u._coastStaticGuard !== true);
         const keepCount = Math.floor(units.length * dynamicKeepRatio);
 
         // 랜덤 셔플(간단)

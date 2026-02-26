@@ -49,11 +49,85 @@
     bgmEl: null,
     currentBgmIndex: 0,
     bgmLockPath: '',
+    _pendingBgmPath: '',
+    _gestureUnlockBound: false,
+
+    _manifest() {
+        try {
+            if (typeof RECLAIM_AUDIO_MANIFEST !== 'undefined' && RECLAIM_AUDIO_MANIFEST) {
+                return RECLAIM_AUDIO_MANIFEST;
+            }
+        } catch (_) { }
+        try {
+            if (typeof window !== 'undefined' && window && window.RECLAIM_AUDIO_MANIFEST) {
+                return window.RECLAIM_AUDIO_MANIFEST;
+            }
+        } catch (_) { }
+        return null;
+    },
+
+    _manifestGet(dotPath, fallbackPath = '') {
+        const m = this._manifest();
+        if (!m) return String(fallbackPath || '');
+        const key = String(dotPath || '').trim();
+        if (!key) return String(fallbackPath || '');
+        const tokens = key.split('.');
+        let cur = m;
+        for (let i = 0; i < tokens.length; i++) {
+            const t = tokens[i];
+            if (!cur || typeof cur !== 'object' || !(t in cur)) {
+                return String(fallbackPath || '');
+            }
+            cur = cur[t];
+        }
+        if (typeof cur === 'string' && cur.trim()) return cur.trim();
+        return String(fallbackPath || '');
+    },
+
+    _manifestObj(dotPath) {
+        const m = this._manifest();
+        if (!m) return null;
+        const key = String(dotPath || '').trim();
+        if (!key) return null;
+        const tokens = key.split('.');
+        let cur = m;
+        for (let i = 0; i < tokens.length; i += 1) {
+            const t = tokens[i];
+            if (!cur || typeof cur !== 'object' || !(t in cur)) return null;
+            cur = cur[t];
+        }
+        return (cur && typeof cur === 'object') ? cur : null;
+    },
 
     async playBGM() {
         if (!this.ctx) this.init();
         if (this.ctx.state === 'suspended') await this.ctx.resume();
         this.playMP3(this.currentBgmIndex);
+    },
+
+    _bindGestureUnlock() {
+        if (this._gestureUnlockBound) return;
+        this._gestureUnlockBound = true;
+        const unlock = () => {
+            try {
+                if (!this.ctx) this.init();
+                if (this.ctx && this.ctx.state === 'suspended' && typeof this.ctx.resume === 'function') {
+                    this.ctx.resume().catch(() => { });
+                }
+            } catch (_) { }
+            try {
+                const pending = String(this._pendingBgmPath || '').trim();
+                if (pending) {
+                    this._pendingBgmPath = '';
+                    this.playBGMFile(pending);
+                }
+            } catch (_) { }
+        };
+        try {
+            window.addEventListener('pointerdown', unlock, { passive: true });
+            window.addEventListener('touchstart', unlock, { passive: true });
+            window.addEventListener('keydown', unlock, { passive: true });
+        } catch (_) { }
     },
 
     setBGMLock(path) {
@@ -66,6 +140,7 @@
     },
 
     playMP3(index) {
+        this._bindGestureUnlock();
         const lockedPath = String(this.bgmLockPath || '').trim();
         if (lockedPath) {
             if (!this.bgmEl || !this.bgmEl.dataset || this.bgmEl.dataset.src !== lockedPath || this.bgmEl.paused) {
@@ -104,11 +179,15 @@
 
         const p = el.play();
         if (p && typeof p.catch === 'function') {
-            p.catch(e => console.warn("Audio Play Error:", e));
+            p.catch(e => {
+                this._pendingBgmPath = nextPath;
+                console.warn("Audio Play Error:", e);
+            });
         }
     },
 
     playBGMFile(file) {
+        this._bindGestureUnlock();
         if (!file) return;
         const nextPath = String(file);
         const lockedPath = String(this.bgmLockPath || '').trim();
@@ -139,7 +218,10 @@
 
         const p = el.play();
         if (p && typeof p.catch === 'function') {
-            p.catch(e => console.warn("Audio Play Error:", e));
+            p.catch(e => {
+                this._pendingBgmPath = nextPath;
+                console.warn("Audio Play Error:", e);
+            });
         }
     },
 
@@ -175,7 +257,15 @@
     },
 
     playSFX(type, worldX = null) {
-        if (!this.ctx || this.volume.sfx <= 0) return;
+        if (this.volume.sfx <= 0) return;
+        this._bindGestureUnlock();
+        if (!this.ctx) {
+            try { this.init(); } catch (_) { }
+        }
+        if (this.ctx && this.ctx.state === 'suspended' && typeof this.ctx.resume === 'function') {
+            try { this.ctx.resume().catch(() => { }); } catch (_) { }
+        }
+        if (!this.ctx) return;
 
         // [FIX] Sound Spam Protection (Throttle 0.05s)
         const now = this.ctx.currentTime;
@@ -239,31 +329,51 @@
         }
         // [NEW] 공병 사운드
         else if (type === 'gun3') {
-            this._playOneShot('bgm/gun3.mp3', vol * 0.8, 8, worldX);
+            this._playOneShot(
+                this._manifestGet('units.infantry.engineer_burst', 'bgm/units/infantry/engineer_burst.mp3'),
+                vol * 0.8,
+                8,
+                worldX
+            );
         }
         else if (type === 'rocket_launcher') {
-            this._playOneShot('bgm/rocket-launcher-301426.mp3', vol * 0.7, 4, worldX);
+            this._playOneShot(this._manifestGet('sfx.weapons.rocket_launcher', 'bgm/sfx/weapons/rocket_launcher.mp3'), vol * 0.7, 4, worldX);
+        }
+        else if (type === 'bullet_whizz') {
+            const whizzFile = (Math.random() < 0.5)
+                ? this._manifestGet('sfx.weapons.bullet_whizz', 'bgm/sfx/weapons/bullet_whizz.mp3')
+                : this._manifestGet('sfx.weapons.bullet_whizz_alt', 'bgm/sfx/weapons/bullet_whizz_alt.mp3');
+            this._playOneShot(whizzFile, vol * 0.44, 8, worldX);
+        }
+        else if (type === 'infantry_reload') {
+            this._playOneShot(this._manifestGet('sfx.weapons.infantry_reload', 'bgm/sfx/weapons/infantry_reload.mp3'), vol * 0.62, 6, worldX);
+        }
+        else if (type === 'infantry_hit_voice') {
+            const hitVoiceFile = (Math.random() < 0.5)
+                ? this._manifestGet('sfx.ambient.infantry_hit_voice_1', 'bgm/sfx/ambient/infantry_hit_voice_1.mp3')
+                : this._manifestGet('sfx.ambient.infantry_hit_voice_2', 'bgm/sfx/ambient/infantry_hit_voice_2.mp3');
+            this._playOneShot(hitVoiceFile, vol * 0.52, 6, worldX);
         }
         else if (type === 'engineer_explosion') {
-            this._playOneShot('bgm/boom/death-exp.mp3', vol * 0.8, 6, worldX);
+            this._playOneShot(this._manifestGet('sfx.boom.medium.death_exp', 'bgm/sfx/boom/medium/death_exp.mp3'), vol * 0.8, 6, worldX);
         }
         else if (type === 'tank_shell') {
-            this._playOneShot('bgm/boom/boom-5.mp3', vol * 1.42, 6, worldX);
+            this._playOneShot(this._manifestGet('sfx.boom.heavy.boom_5', 'bgm/sfx/boom/heavy/boom_5.mp3'), vol * 1.42, 6, worldX);
         }
         else if (type === 'tank_fire') {
-            this._playOneShot('bgm/tank_boom.mp3', vol * 0.95, 5, worldX);
+            this._playOneShot(this._manifestGet('units.armored.tank_fire', 'bgm/units/armored/tank_fire.mp3'), vol * 0.95, 5, worldX);
         }
         else if (type === 'apache_missile') {
-            this._playOneShot('bgm/boom/boom-4.mp3', vol * 0.7, 6, worldX);
+            this._playOneShot(this._manifestGet('sfx.boom.small.apache_missile', 'bgm/sfx/boom/small/boom_4.mp3'), vol * 0.7, 6, worldX);
         }
         else if (type === 'drone_pre_attack_suicide') {
-            this._playOneShot('bgm/drone_1.mp3', vol * 0.74, 4, worldX);
+            this._playOneShot(this._manifestGet('units.drone.pre_attack_suicide', 'bgm/units/drone/pre_attack_suicide.mp3'), vol * 0.74, 4, worldX);
         }
         else if (type === 'drone_pre_attack_at') {
-            this._playOneShot('bgm/drone.mp3', vol * 0.72, 4, worldX);
+            this._playOneShot(this._manifestGet('units.drone.pre_attack', 'bgm/units/drone/pre_attack.mp3'), vol * 0.72, 4, worldX);
         }
         else if (type === 'drone_pre_attack') {
-            this._playOneShot('bgm/drone.mp3', vol * 0.72, 4, worldX);
+            this._playOneShot(this._manifestGet('units.drone.pre_attack', 'bgm/units/drone/pre_attack.mp3'), vol * 0.72, 4, worldX);
         }
         else if (type === 'infantry_step') {
             const aud = this.getWorldAudibility(worldX);
@@ -299,10 +409,10 @@
             heel.stop(t + 0.06);
         }
         else if (type === 'helicopter_select') {
-            this._playOneShot('bgm/helicopt.mp3', vol * 0.7, 4, worldX);
+            this._playOneShot(this._manifestGet('units.air.helicopter_select', 'bgm/units/air/helicopter_select.mp3'), vol * 0.7, 4, worldX);
         }
         else if (type === 'icbm_launch') {
-            this._playOneShot('bgm/ICBM.mp3', vol * 0.95, 3, worldX);
+            this._playOneShot(this._manifestGet('units.air.icbm_launch', 'bgm/units/air/icbm_launch.mp3'), vol * 0.95, 3, worldX);
         }
     },
 
@@ -583,19 +693,19 @@
         const mix = this.volume.sfx * this.volume.master;
         this._updateBattleMoveLoop(
             'helicopter',
-            'bgm/mov/helicopter-moving.mp3',
+            this._manifestGet('sfx.movement.helicopter', 'bgm/sfx/movement/helicopter_moving.mp3'),
             heliEffectiveAud > 0.02,
             mix * 0.42 * heliEffectiveAud
         );
         this._updateBattleMoveLoop(
             'tank',
-            'bgm/mov/tank_moving.mp3',
+            this._manifestGet('sfx.movement.tank', 'bgm/sfx/movement/tank_moving.mp3'),
             tankEffectiveAud > 0.02,
             mix * 0.32 * tankEffectiveAud
         );
         this._updateBattleMoveLoop(
             'humvee',
-            'bgm/mov/tank_moving2.mp3',
+            this._manifestGet('sfx.movement.humvee', 'bgm/sfx/movement/humvee_moving.mp3'),
             humveeEffectiveAud > 0.02,
             mix * 0.24 * humveeEffectiveAud
         );
@@ -627,7 +737,12 @@
             const nowMs = Date.now();
             if ((nowMs - (Number(this._battleMoveLastDistantArmorMs) || 0)) >= 950) {
                 this._battleMoveLastDistantArmorMs = nowMs;
-                this._playOneShot('bgm/mov/freesound_community.mp3', mix * 0.34, 1, bestDistantX);
+                this._playOneShot(
+                    this._manifestGet('sfx.ambient.distant_armor', 'bgm/sfx/ambient/distant_armor.mp3'),
+                    mix * 0.34,
+                    1,
+                    bestDistantX
+                );
             }
         }
     },
@@ -660,7 +775,7 @@
             }
 
             if (!this._icbmRaiseAudio) {
-                const a = new Audio('bgm/ICBM.mp3');
+                const a = new Audio(this._manifestGet('units.air.icbm_launch', 'bgm/units/air/icbm_launch.mp3'));
                 a.preload = 'auto';
                 a.playsInline = true;
                 a.loop = true;
@@ -704,14 +819,16 @@
         // [NOTE] boom-4 제거 (소형 폭발 겹침 방지)
         if (type === 'drone' || type === 'small') return;
 
-        let file = 'bgm/boom/boom-2.mp3'; // default: 중간 폭발
-        if (type === 'death_exp') file = 'bgm/boom/death-exp.mp3';
-        else if (type === 'death_exp2') file = 'bgm/boom/death-exp2.mp3';
-        else if (type === 'death_exp3') file = 'bgm/boom/death-exp3.mp3';
-        else if (type === 'nuke') file = 'bgm/boom/nuclear explosion .mp3';
-        else if (type === 'emp') file = 'bgm/boom/emp.mp3';
-        else if (type === 'tactical_drone' || type === 'other') file = 'bgm/boom/boom-2.mp3';
-        else if (type === 'artillery' || type === 'bomb' || type === 'stealth' || type === 'tactical' || type === 'spg' || type === 'bomber') file = 'bgm/boom/boom-3.mp3';
+        let file = this._manifestGet('sfx.boom.medium.default', 'bgm/sfx/boom/medium/death_exp.mp3');
+        if (type === 'death_exp') file = this._manifestGet('sfx.boom.medium.death_exp', 'bgm/sfx/boom/medium/death_exp.mp3');
+        else if (type === 'death_exp2') file = this._manifestGet('sfx.boom.medium.death_exp2', 'bgm/sfx/boom/medium/death_exp2.mp3');
+        else if (type === 'death_exp3') file = this._manifestGet('sfx.boom.heavy.death_exp3', 'bgm/sfx/boom/heavy/death_exp3.mp3');
+        else if (type === 'nuke') file = this._manifestGet('sfx.boom.special.nuke', 'bgm/sfx/boom/special/nuke.mp3');
+        else if (type === 'emp') file = this._manifestGet('sfx.boom.special.emp', 'bgm/sfx/boom/special/emp.mp3');
+        else if (type === 'tactical_drone' || type === 'other') file = this._manifestGet('sfx.boom.small.default', 'bgm/sfx/boom/small/boom_2.mp3');
+        else if (type === 'artillery' || type === 'bomb' || type === 'stealth' || type === 'tactical' || type === 'spg' || type === 'bomber') {
+            file = this._manifestGet('sfx.boom.heavy.boom_3', 'bgm/sfx/boom/heavy/boom_3.mp3');
+        }
 
         // [FIX] 오디오 풀 사용으로 사운드 끊김 방지
         this._playOneShot(file, this.volume.sfx * this.volume.master, 8, worldX);
@@ -724,7 +841,7 @@
         // [FIX] 경고음 중복 재생 방지 (한 번에 하나만)
         try {
             if (!this._nukeWarningAudio) {
-                const a = new Audio('bgm/sound_effect.mp3');
+                const a = new Audio(this._manifestGet('sfx.alerts.nuke_warning', 'bgm/sfx/alerts/nuke_warning.mp3'));
                 a.preload = 'auto';
                 a.playsInline = true;
                 this._nukeWarningAudio = a;
@@ -745,7 +862,7 @@
         if (this.volume.sfx <= 0) return;
         if (this._airRaidPlaying) return;
         this._airRaidPlaying = true;
-        const file = 'bgm/teho-ulvo-d1200-air-raid-277880.mp3';
+        const file = this._manifestGet('units.air.air_raid_warning', 'bgm/units/air/air_raid_warning.mp3');
 
         try {
             const a = new Audio(file);
@@ -779,7 +896,7 @@
         try {
             const audibility = this.getWorldAudibility(worldX);
             if (audibility <= 0.02) return null;
-            const a = new Audio('bgm/rocketmp3-94928.mp3');
+            const a = new Audio(this._manifestGet('sfx.weapons.rocket_flyby', 'bgm/sfx/weapons/rocket_flyby.mp3'));
             a.volume = this.volume.sfx * this.volume.master * 0.7 * audibility;
             a.play().catch(() => {});
             return a; // 호출자가 중지할 수 있도록 반환
@@ -793,35 +910,66 @@
     // special_ops: 특수부대(K1)
     // machine_gun: 험비, 장갑차
     // flak: 대공포, 감시탑, 총사령부
-    playGun(type, worldX = null) {
+    playGun(type, worldX = null, options = null) {
         if (this.volume.sfx <= 0) return;
+        const opts = (options && typeof options === 'object') ? options : {};
+        const unitId = String(opts.unitId || '').trim().toLowerCase();
+        const kind = String(type || '').trim().toLowerCase();
+        const byUnit = this._manifestObj(`gun_profiles.by_unit_id.${unitId}`);
+        const byType = this._manifestObj(`gun_profiles.by_type.${kind}`);
+        const prof = byUnit || byType || {
+            sound: 'units.infantry.infantry_single',
+            gain: 0.84,
+            pool: 10
+        };
 
-        let file = 'bgm/gun.mp3'; // default: 보병
-        if (type === 'special') file = 'bgm/gun2.mp3';
-        else if (type === 'sniper') file = 'bgm/search.mp3';
-        else if (type === 'special_ops') file = 'bgm/K1.mp3';
-        else if (type === 'machine_gun') file = 'bgm/machine_gun.mp3';
-        else if (type === 'self') file = 'bgm/self.mp3';
-        else if (type === 'flak') file = 'bgm/flak.mp3';
-        else if (type === 'rifle_d') file = 'bgm/gun4.mp3';
-
-        let gunGain = 0.84;
-        if (type === 'self') gunGain = 1.0;
-        else if (type === 'machine_gun' || type === 'flak') gunGain = 0.98;
-        const gunVolume = this.volume.sfx * this.volume.master * gunGain;
-        if (type === 'special_ops') {
-            const pool = this._audioPool[file];
-            const playing = Array.isArray(pool)
-                ? pool.some((a) => a && !a.paused && !a.ended)
-                : false;
-            if (!playing) {
-                // K1 is monophonic: prevent overlapping layers from multiple simultaneous shooters.
-                this._playOneShot(file, gunVolume, 1, worldX);
+        let manifestSoundPath = String(prof.sound || 'units.infantry.infantry_single').trim();
+        const sourceUnit = (opts.sourceUnit && typeof opts.sourceUnit === 'object') ? opts.sourceUnit : null;
+        if (sourceUnit) {
+            const infantryUnitIds = {
+                infantry: true,
+                special_ops: true,
+                sniper: true,
+                engineer: true,
+                rpg: true,
+                worker: true,
+                bagpiper: true,
+                drone_operator: true
+            };
+            if (infantryUnitIds[unitId] === true) {
+                const variants = [
+                    'units.infantry.infantry_single',
+                    'units.infantry.special_ops_burst',
+                    'units.infantry.m4_burst'
+                ];
+                if (!sourceUnit._infantryGunSfxVariant || variants.indexOf(String(sourceUnit._infantryGunSfxVariant)) < 0) {
+                    sourceUnit._infantryGunSfxVariant = variants[Math.floor(Math.random() * variants.length)];
+                }
+                manifestSoundPath = String(sourceUnit._infantryGunSfxVariant);
             }
-        } else {
-            // [FIX] 오디오 풀 사용 (총소리는 좀 더 작게)
-            this._playOneShot(file, gunVolume, 10, worldX);
+            if (unitId === 'flak_turret') {
+                const burstRoll = Math.random();
+                if (burstRoll < 0.38) {
+                    manifestSoundPath = 'units.armored.bunker_50cal_burst';
+                } else {
+                    manifestSoundPath = 'units.armored.bunker_50cal_shot';
+                }
+            }
+            if (unitId === 'watchtower' && sourceUnit._coastEmplacement === true) {
+                const coastBurstRoll = Math.random();
+                if (coastBurstRoll < 0.34) {
+                    manifestSoundPath = 'units.armored.bunker_50cal_burst';
+                } else {
+                    manifestSoundPath = 'units.armored.bunker_50cal_shot';
+                }
+            }
         }
+        const fallbackSoundPath = this._manifestGet('units.infantry.infantry_single', 'bgm/units/infantry/infantry_single.mp3');
+        const file = this._manifestGet(manifestSoundPath, fallbackSoundPath);
+        const gunGain = Math.max(0.1, Number(prof.gain) || 0.84);
+        const poolSize = Math.max(1, Math.floor(Number(prof.pool) || 10));
+        const gunVolume = this.volume.sfx * this.volume.master * gunGain;
+        this._playOneShot(file, gunVolume, poolSize, worldX);
 
         // Optional hook for game modes that need to react to first gunshot.
         try {
@@ -838,7 +986,7 @@
         const key = 'panic_scream';
         if (this.lastSFXTime[key] && now - this.lastSFXTime[key] < 0.6) return;
         this.lastSFXTime[key] = now;
-        const file = 'bgm/freesound.mp3';
+        const file = this._manifestGet('sfx.ambient.panic_scream', 'bgm/sfx/ambient/panic_scream.mp3');
         const a = this._playOneShot(file, this.volume.sfx * this.volume.master * 0.9, 4, worldX);
         if (!a) return;
         try {
@@ -856,7 +1004,7 @@
 
     stopPanicScream() {
         this.panicMuted = true;
-        const key = 'bgm/freesound.mp3';
+        const key = this._manifestGet('sfx.ambient.panic_scream', 'bgm/sfx/ambient/panic_scream.mp3');
         const pool = this._audioPool[key];
         if (Array.isArray(pool)) {
             pool.forEach(a => {
@@ -871,4 +1019,10 @@
         }
     }
 };
+
+try {
+    if (typeof AudioSystem !== 'undefined' && AudioSystem && typeof AudioSystem._bindGestureUnlock === 'function') {
+        AudioSystem._bindGestureUnlock();
+    }
+} catch (_) { }
 

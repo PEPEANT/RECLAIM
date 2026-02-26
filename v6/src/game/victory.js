@@ -291,12 +291,13 @@
             const playerWiped = (alivePlayerUnits <= 0)
                 && (game.playerEverSeen || skirmishBattle)
                 && playerTotalRemaining < PLAYER_FORCE_MIN_FOR_DEFEAT;
-            const coastPlayerWiped = (alivePlayerUnits <= 0) || (playerTotalRemaining <= COAST_PLAYER_FORCE_MAX_FOR_DEFEAT);
             const coastMap = isCoastMap(game);
-            const coastLandingCraft = coastMap ? getLandingCraftStatus(game) : { total: 0, destroyed: 0, alive: 0 };
-            const coastLandingCraftAllDestroyed = coastMap
-                && coastLandingCraft.total > 0
-                && coastLandingCraft.alive <= 0;
+            const coastBattleStarted = !!(
+                game.playerEverSeen
+                || (Number(alivePlayerUnits) > 0)
+            );
+            const coastPlayerWiped = coastBattleStarted
+                && playerTotalRemaining <= COAST_PLAYER_FORCE_MAX_FOR_DEFEAT;
 
             const enemyHQExists = !!enemyHQAny;
             const enemyHQDestroyed = enemyHQExists
@@ -308,10 +309,6 @@
 
             const captureState = updateCaptureControlState(game);
             if (coastMap) {
-                if (coastLandingCraftAllDestroyed) {
-                    game.endGame('lose', '작전 실패', '상륙정이 모두 파괴되었습니다.');
-                    return;
-                }
                 if (captureState && Number(captureState.playerCapture) >= CAPTURE_MAX) {
                     game.endGame('win', '작전 성공', '적 전선을 돌파해 점령도 100%를 달성했습니다.');
                     return;

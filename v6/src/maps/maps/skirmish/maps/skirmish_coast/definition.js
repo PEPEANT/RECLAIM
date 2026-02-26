@@ -24,6 +24,24 @@
             winCondition: 'annihilation',
             mapWidth: 8200,
             groundLift: 140,
+            coastEmplacements: [
+                { type: 'watchtower', team: 'enemy', x: 3560, yOffset: 240, rangeMul: 3.25 },
+                {
+                    type: 'bunker',
+                    team: 'enemy',
+                    x: 3560,
+                    yOffset: 390,
+                    rangeMul: 2.95,
+                    destroyOnBreak: true,
+                    garrison: ['infantry', 'infantry', 'infantry', 'infantry', 'infantry'],
+                    staticGuard: true,
+                    guardInfantryMin: 4,
+                    guardInfantryMax: 7,
+                    guardRpgCount: 1,
+                    guardSniperCount: 1
+                },
+                { type: 'watchtower', team: 'enemy', x: 3560, yOffset: 540, rangeMul: 3.25 }
+            ],
             landingIntro: {
                 enabled: true,
                 initialCrafts: 8,
@@ -41,11 +59,7 @@
                 beachGapX: -132,
                 beachGapY: 84,
                 baseYOffset: 38,
-                craftScale: 1,
-                craftHp: 2200,
-                enemyPressureDps: 17,
-                damageRadiusX: 300,
-                damageRadiusY: 180
+                craftScale: 1
             },
             playerSpawnX: 980,
             playerRetreatStopX: 800

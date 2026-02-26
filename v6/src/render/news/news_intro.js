@@ -80,7 +80,7 @@
         playSound() {
             if (this._playedSound) return;
             this._playedSound = true;
-            const file = './bgm/news-intro-344332.mp3';
+            const file = './bgm/sfx/ui/news_intro.mp3';
             const master = (typeof AudioSystem !== 'undefined' && AudioSystem.volume)
                 ? (AudioSystem.volume.master || 1)
                 : 1;

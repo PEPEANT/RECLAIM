@@ -61,7 +61,7 @@
         ctx.scale(state.facing, 1);
 
         deps.bodyApi.drawBody(unit, ctx, state, palette);
-        deps.weaponsApi.drawRifle(ctx, state.stance, palette, state.recoil, state);
+        deps.weaponsApi.drawRifle(ctx, state.stance, palette, state.recoil, state, unit);
         deps.fxApi.drawFx(unit, ctx, state);
 
         ctx.restore();

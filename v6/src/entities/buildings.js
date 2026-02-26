@@ -140,6 +140,10 @@ class Building extends Entity {
             }
             this.hp -= dmg;
             if (this.hp <= 0) {
+                if (this._destroyOnBreak === true) {
+                    this._destroyBunkerInstant();
+                    return;
+                }
                 // [NEW] ??컻??怨듦꺽?쇰줈 ?뚭눼 ???ъ젏??遺덇? + ?뚭눼 ?곹깭濡?蹂寃?
                 if (isExplosive) {
                     this._destroyBunkerInstant();
@@ -391,9 +395,13 @@ class Building extends Entity {
                 game.projectiles.push(new Projectile(this.x, spawnY, target, dmg, this.team, this.projectileType, { source: this }));
                 this.lastShot = game.frame;
 
-                // 嫄대Ъ 諛쒖궗 ?ъ슫??(flak)
-                if (typeof AudioSystem !== 'undefined' && Math.random() < 0.25) {
-                    AudioSystem.playGun('flak', this.x);
+                // 건물 발사음(flak): 벙커/초소는 거의 항상 재생되도록 확률 상향.
+                if (typeof AudioSystem !== 'undefined') {
+                    const buildingSoundId = (this.type === 'watchtower') ? 'watchtower' : 'flak_turret';
+                    const soundChance = (this.type === 'watchtower' || this.type === 'bunker') ? 0.95 : 0.70;
+                    if (Math.random() < soundChance) {
+                        AudioSystem.playGun('flak', this.x, { unitId: buildingSoundId, sourceUnit: this });
+                    }
                 }
             }
         }
@@ -981,47 +989,83 @@ class Building extends Entity {
             ctx.restore();
         }
         else if (this.type === 'watchtower') {
-            // ?? 媛먯떆??Watchtower) - "??? 湲곕뫁 媛먯떆?? ?붿옄??
             const isEnemy = (this.team === 'enemy');
+            const currentMapId = String((typeof game !== 'undefined' && game && game.currentMapId) || '').trim();
+            const useCoastStyle = (this._coastEmplacement === true) || (currentMapId === 'skirmish_coast');
+
             ctx.save();
             if (isEnemy) ctx.scale(-1, 1);
 
-            // ?먮낯 ?꾪삎(90x220)???꾩옱 width/height??留욊쾶 ?ㅼ???
-            const sx = this.width / 90;
-            const sy = this.height / 220;
-            ctx.scale(sx, sy);
+            if (useCoastStyle) {
+                const sx = this.width / 160;
+                const sy = this.height / 90;
+                ctx.scale(sx, sy);
 
-            const cx = 0;
-            const groundY = 0;
+                const cx = 0;
+                const groundY = 0;
 
-            // 1. 湲곕뫁
-            ctx.fillStyle = '#555';
-            ctx.fillRect(cx - 25, groundY - 150, 50, 150);
+                // Ground plate
+                ctx.fillStyle = '#3f4348';
+                ctx.fillRect(cx - 80, groundY - 12, 160, 12);
 
-            // 2. 諛쏆묠?
-            ctx.fillStyle = '#444';
-            ctx.fillRect(cx - 45, groundY - 150, 90, 10);
+                // Horizontal bunker hull
+                ctx.fillStyle = '#5b6268';
+                ctx.beginPath();
+                ctx.moveTo(cx - 76, groundY - 58);
+                ctx.lineTo(cx + 54, groundY - 58);
+                ctx.lineTo(cx + 76, groundY - 44);
+                ctx.lineTo(cx + 70, groundY - 18);
+                ctx.lineTo(cx - 78, groundY - 18);
+                ctx.closePath();
+                ctx.fill();
 
-            // 3. 湲곌?珥?
-            ctx.fillStyle = '#111';
-            ctx.fillRect(cx + 25, groundY - 185, 35, 6);
-            ctx.fillRect(cx + 55, groundY - 187, 8, 10);
+                // Roof slab
+                ctx.fillStyle = '#6a7278';
+                ctx.fillRect(cx - 60, groundY - 66, 98, 10);
 
-            // 4. 踰숈빱 蹂몄껜
-            ctx.fillStyle = '#666';
-            ctx.fillRect(cx - 40, groundY - 210, 80, 60);
+                // Rear armor block
+                ctx.fillStyle = '#4a5055';
+                ctx.fillRect(cx - 78, groundY - 52, 16, 34);
 
-            // 5. ?ㅻⅨ履?諛⑹뼱踰?
-            ctx.fillStyle = '#333';
-            ctx.fillRect(cx + 20, groundY - 220, 20, 70);
+                // Firing slits
+                ctx.fillStyle = '#15181b';
+                ctx.fillRect(cx - 46, groundY - 46, 18, 5);
+                ctx.fillRect(cx - 20, groundY - 43, 16, 4);
+                ctx.fillRect(cx + 6, groundY - 40, 14, 4);
 
-            // 6. 愿痢???
-            ctx.fillStyle = '#111';
-            ctx.fillRect(cx + 20, groundY - 195, 20, 5);
+                // MG mount + barrel
+                ctx.fillStyle = '#262c31';
+                ctx.fillRect(cx + 34, groundY - 49, 22, 14);
+                ctx.fillRect(cx + 56, groundY - 44, 44, 6);
+                ctx.fillRect(cx + 98, groundY - 45, 6, 8);
 
-            // 7. 吏遺?
-            ctx.fillStyle = '#444';
-            ctx.fillRect(cx - 45, groundY - 220, 90, 10);
+                // Shoulder shield
+                ctx.fillStyle = '#495157';
+                ctx.fillRect(cx + 28, groundY - 55, 10, 18);
+            } else {
+                const sx = this.width / 90;
+                const sy = this.height / 220;
+                ctx.scale(sx, sy);
+
+                const cx = 0;
+                const groundY = 0;
+
+                ctx.fillStyle = '#555';
+                ctx.fillRect(cx - 25, groundY - 150, 50, 150);
+                ctx.fillStyle = '#444';
+                ctx.fillRect(cx - 45, groundY - 150, 90, 10);
+                ctx.fillStyle = '#111';
+                ctx.fillRect(cx + 25, groundY - 185, 35, 6);
+                ctx.fillRect(cx + 55, groundY - 187, 8, 10);
+                ctx.fillStyle = '#666';
+                ctx.fillRect(cx - 40, groundY - 210, 80, 60);
+                ctx.fillStyle = '#333';
+                ctx.fillRect(cx + 20, groundY - 220, 20, 70);
+                ctx.fillStyle = '#111';
+                ctx.fillRect(cx + 20, groundY - 195, 20, 5);
+                ctx.fillStyle = '#444';
+                ctx.fillRect(cx - 45, groundY - 220, 90, 10);
+            }
 
             ctx.restore();
             ctx.restore();

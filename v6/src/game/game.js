@@ -1,6 +1,6 @@
 // [FILE] game.js: ?? ??/??/? ??? ???? ?? ??? ?? ????.
-// [RULE] ½Å±Ô ±â´É ·ÎÁ÷Àº game.js¿¡ Á÷Á¢ Ãß°¡ÇÏÁö ¸»°í src/* ¸ğµâ·Î ºĞ¸® ÈÄ ¿¬°á (docs/engineering/CODE_ORGANIZATION_RULES.md Âü°í).
-// [RULE] ÀÎ°ÔÀÓ ¾È³»/»óÅÂ/Ã¤ÆÃ ¸Ş½ÃÁö´Â UI Åä½ºÆ® ±İÁö. ChatPanel.push()·Î¸¸ Ãâ·Â.
+// [RULE] ì‹ ê·œ ê¸°ëŠ¥ ë¡œì§ì€ game.jsì— ì§ì ‘ ì¶”ê°€í•˜ì§€ ë§ê³  src/* ëª¨ë“ˆë¡œ ë¶„ë¦¬ í›„ ì—°ê²° (docs/engineering/CODE_ORGANIZATION_RULES.md ì°¸ê³ ).
+// [RULE] ì¸ê²Œì„ ì•ˆë‚´/ìƒíƒœ/ì±„íŒ… ë©”ì‹œì§€ëŠ” UI í† ìŠ¤íŠ¸ ê¸ˆì§€. ChatPanel.push()ë¡œë§Œ ì¶œë ¥.
 const LOGICAL_HEIGHT = 840;
 
 function countAliveUnits(arr) {
@@ -31,7 +31,15 @@ function getGameTeamColor(team, variant = 'primary') {
     return (variant === 'minimap') ? '#eab308' : '#64748b';
 }
 
-const MAP_SELECT_BGM_FILE = 'bgm/ost/dunebuggydubai01.mp3';
+const MAP_SELECT_BGM_FILE = (
+    (typeof window !== 'undefined'
+        && window
+        && window.RECLAIM_AUDIO_MANIFEST
+        && window.RECLAIM_AUDIO_MANIFEST.ost
+        && window.RECLAIM_AUDIO_MANIFEST.ost.maps
+        && window.RECLAIM_AUDIO_MANIFEST.ost.maps.map_select)
+    || 'bgm/ost/maps/map_select.mp3'
+);
 const DEFAULT_BATTLE_MAP_ID = 'skirmish_kabul';
 const BATTLE_MAP_IDS = Object.freeze([
     DEFAULT_BATTLE_MAP_ID,
@@ -40,13 +48,14 @@ const BATTLE_MAP_IDS = Object.freeze([
 const ENEMY_ICBM_SPAWN_UNLOCK_DELAY_FRAMES = 60 * 120; // 2 minutes
 const COAST_ENEMY_INFANTRY_FOCUS_FRAMES = 60 * 75; // 75 seconds
 
-// Äù½ºÆ® ¹Ì¼Ç ·ÎÁ÷Àº º°µµ ¸ğµâ·Î ºĞ¸®µÊ.
+// í€˜ìŠ¤íŠ¸ ë¯¸ì…˜ ë¡œì§ì€ ë³„ë„ ëª¨ë“ˆë¡œ ë¶„ë¦¬ë¨.
 
 const game = {
     canvas: document.getElementById('game-canvas'),
     ctx: null, width: 0, height: 0, groundY: 0,
     frame: 0, running: false, cameraX: 0,
     minimapInterval: 8,
+    groundUnitLiftPx: 62,
     cameraLockActive: false,
     cameraLockTarget: null,
 
@@ -57,7 +66,7 @@ const game = {
     flashDecay: 0.85,
 
     addShake(amount) {
-        // amount: ´ë·« 0~30
+        // amount: ëŒ€ëµ 0~30
         const a = Math.max(0, Number(amount) || 0);
         this.shake = Math.max(this.shake || 0, a);
     },
@@ -82,7 +91,7 @@ const game = {
     // [NEW] Total War Trigger Flag
     totalWarTriggered: false,
 
-    // [NEW] ÇÁ¸®°ÔÀÓ Ä¿½ºÅÒ ¿É¼Ç
+    // [NEW] í”„ë¦¬ê²Œì„ ì»¤ìŠ¤í…€ ì˜µì…˜
     settings: {
         includeForwardDefense: false,
         iogAlwaysOpen: false,
@@ -105,11 +114,11 @@ const game = {
     corpseFadeTimer: 180,         // default corpse lifetime (frames)
     corpseCivilianFadeTimer: 60,  // faster decay for civilians
     corpseCullPadding: 120,       // offscreen cull padding (world-space via zoom)
-    corpseReplaceOldest: false,   // true: cap µµ´Ş ½Ã ±³Ã¼, false: ½Å±Ô ½ÃÃ¼ ½ºÅµ
+    corpseReplaceOldest: false,   // true: cap ë„ë‹¬ ì‹œ êµì²´, false: ì‹ ê·œ ì‹œì²´ ìŠ¤í‚µ
     corpseSpawnQueue: [],
     corpseSpawnQueueHead: 0,
-    corpseSpawnBudget: 4,         // ÇÁ·¹ÀÓ´ç ½ÃÃ¼ »ı¼º ¿¹»ê (¹ö½ºÆ® ¿ÏÈ­)
-    corpseSpawnQueueLimit: 80,    // Å¥ °úµµ ´©Àû ¹æÁö
+    corpseSpawnBudget: 4,         // í”„ë ˆì„ë‹¹ ì‹œì²´ ìƒì„± ì˜ˆì‚° (ë²„ìŠ¤íŠ¸ ì™„í™”)
+    corpseSpawnQueueLimit: 80,    // í ê³¼ë„ ëˆ„ì  ë°©ì§€
     enemySmokeCap: 2,
     particleCap: 300,
     particleSpawnCap: 60,
@@ -118,13 +127,13 @@ const game = {
     _particleSpawnCount: 0,
     // Debug / profiling toggles (set via console)
     debug: {
-        disableCorpses: false,          // true: ½ÃÃ¼ »ı¼º ¿ÏÀü ºñÈ°¼º
-        corpseProfile: false,           // true: ½ÃÃ¼ ·»´õ¸µ ½Ã°£ ·Î±×
-        corpseProfileEvery: 120,        // NÇÁ·¹ÀÓ¸¶´Ù ·Î±×
-        corpseSimpleRenderThreshold: 20,// ½ÃÃ¼ ´Ü¼ø ·»´õ¸µ ÀüÈ¯ ÀÓ°èÄ¡
-        corpseCacheBuildBudget: 2,      // ÇÁ·¹ÀÓ´ç ½ÃÃ¼ Ä³½Ã »ı¼º Çã¿ë·®
-        corpseNoFilter: false,          // true: ctx.filter ºñÈ°¼º (¼º´É Å×½ºÆ®¿ë)
-        showUnitHitboxes: false         // true: unit touch/debug hitbox overlay Ç¥½Ã
+        disableCorpses: false,          // true: ì‹œì²´ ìƒì„± ì™„ì „ ë¹„í™œì„±
+        corpseProfile: false,           // true: ì‹œì²´ ë Œë”ë§ ì‹œê°„ ë¡œê·¸
+        corpseProfileEvery: 120,        // Ní”„ë ˆì„ë§ˆë‹¤ ë¡œê·¸
+        corpseSimpleRenderThreshold: 20,// ì‹œì²´ ë‹¨ìˆœ ë Œë”ë§ ì „í™˜ ì„ê³„ì¹˜
+        corpseCacheBuildBudget: 2,      // í”„ë ˆì„ë‹¹ ì‹œì²´ ìºì‹œ ìƒì„± í—ˆìš©ëŸ‰
+        corpseNoFilter: false,          // true: ctx.filter ë¹„í™œì„± (ì„±ëŠ¥ í…ŒìŠ¤íŠ¸ìš©)
+        showUnitHitboxes: false         // true: unit touch/debug hitbox overlay í‘œì‹œ
     },
 
     enqueueCorpseSpawn(data) {
@@ -209,6 +218,11 @@ const game = {
     enemyLastIcbmFrame: -999999,
     enemyLastEmpLaunchFrame: -999999,
     empTimer: 0, targetingType: null, killCount: 0,
+    reconLockStrikeCooldownUntilFrame: 0,
+    reconLockStrikeBaseCooldownFrames: 60 * 18,
+    reconLockStrikeDuplicateGuardFrames: 18,
+    _reconLockStrikeLastTargetRef: null,
+    _reconLockStrikeLastFireFrame: -999999,
     playerBuildings: [], enemyBuildings: [],
     selectedBuilding: null,
     enemyEverSeen: false,
@@ -226,18 +240,18 @@ const game = {
     cameramanDisabled: true,
 
     // ============================================
-    // [NEW] °Ç¼³ ¸ğµå »óÅÂ
+    // [NEW] ê±´ì„¤ ëª¨ë“œ ìƒíƒœ
     // ============================================
     buildMode: {
         active: false,
-        type: null,           // °Ç¼³ÇÒ °Ç¹° Å¸ÀÔ (watchtower)
-        previewX: 0,          // ÇÁ¸®ºä À§Ä¡ (¿ùµå ÁÂÇ¥)
+        type: null,           // ê±´ì„¤í•  ê±´ë¬¼ íƒ€ì… (watchtower)
+        previewX: 0,          // í”„ë¦¬ë·° ìœ„ì¹˜ (ì›”ë“œ ì¢Œí‘œ)
         previewY: 0,
-        valid: false,         // ¹èÄ¡ °¡´É ¿©ºÎ
-        worker: null,         // °Ç¼³ ÁßÀÎ ÀÛ¾÷ÀÚ ÂüÁ¶
+        valid: false,         // ë°°ì¹˜ ê°€ëŠ¥ ì—¬ë¶€
+        worker: null,         // ê±´ì„¤ ì¤‘ì¸ ì‘ì—…ì ì°¸ì¡°
     },
-    builderCooldown: 0,       // ÀÛ¾÷ÀÚ °ø¿ë ÄğÅ¸ÀÓ
-    watchtowerBuilt: false,   // [3.8] °¨½ÃÅ¾ 1È¸ °Ç¼³ Á¦ÇÑ ÇÃ·¡±×
+    builderCooldown: 0,       // ì‘ì—…ì ê³µìš© ì¿¨íƒ€ì„
+    watchtowerBuilt: false,   // [3.8] ê°ì‹œíƒ‘ 1íšŒ ê±´ì„¤ ì œí•œ í”Œë˜ê·¸
 
     // [Queue System]
     spawnQueue: {},
@@ -278,10 +292,12 @@ const game = {
         const hRaw = Number(this.height);
         const gy = Number.isFinite(gyRaw) ? gyRaw : 0;
         const h = Number.isFinite(hRaw) ? hRaw : (gy + 320);
+        const liftRaw = Number(this.groundUnitLiftPx);
+        const lift = Number.isFinite(liftRaw) ? Math.max(0, Math.min(120, liftRaw)) : 0;
         const groundBand = Math.max(120, h - gy);
         // Keep combat walkers in lower grass band (away from the upper ground edge line).
-        const min = gy + Math.max(90, Math.round(groundBand * 0.34));
-        const max = Math.max(min + 32, h - 26);
+        const min = Math.max(gy + 34, gy + Math.max(90, Math.round(groundBand * 0.34)) - lift);
+        const max = Math.max(min + 32, (h - 26) - lift);
         const base = min + ((max - min) * 0.58);
         return { base, min, max };
     },
@@ -566,8 +582,8 @@ const game = {
         unit._airFormationAnchorX = null;
     },
 
-    // [MOVED] µå·Ğ ¼ÒÀ¯±Ç/»óÅÂ °ü¸® ÇÔ¼ö ¡æ src/units/drone/drone-manager.js
-    // [MOVED] µå·Ğ ¹ßÁø/È¸¼ö Ä¿¸Çµå ÇÔ¼ö   ¡æ src/units/drone/drone-commands.js
+    // [MOVED] ë“œë¡  ì†Œìœ ê¶Œ/ìƒíƒœ ê´€ë¦¬ í•¨ìˆ˜ â†’ src/units/drone/drone-manager.js
+    // [MOVED] ë“œë¡  ë°œì§„/íšŒìˆ˜ ì»¤ë§¨ë“œ í•¨ìˆ˜   â†’ src/units/drone/drone-commands.js
 
     triggerIcbmSkillFromCommand(skillKey) {
         if (!this.isIcbmSkillKey(skillKey)) return false;
@@ -578,7 +594,7 @@ const game = {
         );
         if (inSkirmishButNotBattle) {
             if (typeof ChatPanel !== 'undefined') {
-                ChatPanel.push('ICBM ½ºÅ³Àº ÀüÅõ ´Ü°è¿¡¼­¸¸ »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.', 'WARN');
+                ChatPanel.push('ICBM ìŠ¤í‚¬ì€ ì „íˆ¬ ë‹¨ê³„ì—ì„œë§Œ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.', 'WARN');
             }
             return false;
         }
@@ -622,6 +638,110 @@ const game = {
             result.push(u);
         }
         return result;
+    },
+
+    getSelectedReconUnits() {
+        if (!this.selectedUnits || this.selectedUnits.size === 0) return [];
+        const result = [];
+        for (const u of this.selectedUnits) {
+            if (!u || u.dead || !u.stats) continue;
+            const id = String(u.stats.id || '').trim().toLowerCase();
+            if (id === 'recon') result.push(u);
+        }
+        return result;
+    },
+
+    getReconLockStrikeCooldownLeftFrames() {
+        const nowFrame = Math.max(0, Math.floor(Number(this.frame) || 0));
+        const until = Math.max(0, Math.floor(Number(this.reconLockStrikeCooldownUntilFrame) || 0));
+        return Math.max(0, until - nowFrame);
+    },
+
+    isReconLockStrikeAvailable() {
+        if (this.getSelectedReconUnits().length <= 0) return false;
+        return this.getReconLockStrikeCooldownLeftFrames() <= 0;
+    },
+
+    _findReconLockStrikeTarget(wx, wy, radius = 260) {
+        const nowFrame = Math.max(0, Math.floor(Number(this.frame) || 0));
+        const maxDist = Math.max(80, Number(radius) || 260);
+        let best = null;
+        let bestDist = maxDist;
+        const candidates = [...(this.enemies || []), ...(this.enemyBuildings || [])];
+
+        for (const t of candidates) {
+            if (!t || t.dead) continue;
+            const lockUntil = Math.max(0, Number(t.__reconLockStrikeLockUntilFrame) || 0);
+            if (nowFrame < lockUntil) continue;
+
+            const tx = Number(t.x);
+            const h = Number(t.height);
+            const tyBase = Number(t.y);
+            if (!Number.isFinite(tx) || !Number.isFinite(tyBase)) continue;
+            const ty = tyBase - (Number.isFinite(h) ? (h * 0.5) : 0);
+            const dx = tx - wx;
+            const dy = ty - wy;
+            const d = Math.hypot(dx, dy);
+            if (d <= bestDist) {
+                bestDist = d;
+                best = t;
+            }
+        }
+        return best;
+    },
+
+    _launchReconLockStrikeAtTarget(target) {
+        if (!target || target.dead) return false;
+        const nowFrame = Math.max(0, Math.floor(Number(this.frame) || 0));
+        const duplicateGuardFrames = Math.max(8, Number(this.reconLockStrikeDuplicateGuardFrames) || 18);
+        if (
+            this._reconLockStrikeLastTargetRef === target &&
+            (nowFrame - (Number(this._reconLockStrikeLastFireFrame) || -999999)) <= duplicateGuardFrames
+        ) {
+            return false;
+        }
+
+        const tx = Math.max(40, Math.min(CONFIG.mapWidth - 40, Number(target.x) || 0));
+        const tyRaw = Number.isFinite(Number(target.y))
+            ? (Number(target.y) - ((Number.isFinite(Number(target.height)) ? Number(target.height) : 0) * 0.5))
+            : this.groundY;
+        const ty = (typeof this.clampGroundLaneY === 'function')
+            ? this.clampGroundLaneY(tyRaw)
+            : tyRaw;
+
+        const spawnJitter = (Math.random() * 160) - 80;
+        const startX = Math.max(30, Math.min(CONFIG.mapWidth - 30, tx + spawnJitter));
+        const startY = -220;
+
+        const shotOpts = {
+            source: null,
+            targetX: tx,
+            targetY: ty,
+            arcHeight: 330,
+            grav: 0.24,
+            hitRadius: 30,
+            icbmRiseFrames: 0
+        };
+        const p = new Projectile(startX, startY, null, 350, 'player', 'icbm_tactical_missile', shotOpts);
+        p._tactical = true;
+        p._reconLockStrike = true;
+        this.projectiles.push(p);
+
+        this._reconLockStrikeLastTargetRef = target;
+        this._reconLockStrikeLastFireFrame = nowFrame;
+        target.__reconLockStrikeLockUntilFrame = nowFrame + duplicateGuardFrames;
+
+        const cooldownFrames = Math.max(60, Number(this.reconLockStrikeBaseCooldownFrames) || (60 * 18));
+        this.reconLockStrikeCooldownUntilFrame = nowFrame + cooldownFrames;
+
+        if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('rocket_launcher', tx);
+        ui.showToast('ì •ì°° ë½ì˜¨ íƒ€ê²© ë°œì‚¬!');
+        if (typeof this.updateHUDSelection === 'function') this.updateHUDSelection();
+        if (typeof app !== 'undefined') {
+            app.markDirty();
+            app.markUiDirty();
+        }
+        return true;
     },
 
     isIcbmSkillKey(key) {
@@ -740,7 +860,7 @@ const game = {
         }
 
         if (team === 'player' && typeof ChatPanel !== 'undefined') {
-            ChatPanel.push(`[ICBM ÁØºñ] ${(skillDef && skillDef.name) ? skillDef.name : payloadKey}`, 'ACTION');
+            ChatPanel.push(`[ICBM ì¤€ë¹„] ${(skillDef && skillDef.name) ? skillDef.name : payloadKey}`, 'ACTION');
         }
         if (typeof app !== 'undefined') {
             app.markDirty();
@@ -817,7 +937,7 @@ const game = {
 
         if (team === 'player' && typeof ChatPanel !== 'undefined') {
             const skillDef = CONFIG.units[payloadKey];
-            ChatPanel.push(`[ICBM ¹ß»ç] ${(skillDef && skillDef.name) ? skillDef.name : payloadKey}`, 'ACTION');
+            ChatPanel.push(`[ICBM ë°œì‚¬] ${(skillDef && skillDef.name) ? skillDef.name : payloadKey}`, 'ACTION');
         }
         if (typeof app !== 'undefined') app.markDirty();
         return p;
@@ -887,9 +1007,9 @@ const game = {
         );
         const isUnlockedDrone = (d) => !!(!d.lockedTarget || d.lockedTarget.dead);
 
-        // 1¼øÀ§: Àá±İ ¾È µÈ µå·Ğ
+        // 1ìˆœìœ„: ì ê¸ˆ ì•ˆ ëœ ë“œë¡ 
         let chosen = drones.find(d => isAssignableDrone(d) && isUnlockedDrone(d));
-        // 2¼øÀ§: ÀÌ¹Ì Àá±İµÈ µå·ĞÀÌ¶óµµ ÀçÁöÁ¤ Çã¿ë(¿ÏÀü ¹«¹İÀÀ ¹æÁö)
+        // 2ìˆœìœ„: ì´ë¯¸ ì ê¸ˆëœ ë“œë¡ ì´ë¼ë„ ì¬ì§€ì • í—ˆìš©(ì™„ì „ ë¬´ë°˜ì‘ ë°©ì§€)
         if (!chosen) {
             chosen = drones.find(isAssignableDrone);
         }
@@ -910,7 +1030,7 @@ const game = {
         this.droneLockCursor = (this.droneLockCursor || 0) + 1;
 
         if (typeof ChatPanel !== 'undefined') {
-            ChatPanel.push('[¶ô´Ù¿î] µå·Ğ 1±â -> Å¸°Ù ÁöÁ¤', 'ACTION');
+            ChatPanel.push('[ë½ë‹¤ìš´] ë“œë¡  1ê¸° -> íƒ€ê²Ÿ ì§€ì •', 'ACTION');
         }
         return true;
     },
@@ -924,7 +1044,7 @@ const game = {
         if (!enemy) return false;
         const assigned = this.assignDroneLocks(enemy, drones);
         if (!assigned && typeof ChatPanel !== 'undefined') {
-            ChatPanel.push('[¶ô´Ù¿î] ´ë±â ÁßÀÎ µå·ĞÀÌ ¾ø½À´Ï´Ù.', 'WARN');
+            ChatPanel.push('[ë½ë‹¤ìš´] ëŒ€ê¸° ì¤‘ì¸ ë“œë¡ ì´ ì—†ìŠµë‹ˆë‹¤.', 'WARN');
         }
         return assigned === true;
     },
@@ -969,8 +1089,8 @@ const game = {
             HUD.setSelection({
                 kind: 'building',
                 name: b.name || b.type || 'Building',
-                buildingType: b.type,  // [NEW] °Ç¹° Å¸ÀÔ (bunker, hq_player µî)
-                building: b,           // [NEW] °Ç¹° °´Ã¼ ÂüÁ¶ (ÁÖµĞ º¸º´ Á¤º¸¿ë)
+                buildingType: b.type,  // [NEW] ê±´ë¬¼ íƒ€ì… (bunker, hq_player ë“±)
+                building: b,           // [NEW] ê±´ë¬¼ ê°ì²´ ì°¸ì¡° (ì£¼ë‘” ë³´ë³‘ ì •ë³´ìš©)
                 hp: b.hp || 0,
                 hpMax: b.maxHp || 100,
                 team: b.team || 'neutral'
@@ -1138,11 +1258,11 @@ const game = {
                     }
                 } catch (_) { }
             }
-            // [R 5.1] DEFAULT_UNIT_SHAPES¸¦ ±âº»°ªÀ¸·Î »ç¿ë, localStorage ½ºÅ²À¸·Î µ¤¾î¾²±â
+            // [R 5.1] DEFAULT_UNIT_SHAPESë¥¼ ê¸°ë³¸ê°’ìœ¼ë¡œ ì‚¬ìš©, localStorage ìŠ¤í‚¨ìœ¼ë¡œ ë®ì–´ì“°ê¸°
             if (typeof DEFAULT_UNIT_SHAPES !== 'undefined') {
-                // ±íÀº º¹»ç·Î ¿øº» º¸È£
+                // ê¹Šì€ ë³µì‚¬ë¡œ ì›ë³¸ ë³´í˜¸
                 window.RECLAIM_SKINS = JSON.parse(JSON.stringify(DEFAULT_UNIT_SHAPES));
-                // localStorage Ä¿½ºÅÒ ½ºÅ² º´ÇÕ
+                // localStorage ì»¤ìŠ¤í…€ ìŠ¤í‚¨ ë³‘í•©
                 Object.keys(sanitizedSkins).forEach(key => {
                     window.RECLAIM_SKINS[key] = sanitizedSkins[key];
                 });
@@ -1289,7 +1409,7 @@ const game = {
         this.enforceCriticalMapThemes();
         this.ctx = this.canvas.getContext('2d');
         this.resize();
-        window.addEventListener('resize', () => this.resize()); // È¸Àü ½Ã Áï½Ã ¹İÀÀ
+        window.addEventListener('resize', () => this.resize()); // íšŒì „ ì‹œ ì¦‰ì‹œ ë°˜ì‘
         window.addEventListener('orientationchange', () => setTimeout(() => this.resize(), 50));
 
         // [PATCH] Apply editor overrides before any game init
@@ -1298,20 +1418,20 @@ const game = {
         this.setupInputs();
         this.initGameObjects();
 
-        // UI ÃÊ±âÈ­
+        // UI ì´ˆê¸°í™”
         ui.init();
         ui.initUnitButtons(this.currentCategory);
         if (typeof Lang !== 'undefined') Lang.updateDOM();
         this.updateZoomUI();
         this.applyVersionLabels();
 
-        // [NEW] HUD ÃÊ±âÈ­
+        // [NEW] HUD ì´ˆê¸°í™”
         if (typeof HUD !== 'undefined') HUD.init();
 
-        // [Safety] È­¸é ÀüÈ¯ ²¿ÀÓÀ¸·Î ¸ğµç ·¹ÀÌ¾î°¡ ¼û°ÜÁ³À» ¶§ ÀÚµ¿ º¹±¸
+        // [Safety] í™”ë©´ ì „í™˜ ê¼¬ì„ìœ¼ë¡œ ëª¨ë“  ë ˆì´ì–´ê°€ ìˆ¨ê²¨ì¡Œì„ ë•Œ ìë™ ë³µêµ¬
         this._startUiRecoveryWatchdog();
 
-        // [P0-4] EMP ÇÃ·¡½Ã DOM Ä³½Ì
+        // [P0-4] EMP í”Œë˜ì‹œ DOM ìºì‹±
         this.$empFlash = document.getElementById('emp-flash');
         this._empWasActive = false;
         this.$hudTimer = document.getElementById('hud-timer');
@@ -1324,10 +1444,10 @@ const game = {
         // [FIX] Force HUD selection state to null on init (prevent production UI from showing)
         this.updateHUDSelection();
 
-        // [ADD][APP] ÀúÀåµÈ ¼³Á¤/½ºÅ°¸¶¸¦ ·ÎµåÇØ¼­ °ÔÀÓ¿¡ Àû¿ë
+        // [ADD][APP] ì €ì¥ëœ ì„¤ì •/ìŠ¤í‚¤ë§ˆë¥¼ ë¡œë“œí•´ì„œ ê²Œì„ì— ì ìš©
         if (typeof app !== 'undefined') {
-            app.loadIntoGame();      // speed/difficulty/lastMapId µî ¹İ¿µ
-            app.commit('init');      // UI 1È¸ Á¤·Ä + ÀúÀå Æ÷¸Ë Á¤¸®
+            app.loadIntoGame();      // speed/difficulty/lastMapId ë“± ë°˜ì˜
+            app.commit('init');      // UI 1íšŒ ì •ë ¬ + ì €ì¥ í¬ë§· ì •ë¦¬
         }
         const isMobileBackFlow = () => {
             let mobileUa = false;
@@ -1500,7 +1620,7 @@ const game = {
             }
 
             const passiveItemKey = String(veteran?.loadout?.itemKey || '').trim();
-            // ·¹°Å½Ã ÀúÀå µ¥ÀÌÅÍ: ½ºÅ³ ¾ÆÀÌÅÛÀÌ itemKey¿¡¸¸ ÀúÀåµÈ °æ¿ì¸¦ 1È¸ º¸Á¤ Ä«¿îÆ®.
+            // ë ˆê±°ì‹œ ì €ì¥ ë°ì´í„°: ìŠ¤í‚¬ ì•„ì´í…œì´ itemKeyì—ë§Œ ì €ì¥ëœ ê²½ìš°ë¥¼ 1íšŒ ë³´ì • ì¹´ìš´íŠ¸.
             if (itemCount <= 0) {
                 if (isOperator && (passiveItemKey === 'drone_suicide_item' || passiveItemKey === 'drone_at_item')) {
                     itemCount += 1;
@@ -1511,8 +1631,8 @@ const game = {
                 }
             }
 
-            // +NÀº ÇÃ·¹ÀÌ¾î°¡ Áö±ŞÇÑ ¾ÆÀÌÅÛ¸¸ Áı°èÇÑ´Ù.
-            // °íÁ¤ ½ºÅ³(¿¹: º¸º´ rifle_d)°ú ½ºÅ³ ½½·Ô Áßº¹ ¾ÆÀÌÅÛÀº Á¦¿Ü.
+            // +Nì€ í”Œë ˆì´ì–´ê°€ ì§€ê¸‰í•œ ì•„ì´í…œë§Œ ì§‘ê³„í•œë‹¤.
+            // ê³ ì • ìŠ¤í‚¬(ì˜ˆ: ë³´ë³‘ rifle_d)ê³¼ ìŠ¤í‚¬ ìŠ¬ë¡¯ ì¤‘ë³µ ì•„ì´í…œì€ ì œì™¸.
             const passiveSupported = supportedLoadoutItemKeys.has(passiveItemKey);
             const passiveDuplicatedInSkillSlots = countedSkillKeys.some((key) => key === passiveItemKey);
             const passiveIsSkillItemForUnit = (isOperator && (passiveItemKey === 'drone_suicide_item' || passiveItemKey === 'drone_at_item'))
@@ -1576,7 +1696,7 @@ const game = {
                 loadoutSkillItemKeys[1] = rawItemKey;
             }
         } else if (isInfantryCategory) {
-            // º¸º´ Ä«Å×°í¸®: ½ºÅ³ ½½·Ô 1,2¿¡¼­ smoke_grenade, medkit_c ÀĞ±â
+            // ë³´ë³‘ ì¹´í…Œê³ ë¦¬: ìŠ¤í‚¬ ìŠ¬ë¡¯ 1,2ì—ì„œ smoke_grenade, medkit_c ì½ê¸°
             for (let slotIndex = 1; slotIndex <= 2; slotIndex++) {
                 const key = String(rawSkillItemKeys[slotIndex] || '').trim();
                 if (key === 'smoke_grenade' || key === 'medkit_c') {
@@ -1611,10 +1731,10 @@ const game = {
                 nextStats[field] = Math.max(1, Math.floor(base * damageMult));
             });
 
-            // [ITEM] ¾ÆÀÌÅÛº° Ãß°¡ ½ºÅÈ Àû¿ë
+            // [ITEM] ì•„ì´í…œë³„ ì¶”ê°€ ìŠ¤íƒ¯ ì ìš©
             const loadoutKey = unit.veteranLoadoutItemKey || '';
             if (loadoutKey === 'rifle_d') {
-                // M249: »ç°Å¸® +25%, µ¥¹ÌÁö +20% Ãß°¡, ÃÑ¼Ò¸®/Åº¼Ó ÇÃ·¡±×
+                // M249: ì‚¬ê±°ë¦¬ +25%, ë°ë¯¸ì§€ +20% ì¶”ê°€, ì´ì†Œë¦¬/íƒ„ì† í”Œë˜ê·¸
                 nextStats.range = Math.floor((Number(nextStats.range) || 200) * 1.25);
                 const dmgKeys2 = ['damage', 'damageGround', 'damageAir'];
                 dmgKeys2.forEach((field) => {
@@ -1624,32 +1744,32 @@ const game = {
                 });
                 unit.veteranGunType = 'rifle_d';
             } else if (loadoutKey === 'scope_d') {
-                // Á¶ÁØ°æ: »ç°Å¸® +30%
+                // ì¡°ì¤€ê²½: ì‚¬ê±°ë¦¬ +30%
                 nextStats.range = Math.floor((Number(nextStats.range) || 200) * 1.30);
             }
 
             unit.stats = nextStats;
         }
 
-        // [ITEM] ¹æÅºº¹: ±âº» HP ºÎ½ºÆ® ÀÌÈÄ Ãß°¡ +25%
+        // [ITEM] ë°©íƒ„ë³µ: ê¸°ë³¸ HP ë¶€ìŠ¤íŠ¸ ì´í›„ ì¶”ê°€ +25%
         if (unit.veteranLoadoutItemKey === 'body_armor_d') {
             unit.maxHp = Math.max(1, Math.floor(unit.maxHp * 1.25));
             unit.hp = unit.maxHp;
         }
 
-        // [ITEM] ¿¬¸·Åº: ÆĞ½Ãºê ¶Ç´Â ½ºÅ³ ½½·Ô ÀåÂø ½Ã ½ºÅ³ ÀåÀü
+        // [ITEM] ì—°ë§‰íƒ„: íŒ¨ì‹œë¸Œ ë˜ëŠ” ìŠ¤í‚¬ ìŠ¬ë¡¯ ì¥ì°© ì‹œ ìŠ¤í‚¬ ì¥ì „
         if (unit.veteranLoadoutItemKey === 'smoke_grenade' || loadoutSkillItemKeys.includes('smoke_grenade')) {
             unit.smokeChargesLeft = 2;
             unit.smokeAiTimer = 60 + Math.floor(Math.random() * 240);
         }
 
-        // [ITEM] ÀÇ·á Å°Æ®: ÆĞ½Ãºê ¶Ç´Â ½ºÅ³ ½½·Ô ÀåÂø ½Ã ½ºÅ³ ÀåÀü
+        // [ITEM] ì˜ë£Œ í‚¤íŠ¸: íŒ¨ì‹œë¸Œ ë˜ëŠ” ìŠ¤í‚¬ ìŠ¬ë¡¯ ì¥ì°© ì‹œ ìŠ¤í‚¬ ì¥ì „
         if (unit.veteranLoadoutItemKey === 'medkit_c' || loadoutSkillItemKeys.includes('medkit_c')) {
             unit.medkitChargesLeft = 2;
         }
     },
 
-    // [ITEM] ÀÇ·á Å°Æ® ½ºÅ³ ? ÀÚ½Å + ¹İ°æ ³» ¾Æ±º º¸º´ Áï½Ã Ä¡À¯
+    // [ITEM] ì˜ë£Œ í‚¤íŠ¸ ìŠ¤í‚¬ ? ìì‹  + ë°˜ê²½ ë‚´ ì•„êµ° ë³´ë³‘ ì¦‰ì‹œ ì¹˜ìœ 
     useMedkitCommand() {
         if (!this.selectedUnits) return false;
         let used = false;
@@ -1659,11 +1779,11 @@ const game = {
             unit.medkitChargesLeft -= 1;
             used = true;
 
-            // ÀÚ½Å Ä¡À¯ +40% maxHp
+            // ìì‹  ì¹˜ìœ  +40% maxHp
             const selfHeal = Math.floor((unit.maxHp || 1) * 0.40);
             unit.hp = Math.min(unit.maxHp, (unit.hp || 0) + selfHeal);
 
-            // ¹İ°æ 150px ³» ¾Æ±º º¸º´ Ä¡À¯ +30% maxHp
+            // ë°˜ê²½ 150px ë‚´ ì•„êµ° ë³´ë³‘ ì¹˜ìœ  +30% maxHp
             const healRadius = 150;
             if (this.units && Array.isArray(this.units)) {
                 this.units.forEach((ally) => {
@@ -1674,19 +1794,19 @@ const game = {
                     if (Math.abs(dx) > healRadius) return;
                     const allyHeal = Math.floor((ally.maxHp || 1) * 0.30);
                     ally.hp = Math.min(ally.maxHp, (ally.hp || 0) + allyHeal);
-                    // Ä¡À¯ ÆÄÆ¼Å¬
+                    // ì¹˜ìœ  íŒŒí‹°í´
                     if (typeof this.createParticles === 'function') {
                         this.createParticles(ally.x, ally.y - 8, 5, '#4ade80');
                     }
                 });
             }
-            // ÀÚ½Å Ä¡À¯ ÆÄÆ¼Å¬
+            // ìì‹  ì¹˜ìœ  íŒŒí‹°í´
             if (typeof this.createParticles === 'function') {
                 this.createParticles(unit.x, unit.y - 8, 8, '#4ade80');
             }
         });
         if (used && typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
-            ui.showToast('ÀÇ·á Å°Æ® »ç¿ë! ÁÖº¯ º¸º´ Ä¡À¯');
+            ui.showToast('ì˜ë£Œ í‚¤íŠ¸ ì‚¬ìš©! ì£¼ë³€ ë³´ë³‘ ì¹˜ìœ ');
         }
         if (used && typeof this.updateHUDSelection === 'function') {
             this.updateHUDSelection();
@@ -1709,7 +1829,7 @@ const game = {
         });
 
         if (started > 0 && typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
-            ui.showToast('¹éÆÄÀÌÇÁ ¿¬ÁÖ ½ÃÀÛ!');
+            ui.showToast('ë°±íŒŒì´í”„ ì—°ì£¼ ì‹œì‘!');
         }
 
         if (started > 0 && typeof this.updateHUDSelection === 'function') {
@@ -1718,7 +1838,7 @@ const game = {
         return started > 0;
     },
 
-    // [ITEM] È°¼º ¿¬¸· ±¸¸§ À§Ä¡ ¸ñ·Ï ¹İÈ¯ (µ¥¹ÌÁö °¨¼Ò ÆÇÁ¤¿ë)
+    // [ITEM] í™œì„± ì—°ë§‰ êµ¬ë¦„ ìœ„ì¹˜ ëª©ë¡ ë°˜í™˜ (ë°ë¯¸ì§€ ê°ì†Œ íŒì •ìš©)
     getSmokeZones() {
         if (!Array.isArray(this.particles)) return [];
         const zones = [];
@@ -1727,7 +1847,7 @@ const game = {
             if (typeof SmokeCloudFX !== 'undefined' && !(p instanceof SmokeCloudFX)) return;
             if (p.age == null || p.maxFrames == null) return;
             if (p.age >= p.maxFrames) return;
-            // ¿¬¸·ÀÌ ½ÇÁ¦·Î º¸ÀÌ´Â ±¸°£(emitFrames ÀÌ³» ¶Ç´Â ±× Á÷ÈÄ)¸¸ À¯È¿
+            // ì—°ë§‰ì´ ì‹¤ì œë¡œ ë³´ì´ëŠ” êµ¬ê°„(emitFrames ì´ë‚´ ë˜ëŠ” ê·¸ ì§í›„)ë§Œ ìœ íš¨
             if (p.age > (p.emitFrames || 220) + 80) return;
             zones.push({ x: p.x, y: p.y, radius: 90 });
         });
@@ -1753,7 +1873,7 @@ const game = {
                 return true;
             }
             if (typeof ChatPanel !== 'undefined') {
-                ChatPanel.push('±¹ÁöÀü¿¡¼­´Â ¹èÄ¡ ´Ü°è¿¡¼­¸¸ À¯´ÖÀ» ¼±ÅÃÇÒ ¼ö ÀÖ½À´Ï´Ù.', 'WARN');
+                ChatPanel.push('êµ­ì§€ì „ì—ì„œëŠ” ë°°ì¹˜ ë‹¨ê³„ì—ì„œë§Œ ìœ ë‹›ì„ ì„ íƒí•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.', 'WARN');
             }
             return false;
         }
@@ -1761,7 +1881,7 @@ const game = {
         const stock = Math.max(0, Math.floor(Number(this.playerVeteranStock?.[id]) || 0));
         if (stock <= 0) {
             if (typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
-                ui.showToast('º£Å×¶û Ãâ°İ °¡´É ¼ö·®ÀÌ ¾ø½À´Ï´Ù.');
+                ui.showToast('ë² í…Œë‘ ì¶œê²© ê°€ëŠ¥ ìˆ˜ëŸ‰ì´ ì—†ìŠµë‹ˆë‹¤.');
             }
             return false;
         }
@@ -1769,7 +1889,7 @@ const game = {
         const cooldown = Math.max(0, Number(this.cooldowns?.[veteran.unitKey]) || 0);
         if (cooldown > 0) {
             if (typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
-                ui.showToast('¾ÆÁ÷ ÀçÃâ°İ ´ë±âÁßÀÔ´Ï´Ù.');
+                ui.showToast('ì•„ì§ ì¬ì¶œê²© ëŒ€ê¸°ì¤‘ì…ë‹ˆë‹¤.');
             }
             return false;
         }
@@ -1782,7 +1902,7 @@ const game = {
             : this.supply >= cost;
         if (!canSpendSupply) {
             if (typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
-                ui.showToast('ÀÚ¿øÀÌ ºÎÁ·ÇÕ´Ï´Ù.');
+                ui.showToast('ìì›ì´ ë¶€ì¡±í•©ë‹ˆë‹¤.');
             }
             return false;
         }
@@ -1831,19 +1951,19 @@ const game = {
         const tipText = document.getElementById('loading-tip-text');
         let progress = 0;
 
-        // TIP ¸ñ·Ï
+        // TIP ëª©ë¡
         const tips = [
-            "ÃÊ¹İ¿¡´Â »ı»ê °Ç¹° À§ÁÖ·Î Áö¾î ÀÚ¿øÀ» È®º¸ÇÏ´Â °ÍÀÌ ÁÁ½À´Ï´Ù.",
-            "º´¿µÀ» ¸ÕÀú °Ç¼³ÇÏ¿© º¸º´À» ºü¸£°Ô »ı»êÇÏ¼¼¿ä.",
-            "¿¬±¸¼Ò¸¦ ÅëÇØ ±â¼úÀ» ¾÷±×·¹ÀÌµåÇÏ¸é ÀüÅõ·ÂÀÌ Å©°Ô Çâ»óµË´Ï´Ù.",
-            "ÀÚ¿øÀÌ ºÎÁ·ÇÒ ¶§´Â °øÀå°ú º¸±Ş¼Ò¸¦ ¿ì¼± °Ç¼³ÇÏ¼¼¿ä.",
-            "ÀûÀÇ °ø°İÀ» ´ëºñÇØ ¹æ¾î ½Ã¼³À» ¹Ì¸® ¹èÄ¡ÇÏ´Â °ÍÀÌ Áß¿äÇÕ´Ï´Ù.",
-            "´Ù¾çÇÑ À¯´ÖÀ» Á¶ÇÕÇÏ¸é ´õ È¿°úÀûÀÎ ÀüÅõ°¡ °¡´ÉÇÕ´Ï´Ù.",
-            "¸Ê¸¶´Ù °íÀ¯ÇÑ Æ¯¼ºÀÌ ÀÖÀ¸´Ï Àü·«À» Á¶Á¤ÇÏ¼¼¿ä.",
-            "Ä£±¸¿Í Çù·ÂÇÏ¿© ´õ °­·ÂÇÑ ±âÁö¸¦ °Ç¼³ÇÒ ¼ö ÀÖ½À´Ï´Ù."
+            "ì´ˆë°˜ì—ëŠ” ìƒì‚° ê±´ë¬¼ ìœ„ì£¼ë¡œ ì§€ì–´ ìì›ì„ í™•ë³´í•˜ëŠ” ê²ƒì´ ì¢‹ìŠµë‹ˆë‹¤.",
+            "ë³‘ì˜ì„ ë¨¼ì € ê±´ì„¤í•˜ì—¬ ë³´ë³‘ì„ ë¹ ë¥´ê²Œ ìƒì‚°í•˜ì„¸ìš”.",
+            "ì—°êµ¬ì†Œë¥¼ í†µí•´ ê¸°ìˆ ì„ ì—…ê·¸ë ˆì´ë“œí•˜ë©´ ì „íˆ¬ë ¥ì´ í¬ê²Œ í–¥ìƒë©ë‹ˆë‹¤.",
+            "ìì›ì´ ë¶€ì¡±í•  ë•ŒëŠ” ê³µì¥ê³¼ ë³´ê¸‰ì†Œë¥¼ ìš°ì„  ê±´ì„¤í•˜ì„¸ìš”.",
+            "ì ì˜ ê³µê²©ì„ ëŒ€ë¹„í•´ ë°©ì–´ ì‹œì„¤ì„ ë¯¸ë¦¬ ë°°ì¹˜í•˜ëŠ” ê²ƒì´ ì¤‘ìš”í•©ë‹ˆë‹¤.",
+            "ë‹¤ì–‘í•œ ìœ ë‹›ì„ ì¡°í•©í•˜ë©´ ë” íš¨ê³¼ì ì¸ ì „íˆ¬ê°€ ê°€ëŠ¥í•©ë‹ˆë‹¤.",
+            "ë§µë§ˆë‹¤ ê³ ìœ í•œ íŠ¹ì„±ì´ ìˆìœ¼ë‹ˆ ì „ëµì„ ì¡°ì •í•˜ì„¸ìš”.",
+            "ì¹œêµ¬ì™€ í˜‘ë ¥í•˜ì—¬ ë” ê°•ë ¥í•œ ê¸°ì§€ë¥¼ ê±´ì„¤í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤."
         ];
 
-        // ·£´ı TIP ¼±ÅÃ
+        // ëœë¤ TIP ì„ íƒ
         const randomTip = tips[Math.floor(Math.random() * tips.length)];
         if (tipText) tipText.textContent = randomTip;
 
@@ -1860,10 +1980,10 @@ const game = {
                 clearInterval(this._loadingIntervalId);
                 this._loadingIntervalId = null;
                 if (text) text.classList.remove('animate-pulse');
-                // [º¯°æ] ·Îµù ³¡³ª¸é ÀÚµ¿À¸·Î ¿Ï·á
+                // [ë³€ê²½] ë¡œë”© ëë‚˜ë©´ ìë™ìœ¼ë¡œ ì™„ë£Œ
                 setTimeout(() => {
                     this.completeLoading();
-                }, 800); // 0.8ÃÊ Áö¿¬ ÈÄ ÀÚµ¿ ÁøÇà
+                }, 800); // 0.8ì´ˆ ì§€ì—° í›„ ìë™ ì§„í–‰
             }
         }, 30);
     },
@@ -2147,7 +2267,8 @@ const game = {
         if (this._uiRecoveryTimer) return;
         this._uiRecoveryTimer = setInterval(() => {
             const suspendUntil = Number(this._uiRecoverySuspendUntil) || 0;
-            if (Date.now() < suspendUntil) return;
+            const now = Date.now();
+            if (now < suspendUntil) return;
             if (document.hidden) {
                 this._uiBlankTicks = 0;
                 return;
@@ -2183,6 +2304,25 @@ const game = {
                         el.classList.add('hidden');
                     }
                 });
+                return;
+            }
+            const flowPhase = (typeof window !== 'undefined')
+                ? String(window.__RECLAIM_FLOW_PHASE__ || '').trim()
+                : '';
+            const flowPhaseAt = (typeof window !== 'undefined')
+                ? Number(window.__RECLAIM_FLOW_PHASE_AT__ || 0)
+                : 0;
+            const mapStartLock = (typeof window !== 'undefined')
+                && window.__RECLAIM_MAP_START_LOCK__ === true;
+            const inPreBattlePhase = flowPhase === 'faction_pick' || flowPhase === 'map_intro';
+            const inFlowStabilizeWindow = flowPhaseAt > 0 && (now - flowPhaseAt) < 8000;
+            const inBattleBootstrapGrace = (
+                flowPhase === 'battle'
+                && mapStartLock
+                && now < (suspendUntil + 10000)
+            );
+            if (inPreBattlePhase || inBattleBootstrapGrace || inFlowStabilizeWindow) {
+                this._uiBlankTicks = 0;
                 return;
             }
 
@@ -2316,9 +2456,14 @@ const game = {
             : ((typeof window !== 'undefined' && window.Maps) ? window.Maps : null);
         if (!mapApi) {
             console.error('[GameStart] Maps API is unavailable.');
-            if (typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
-                ui.showToast('¸Ê ½Ã½ºÅÛ ·Îµå ½ÇÆĞ. »õ·Î°íÄ§ ÈÄ ´Ù½Ã ½ÃµµÇÏ¼¼¿ä.');
+            if (typeof window !== 'undefined') {
+                window.__RECLAIM_MAP_START_LOCK__ = false;
+                window.__RECLAIM_BLOCK_FACTION_POPUP__ = false;
             }
+            if (typeof ui !== 'undefined' && typeof ui.showToast === 'function') {
+                ui.showToast('ë§µ ì‹œìŠ¤í…œ ë¡œë“œ ì‹¤íŒ¨. ìƒˆë¡œê³ ì¹¨ í›„ ë‹¤ì‹œ ì‹œë„í•˜ì„¸ìš”.');
+            }
+            this.showMapSelect();
             return;
         }
         const requestedMap = String(mapType || this.currentMapId || DEFAULT_BATTLE_MAP_ID).trim();
@@ -2340,7 +2485,7 @@ const game = {
             ? mapSpecificW
             : baseW;
 
-        // [NEW] ¸¶Áö¸· ¼±ÅÃ ¸Ê ÀúÀå
+        // [NEW] ë§ˆì§€ë§‰ ì„ íƒ ë§µ ì €ì¥
         this.currentMapId = nextMap;
 
         // Battle-only: predeploy/placement flow disabled.
@@ -2350,7 +2495,7 @@ const game = {
         this.start();
     },
 
-    // [ÇÙ½É] Èçµé¸² ¾ø´Â ¸®»çÀÌÁî ·ÎÁ÷
+    // [í•µì‹¬] í”ë“¤ë¦¼ ì—†ëŠ” ë¦¬ì‚¬ì´ì¦ˆ ë¡œì§
     resize() {
         const wrapper = document.getElementById('game-wrapper');
         const vv = window.visualViewport || null;
@@ -2358,23 +2503,23 @@ const game = {
         const winH = (vv && Number.isFinite(vv.height) && vv.height > 0) ? vv.height : window.innerHeight;
         const prevViewW = Camera.viewW(this);
 
-        // 1. ¹èÀ² °è»ê (¼¼·Î ³í¸® ³ôÀÌ¿¡ ¸ÂÃã)
-        // È­¸éÀÌ ÀÛÀ¸¸é ¾Ë¾Æ¼­ Ãà¼Ò(Zoom Out)µÇ°í, Å©¸é È®´ëµË´Ï´Ù.
+        // 1. ë°°ìœ¨ ê³„ì‚° (ì„¸ë¡œ ë…¼ë¦¬ ë†’ì´ì— ë§ì¶¤)
+        // í™”ë©´ì´ ì‘ìœ¼ë©´ ì•Œì•„ì„œ ì¶•ì†Œ(Zoom Out)ë˜ê³ , í¬ë©´ í™•ëŒ€ë©ë‹ˆë‹¤.
         const logicalH = (Number.isFinite(Number(this.logicalHeight)) && Number(this.logicalHeight) > 0)
             ? Number(this.logicalHeight)
             : LOGICAL_HEIGHT;
         this.scaleRatio = winH / logicalH;
 
-        // 2. °¡·Î ±æÀÌ °è»ê (È­¸é ºñÀ²¿¡ µû¶ó À¯µ¿ÀûÀ¸·Î ³Ğ¾îÁü)
-        // ¿¹: °¡·Î ¸ğµå¸é width°¡ 1400px ÀÌ»óÀ¸·Î ´Ã¾î³ª¼­ PCÃ³·³ º¸ÀÓ
+        // 2. ê°€ë¡œ ê¸¸ì´ ê³„ì‚° (í™”ë©´ ë¹„ìœ¨ì— ë”°ë¼ ìœ ë™ì ìœ¼ë¡œ ë„“ì–´ì§)
+        // ì˜ˆ: ê°€ë¡œ ëª¨ë“œë©´ widthê°€ 1400px ì´ìƒìœ¼ë¡œ ëŠ˜ì–´ë‚˜ì„œ PCì²˜ëŸ¼ ë³´ì„
         this.width = winW / this.scaleRatio;
-        this.height = logicalH; // ¼¼·Î ½Ã¾ß È®Àå: ³í¸® ³ôÀÌ °¡º¯
+        this.height = logicalH; // ì„¸ë¡œ ì‹œì•¼ í™•ì¥: ë…¼ë¦¬ ë†’ì´ ê°€ë³€
 
-        // 3. Äµ¹ö½º Å©±â Àû¿ë
+        // 3. ìº”ë²„ìŠ¤ í¬ê¸° ì ìš©
         this.canvas.width = this.width;
         this.canvas.height = this.height;
 
-        // 4. ¶¥ ³ôÀÌ °è»ê
+        // 4. ë•… ë†’ì´ ê³„ì‚°
         this.groundY = this.height - CONFIG.groundHeight;
         const mapGroundLift = Number((typeof Maps !== 'undefined' && Maps && typeof Maps.getRule === 'function')
             ? Maps.getRule('groundLift')
@@ -2383,29 +2528,29 @@ const game = {
             this.groundY = Math.max(140, this.groundY - mapGroundLift);
         }
 
-        // 5. CSS ½ºÅ¸ÀÏ Àû¿ë (È­¸é ²Ë Ã¤¿ì±â)
+        // 5. CSS ìŠ¤íƒ€ì¼ ì ìš© (í™”ë©´ ê½‰ ì±„ìš°ê¸°)
         if (wrapper) {
             wrapper.style.width = `${winW}px`;
             wrapper.style.height = `${winH}px`;
-            // wrapper ÀÚÃ¼¸¦ scale·Î ÁÙÀÌ°Å³ª ´Ã·Á¼­ µü ¸ÂÃã
-            // transform ´ë½Å Äµ¹ö½º ³»ºÎ ÇØ»óµµ¸¦ Á¶ÀıÇßÀ¸¹Ç·Î ¿©±â¼± Å©±â¸¸ ¸ÂÃã
+            // wrapper ìì²´ë¥¼ scaleë¡œ ì¤„ì´ê±°ë‚˜ ëŠ˜ë ¤ì„œ ë”± ë§ì¶¤
+            // transform ëŒ€ì‹  ìº”ë²„ìŠ¤ ë‚´ë¶€ í•´ìƒë„ë¥¼ ì¡°ì ˆí–ˆìœ¼ë¯€ë¡œ ì—¬ê¸°ì„  í¬ê¸°ë§Œ ë§ì¶¤
             wrapper.style.transform = 'none';
 
-            // Äµ¹ö½º ½ºÅ¸ÀÏ °­Á¦ ÁöÁ¤ (Áß¿ä)
+            // ìº”ë²„ìŠ¤ ìŠ¤íƒ€ì¼ ê°•ì œ ì§€ì • (ì¤‘ìš”)
             this.canvas.style.width = '100%';
             this.canvas.style.height = '100%';
         }
 
         Camera.preserveCenterOnResize(this, prevViewW);
 
-        // [NEW] ¸ğ¹ÙÀÏ ÀÚµ¿ ÁÜÀÎ: »ç¿ëÀÚ°¡ ¼öµ¿ ÁÜÇÏÁö ¾Ê¾Ò°í, ÅÍÄ¡ µğ¹ÙÀÌ½º¸é ÀÚµ¿ ÁÜ Àû¿ë
+        // [NEW] ëª¨ë°”ì¼ ìë™ ì¤Œì¸: ì‚¬ìš©ìê°€ ìˆ˜ë™ ì¤Œí•˜ì§€ ì•Šì•˜ê³ , í„°ì¹˜ ë””ë°”ì´ìŠ¤ë©´ ìë™ ì¤Œ ì ìš©
         const isMobile = window.matchMedia('(pointer: coarse)').matches;
         this.mobileViewportActive = isMobile;
         // Pivot base already follows infantry lane; keep extra mobile offset neutral.
         this.mobileCameraPivotOffsetY = 0;
         this.mobileCameraPivotUserPercent = this.getCameraPivotUserPercent();
         if (isMobile && !Camera.userZoomed) {
-            // ¸ñÇ¥ ºä ³Êºñ: 1200px (Àû´çÇÑ ½Ã¾ß)
+            // ëª©í‘œ ë·° ë„ˆë¹„: 1200px (ì ë‹¹í•œ ì‹œì•¼)
             const targetViewW = 1200;
             const autoZoom = Math.min(Camera.MAX, Math.max(Camera.MIN, this.width / targetViewW));
             // Never auto-zoom in on resize; only auto-zoom out when needed.
@@ -2426,9 +2571,10 @@ const game = {
     },
 
     initGameObjects() {
-        // ¾Æ±º ½ÃÀÛ º¸À¯ ¼ö·®Àº ³­ÀÌµµ¿Í ¹«°üÇÏ°Ô µ¿ÀÏÇÏ°Ô À¯ÁöÇÑ´Ù.
+        // ì•„êµ° ì‹œì‘ ë³´ìœ  ìˆ˜ëŸ‰ì€ ë‚œì´ë„ì™€ ë¬´ê´€í•˜ê²Œ ë™ì¼í•˜ê²Œ ìœ ì§€í•œë‹¤.
         const stockMult = 1.0;
-        const enemyBaseMult = 1.5;
+        const isCoastMap = String(this.currentMapId || '').trim() === 'skirmish_coast';
+        const enemyBaseMult = isCoastMap ? 1.35 : 1.5;
         const enemyThreatMult = 1;
 
         for (let k in CONFIG.units) {
@@ -2442,7 +2588,7 @@ const game = {
             }
             const isDroneKey = k.includes('drone');
 
-            // [SPECIAL] ½ºÅÚ½ºµå·Ğ: ¾Æ±º/Àû±º ¸ğµÎ 5±â °íÁ¤
+            // [SPECIAL] ìŠ¤í…”ìŠ¤ë“œë¡ : ì•„êµ°/ì êµ° ëª¨ë‘ 5ê¸° ê³ ì •
             if (k === 'stealth_drone') {
                 const fixedCount = Math.ceil(5 * 1.1);
                 this.playerStock[k] = fixedCount;
@@ -2451,7 +2597,7 @@ const game = {
                 continue;
             }
 
-            // [ICBM] ÇÃ·¹ÀÌ¾î/Àû±º ºĞ¸®: ¾Æ±º icbm 2±â, Àû±º icbm_enemy 2±â
+            // [ICBM] í”Œë ˆì´ì–´/ì êµ° ë¶„ë¦¬: ì•„êµ° icbm 2ê¸°, ì êµ° icbm_enemy 2ê¸°
             if (k === 'icbm') {
                 this.playerStock[k] = 2;
                 this.enemyStock[k] = 0;
@@ -2468,7 +2614,7 @@ const game = {
             // Apply Multiplier
             let finalCount = Math.ceil(CONFIG.units[k].maxCount * stockMult);
 
-            // ÀÛ¾÷ÀÚ ºñÈ°¼ºÈ­: ½ÃÀÛ Àç°í 0 °íÁ¤.
+            // ì‘ì—…ì ë¹„í™œì„±í™”: ì‹œì‘ ì¬ê³  0 ê³ ì •.
             if (k === 'worker') {
                 finalCount = 0;
             }
@@ -2502,16 +2648,16 @@ const game = {
         this.battleTotalWarNewsShown = false;
         this.nukePanicPlayed = false;
 
-        // [NEW] °ø½À°æº¸ »óÅÂ ÃÊ±âÈ­
+        // [NEW] ê³µìŠµê²½ë³´ ìƒíƒœ ì´ˆê¸°í™”
         this.airRaidWarning = null;
     },
 
-    // [NEW] Àû±º ÃÑ·ÂÀü (Total War) Æ®¸®°Å
+    // [NEW] ì êµ° ì´ë ¥ì „ (Total War) íŠ¸ë¦¬ê±°
     triggerTotalWar() {
         if (this.totalWarTriggered || !this.running) return;
         this.totalWarTriggered = true;
 
-        // [R 4.2] ½ºÆù ±İÁö À¯´Ö ¸®½ºÆ®
+        // [R 4.2] ìŠ¤í° ê¸ˆì§€ ìœ ë‹› ë¦¬ìŠ¤íŠ¸
         const BLOCKED_UNITS = ['tactical_drone', 'stealth_drone', 'drone_suicide', 'drone_at'];
 
         const enemyHQ = this.buildings.find(b => b.type === 'hq_enemy' && !b.dead);
@@ -2532,7 +2678,7 @@ const game = {
 
         for (let key in this.enemyStock) {
             if (budgetLeft <= 0) break;
-            // [R 4.2] disabled À¯´Ö ¹× BLOCKED_UNITS ½ºÅµ
+            // [R 4.2] disabled ìœ ë‹› ë° BLOCKED_UNITS ìŠ¤í‚µ
             const unitDef = CONFIG.units[key];
             if (!unitDef) continue;
             if (this.isEnemySpawnBlockedUnit(key)) continue;
@@ -2584,7 +2730,7 @@ const game = {
         if (unitType === 'civilian' || unitCategory === 'civilian') return true;
         if (unitDef.isBuilder === true || unitDef.isCameraman === true) return true;
 
-        // B-03: Á¡·ÉÀü Àû±º ½ºÆù Ç® Á¤¸® (ºñÀüÅõ À¯Æ¿ À¯´Ö Á¦¿Ü)
+        // B-03: ì ë ¹ì „ ì êµ° ìŠ¤í° í’€ ì •ë¦¬ (ë¹„ì „íˆ¬ ìœ í‹¸ ìœ ë‹› ì œì™¸)
         if (key === 'worker' || key === 'recon' || key === 'cameraman') return true;
         return false;
     },
@@ -2597,7 +2743,7 @@ const game = {
         this._clearLandingIntroController();
         this._forceShowBattleViewport();
 
-        // [FIX] ID ¼öÁ¤: start-screenÀº Á¸ÀçÇÏÁö ¾ÊÀ¸¹Ç·Î loading-screenÀ» ¼û±è
+        // [FIX] ID ìˆ˜ì •: start-screenì€ ì¡´ì¬í•˜ì§€ ì•Šìœ¼ë¯€ë¡œ loading-screenì„ ìˆ¨ê¹€
         document.getElementById('loading-screen')?.classList.add('hidden');
         document.getElementById('end-screen').classList.add('hidden');
 
@@ -2616,10 +2762,13 @@ const game = {
         this.enemyLastIcbmFrame = -999999;
         this.enemyLastEmpLaunchFrame = -999999;
         this.killCount = 0;
+        this.reconLockStrikeCooldownUntilFrame = 0;
+        this._reconLockStrikeLastTargetRef = null;
+        this._reconLockStrikeLastFireFrame = -999999;
         this.isGameOver = false;
         this.enemyEverSeen = false;
         this.playerEverSeen = false;
-        this.watchtowerBuilt = false;  // [3.8] °¨½ÃÅ¾ 1È¸ °Ç¼³ Á¦ÇÑ ÃÊ±âÈ­
+        this.watchtowerBuilt = false;  // [3.8] ê°ì‹œíƒ‘ 1íšŒ ê±´ì„¤ ì œí•œ ì´ˆê¸°í™”
         this.civilianDeaths = 0;
         this.airRaidTriggered = false;
         this.civilianEvacActive = false;
@@ -2654,7 +2803,7 @@ const game = {
         if (this.$hudTimer) {
             this.$hudTimer.textContent = '00:00';
         }
-        // [NEW] ¸Êº° ÀÓ¹« ¸ñÇ¥ ÅØ½ºÆ® ¼³Á¤
+        // [NEW] ë§µë³„ ì„ë¬´ ëª©í‘œ í…ìŠ¤íŠ¸ ì„¤ì •
         this._updateMissionObjectiveText();
 
         // Recalculate groundY fresh to be sure
@@ -2678,7 +2827,7 @@ const game = {
             'hud-top-actions'
         ].forEach((id) => document.getElementById(id)?.classList.remove('hidden'));
         document.getElementById('unit-cmd-wrapper')?.classList.add('hidden');
-        // [FIX] endGame¿¡¼­ ¼û±ä UI º¹±¸
+        // [FIX] endGameì—ì„œ ìˆ¨ê¸´ UI ë³µêµ¬
         document.getElementById('hud-footer')?.classList.remove('hidden');
         document.getElementById('global-settings-btn')?.classList.remove('hidden');
         if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
@@ -2686,8 +2835,8 @@ const game = {
         // [NEW] Show fixed bottom HUD
         if (typeof HUD !== 'undefined') HUD.show();
 
-        // [FIX] ÀüÅõ ½ÃÀÛ Á÷ÈÄ Àç°í UI¸¦ Áï½Ã µ¿±âÈ­ÇÑ´Ù.
-        // (ÀÌÀü ÀüÅõ ¼ö·®ÀÌ Àá±ñ ³²´Â stale Ç¥½Ã ¹æÁö)
+        // [FIX] ì „íˆ¬ ì‹œì‘ ì§í›„ ì¬ê³  UIë¥¼ ì¦‰ì‹œ ë™ê¸°í™”í•œë‹¤.
+        // (ì´ì „ ì „íˆ¬ ìˆ˜ëŸ‰ì´ ì ê¹ ë‚¨ëŠ” stale í‘œì‹œ ë°©ì§€)
         if (typeof app !== 'undefined') {
             app.markUiDirty();
             app.commit('start-sync-stocks');
@@ -2701,7 +2850,7 @@ const game = {
             }
         }
 
-        // AI - [FIX] ¿ÏÀüÇÑ ½ºÆù »óÅÂ ¸®¼Â
+        // AI - [FIX] ì™„ì „í•œ ìŠ¤í° ìƒíƒœ ë¦¬ì…‹
         if (typeof AI !== 'undefined') {
             AI.lastSpawn = 0;
             AI.nextSpawnAt = 0;
@@ -2722,7 +2871,7 @@ const game = {
                 AI.wave.fallbackMeter = 0;
                 AI.wave.lastThreat = null;
             }
-            // Æ¯¼ö¹«±â »óÅÂ ÃÊ±âÈ­
+            // íŠ¹ìˆ˜ë¬´ê¸° ìƒíƒœ ì´ˆê¸°í™”
             AI._initSpecialState();
         }
 
@@ -2734,17 +2883,17 @@ const game = {
                 console.error('[GameStart] GameMapSetup.apply failed:', e);
             }
         }
-        // [HUD/UX] ÀüÅõ ½ÃÀÛ ±âº» ¼Óµµ´Â 1¹è¼Ó
+        // [HUD/UX] ì „íˆ¬ ì‹œì‘ ê¸°ë³¸ ì†ë„ëŠ” 1ë°°ì†
         this.setSpeed(1.0);
         this.engineFrame = 0;
 
-        // [R 4.2] ChatPanel ÃÊ±âÈ­ ¹× Ç¥½Ã
+        // [R 4.2] ChatPanel ì´ˆê¸°í™” ë° í‘œì‹œ
         if (typeof ChatPanel !== 'undefined') {
             ChatPanel.init({ open: false });
             ChatPanel.hide();
         }
 
-        // ±¹ÁöÀü ¸ğµå: ¹èÄ¡ ÆäÀÌÁî ½ÃÀÛ
+        // êµ­ì§€ì „ ëª¨ë“œ: ë°°ì¹˜ í˜ì´ì¦ˆ ì‹œì‘
         if (this._skirmishMode && typeof SkirmishMode !== 'undefined') {
             try {
                 SkirmishMode.init(this, this._skirmishData);
@@ -2758,8 +2907,8 @@ const game = {
             }
         }
 
-        // ½ÃÀÛ Á÷Àü ÇÑ ¹ø ´õ Áß¾Ó Á¤·Ä (¸ğµå ÃÊ±âÈ­ Áß ½Ã¾ß º¯°æ ¹æÁö)
-        // ´Ü, ±¹ÁöÀü ¹èÄ¡ ´Ü°è´Â ÁÂÃø ¹èÄ¡¿µ¿ª ½Ã¾ß¸¦ À¯ÁöÇØ¾ß ÇÑ´Ù.
+        // ì‹œì‘ ì§ì „ í•œ ë²ˆ ë” ì¤‘ì•™ ì •ë ¬ (ëª¨ë“œ ì´ˆê¸°í™” ì¤‘ ì‹œì•¼ ë³€ê²½ ë°©ì§€)
+        // ë‹¨, êµ­ì§€ì „ ë°°ì¹˜ ë‹¨ê³„ëŠ” ì¢Œì¸¡ ë°°ì¹˜ì˜ì—­ ì‹œì•¼ë¥¼ ìœ ì§€í•´ì•¼ í•œë‹¤.
         const keepSkirmishPlacementCamera = !!(
             this._skirmishMode
             && typeof SkirmishMode !== 'undefined'
@@ -2791,7 +2940,7 @@ const game = {
             ? cat
             : 'infantry';
         this.currentCategory = next;
-        // UI °»½ÅÀº commit¿¡¼­ Ã³¸®
+        // UI ê°±ì‹ ì€ commitì—ì„œ ì²˜ë¦¬
         if (typeof app !== 'undefined') app.markUiDirty();
     },
 
@@ -2808,6 +2957,11 @@ const game = {
     isCoastAllowedArmoredKey(key) {
         const unitKey = String(key || '').trim();
         return unitKey === 'humvee' || unitKey === 'mbt' || unitKey === 'aa_tank';
+    },
+    isCoastEnemyAirBlockedKey(key) {
+        const unitKey = String(key || '').trim();
+        // Coast enemy air hard block: fighter spam prevention
+        return unitKey === 'fighter';
     },
 
     isCoastAllowedUnitKey(key) {
@@ -2849,6 +3003,17 @@ const game = {
             }
 
             if (isAir) {
+                if (this.isCoastEnemyAirBlockedKey(key)) {
+                    const p = Math.max(1, Math.floor(Math.max(0, Number(this.playerStock[key]) || 0) * 0.5));
+                    this.playerStock[key] = p;
+                    this.enemyStock[key] = 0;
+                    continue;
+                }
+                if (key === 'apache') {
+                    this.playerStock[key] = 1;
+                    this.enemyStock[key] = 1;
+                    continue;
+                }
                 const p = Math.max(1, Math.floor(Math.max(0, Number(this.playerStock[key]) || 0) * 0.5));
                 const e = Math.max(1, Math.floor(Math.max(0, Number(this.enemyStock[key]) || 0) * 0.5));
                 this.playerStock[key] = p;
@@ -2938,7 +3103,7 @@ const game = {
             ? Maps.getRule('playerSpawnX')
             : NaN);
         if (Number.isFinite(mapRuleSpawnX) && mapRuleSpawnX > 0) return mapRuleSpawnX;
-        // HQ°¡ ¾ø´Â ¸Ê(¿¹: ÇØ¾È »ó·ú)Àº ÁÂÃø ¸Ê ³¡¿¡¼­ »ı¼º
+        // HQê°€ ì—†ëŠ” ë§µ(ì˜ˆ: í•´ì•ˆ ìƒë¥™)ì€ ì¢Œì¸¡ ë§µ ëì—ì„œ ìƒì„±
         return 84;
     },
 
@@ -2951,7 +3116,7 @@ const game = {
             ? Maps.getRule('playerRetreatStopX')
             : NaN);
         if (Number.isFinite(mapRuleRetreatX) && mapRuleRetreatX > 0) return mapRuleRetreatX;
-        // HQ°¡ ¾øÀ¸¸é ÁÂÃø ¸Ê ³¡ ÂÊÀ¸·Î ¿ÏÀüÈ÷ º¹±Í
+        // HQê°€ ì—†ìœ¼ë©´ ì¢Œì¸¡ ë§µ ë ìª½ìœ¼ë¡œ ì™„ì „íˆ ë³µê·€
         return 34;
     },
 
@@ -2968,33 +3133,38 @@ const game = {
 
     prepareTargeting(key) {
         if (this.targetingType) return;
+
         const u = CONFIG.units[key];
+        if (!u) {
+            ui.showToast('ì•Œ ìˆ˜ ì—†ëŠ” ìŠ¤í‚¬/ìœ ë‹›ì…ë‹ˆë‹¤.');
+            return;
+        }
         if (u.isSkill) {
             if (this.isIcbmSkillKey(key)) {
                 if (!this.shouldShowIcbmSkills()) {
-                    ui.showToast("ICBM ¹Ì»çÀÏÂ÷·®À» ¸ÕÀú ¼±ÅÃÇÏ¼¼¿ä!");
+                    ui.showToast("ICBM ë¯¸ì‚¬ì¼ì°¨ëŸ‰ì„ ë¨¼ì € ì„ íƒí•˜ì„¸ìš”!");
                     return;
                 }
                 if (!this.hasReadyIcbmLauncher('player')) {
-                    ui.showToast("¹ß»ç °¡´ÉÇÑ ICBMÀÌ ¾ø½À´Ï´Ù!");
+                    ui.showToast("ë°œì‚¬ ê°€ëŠ¥í•œ ICBMì´ ì—†ìŠµë‹ˆë‹¤!");
                     return;
                 }
             }
-            if (this.skillCharges[u.chargeKey] <= 0) { ui.showToast("»ç¿ë °¡´É È½¼ö ºÎÁ·!"); return; }
+            if (this.skillCharges[u.chargeKey] <= 0) { ui.showToast("ì‚¬ìš© ê°€ëŠ¥ íšŸìˆ˜ ë¶€ì¡±!"); return; }
         } else {
             const canSpend = (typeof BattleEconomy !== 'undefined'
                 && BattleEconomy
                 && typeof BattleEconomy.canSpend === 'function')
                 ? BattleEconomy.canSpend(this, u.cost, { unitKey: key })
                 : (this.supply >= u.cost && this.playerStock[key] > 0);
-            if (!canSpend) { ui.showToast("ÀÚ¿ø ¶Ç´Â Àç°í ºÎÁ·!"); return; }
+            if (!canSpend) { ui.showToast("ìì› ë˜ëŠ” ì¬ê³  ë¶€ì¡±!"); return; }
         }
         this.targetingType = key;
         document.getElementById('targeting-overlay').classList.remove('hidden');
         const strikeKeys = ['nuke', 'emp', 'tactical_missile', 'stealth_drone'];
         const msg = strikeKeys.includes(key)
-            ? 'Å¸°İÁöÁ¡À» ¼±ÅÃÇÏ½Ê½Ã¿ä'
-            : '¸ñÇ¥ÁöÁ¡À» ¼±ÅÃÇÏ½Ê½Ã¿ä';
+            ? 'íƒ€ê²©ì§€ì ì„ ì„ íƒí•˜ì‹­ì‹œìš”'
+            : 'ëª©í‘œì§€ì ì„ ì„ íƒí•˜ì‹­ì‹œìš”';
         document.getElementById('target-msg').innerText = msg;
         if (typeof app !== 'undefined') app.markUiDirty();
     },
@@ -3003,7 +3173,7 @@ const game = {
         if (!this.targetingType) return;
         const key = this.targetingType;
 
-        // [FIX] move´Â CONFIG.units¿¡ ¾ø´Â °¡Â¥ Å°
+        // [FIX] moveëŠ” CONFIG.unitsì— ì—†ëŠ” ê°€ì§œ í‚¤
         if (key === '__move__') {
             this.handleMoveTargeting(x, y);
             this.cancelTargeting();
@@ -3019,7 +3189,7 @@ const game = {
 
         // Cameraman/news command is disabled.
         if (key === '__news__') {
-            ui.showToast('¹æ¼Û Ä«¸Ş¶ó ±â´ÉÀº ºñÈ°¼ºÈ­µÇ¾ú½À´Ï´Ù.');
+            ui.showToast('ë°©ì†¡ ì¹´ë©”ë¼ ê¸°ëŠ¥ì€ ë¹„í™œì„±í™”ë˜ì—ˆìŠµë‹ˆë‹¤.');
             this.cancelTargeting();
             return;
         }
@@ -3038,6 +3208,13 @@ const game = {
             return;
         }
 
+        // [NEW] recon lock-strike targeting
+        if (key === '__recon_lock_strike__') {
+            this.handleReconLockStrikeTargeting(x, y);
+            this.cancelTargeting();
+            return;
+        }
+
         const u = CONFIG.units[key];
         if (!u) {
             console.warn('[TARGETING] Unknown targetingType:', key);
@@ -3048,15 +3225,15 @@ const game = {
         if (this.isIcbmSkillKey(key)) {
             const launched = this.requestIcbmLaunch('player', key, x, y);
             if (!launched) {
-                ui.showToast("¹ß»ç °¡´ÉÇÑ ICBMÀÌ ¾ø½À´Ï´Ù!");
+                ui.showToast("ë°œì‚¬ ê°€ëŠ¥í•œ ICBMì´ ì—†ìŠµë‹ˆë‹¤!");
             }
             this.cancelTargeting();
             return;
         } else if (key === 'stealth_drone') {
-            // À§Ä¡ ÁöÁ¤Çü (¶ô¿Â ¾øÀ½): ÁöÁ¤ ÁöÁ¡À¸·Î Ä§Åõ ÈÄ ±Ş°­ÇÏ Æø¹ß
+            // ìœ„ì¹˜ ì§€ì •í˜• (ë½ì˜¨ ì—†ìŒ): ì§€ì • ì§€ì ìœ¼ë¡œ ì¹¨íˆ¬ í›„ ê¸‰ê°•í•˜ í­ë°œ
             const spent = this.spendUnitCost(key, u.cost);
             if (!spent) {
-                ui.showToast("ÀÚ¿ø ¶Ç´Â Àç°í ºÎÁ·!");
+                ui.showToast("ìì› ë˜ëŠ” ì¬ê³  ë¶€ì¡±!");
                 this.cancelTargeting();
                 return;
             }
@@ -3067,9 +3244,9 @@ const game = {
             drone.y = this.groundY - 640;
             drone.targetX = x;
             this.players.push(drone);
-            ui.showToast(`${u.name} Ãâ°İ!`);
+            ui.showToast(`${u.name} ì¶œê²©!`);
 
-            // [FIX] Àç°í/°ø±Ş/ÄğÅ¸ÀÓ UI Áï½Ã ¹İ¿µ
+            // [FIX] ì¬ê³ /ê³µê¸‰/ì¿¨íƒ€ì„ UI ì¦‰ì‹œ ë°˜ì˜
             if (typeof app !== 'undefined') { app.markDirty(); app.markUiDirty(); }
         } else {
             let target = null;
@@ -3082,11 +3259,11 @@ const game = {
                 if (d < minDist) { minDist = d; target = e; }
             });
 
-            if (u.lockOn && !target) { ui.showToast("Å¸°ÙÀ» Ã£À» ¼ö ¾ø½À´Ï´Ù!"); return; }
+            if (u.lockOn && !target) { ui.showToast("íƒ€ê²Ÿì„ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤!"); return; }
 
             const spent = this.spendUnitCost(key, u.cost);
             if (!spent) {
-                ui.showToast("ÀÚ¿ø ¶Ç´Â Àç°í ºÎÁ·!");
+                ui.showToast("ìì› ë˜ëŠ” ì¬ê³  ë¶€ì¡±!");
                 this.cancelTargeting();
                 return;
             }
@@ -3102,9 +3279,9 @@ const game = {
                 drone.x = x; drone.y = y;
             }
             this.players.push(drone);
-            ui.showToast(`${u.name} Ãâ°İ!`);
+            ui.showToast(`${u.name} ì¶œê²©!`);
 
-            // [FIX] Àç°í/°ø±Ş/ÄğÅ¸ÀÓ UI Áï½Ã ¹İ¿µ
+            // [FIX] ì¬ê³ /ê³µê¸‰/ì¿¨íƒ€ì„ UI ì¦‰ì‹œ ë°˜ì˜
             if (typeof app !== 'undefined') { app.markDirty(); app.markUiDirty(); }
         }
         this.cancelTargeting();
@@ -3116,31 +3293,31 @@ const game = {
     },
 
     // ============================================
-    // [NEW] ÀÌµ¿ ¸í·É Å¸°ÙÆÃ ½ÃÀÛ
+    // [NEW] ì´ë™ ëª…ë ¹ íƒ€ê²ŸíŒ… ì‹œì‘
     // ============================================
     prepareMoveCommand() {
         if (!this.selectedUnits || this.selectedUnits.size === 0) {
-            ui.showToast('À¯´ÖÀ» ¸ÕÀú ¼±ÅÃÇÏ¼¼¿ä');
+            ui.showToast('ìœ ë‹›ì„ ë¨¼ì € ì„ íƒí•˜ì„¸ìš”');
             return;
         }
-        if (this.targetingType) return; // ÀÌ¹Ì Å¸°ÙÆÃ Áß
+        if (this.targetingType) return; // ì´ë¯¸ íƒ€ê²ŸíŒ… ì¤‘
 
         this.targetingType = '__move__';
         document.getElementById('targeting-overlay').classList.remove('hidden');
-        document.getElementById('target-msg').innerText = 'ÀÌµ¿ À§Ä¡ ¼±ÅÃ';
+        document.getElementById('target-msg').innerText = 'ì´ë™ ìœ„ì¹˜ ì„ íƒ';
     },
 
     // ============================================
-    // [NEW] ¿¬¸·Åº ¸í·É Å¸°ÙÆÃ ½ÃÀÛ (º¸º´)
+    // [NEW] ì—°ë§‰íƒ„ ëª…ë ¹ íƒ€ê²ŸíŒ… ì‹œì‘ (ë³´ë³‘)
     // ============================================
     prepareSmokeCommand() {
         if (!this.selectedUnits || this.selectedUnits.size === 0) {
-            ui.showToast('À¯´ÖÀ» ¸ÕÀú ¼±ÅÃÇÏ¼¼¿ä');
+            ui.showToast('ìœ ë‹›ì„ ë¨¼ì € ì„ íƒí•˜ì„¸ìš”');
             return;
         }
-        if (this.targetingType) return; // ÀÌ¹Ì Å¸°ÙÆÃ Áß
+        if (this.targetingType) return; // ì´ë¯¸ íƒ€ê²ŸíŒ… ì¤‘
 
-        // [ITEM] smoke_grenade ¾ÆÀÌÅÛ Æ÷ÇÔ ? smokeChargesLeft > 0 ÀÌ¸é ¸ğµç À¯´Ö Çã¿ë
+        // [ITEM] smoke_grenade ì•„ì´í…œ í¬í•¨ ? smokeChargesLeft > 0 ì´ë©´ ëª¨ë“  ìœ ë‹› í—ˆìš©
         let hasSmoke = false;
         for (const u of this.selectedUnits) {
             if (u && !u.dead && (u.smokeChargesLeft || 0) > 0) {
@@ -3149,52 +3326,79 @@ const game = {
             }
         }
         if (!hasSmoke) {
-            ui.showToast('¿¬¸·Åº »ç¿ë °¡´ÉÇÑ À¯´ÖÀÌ ¾ø½À´Ï´Ù');
+            ui.showToast('ì—°ë§‰íƒ„ ì‚¬ìš© ê°€ëŠ¥í•œ ìœ ë‹›ì´ ì—†ìŠµë‹ˆë‹¤');
             return;
         }
 
         this.targetingType = '__smoke__';
         document.getElementById('targeting-overlay').classList.remove('hidden');
-        document.getElementById('target-msg').innerText = '¿¬¸·Åº ÅõÃ´ À§Ä¡ ¼±ÅÃ';
+        document.getElementById('target-msg').innerText = 'ì—°ë§‰íƒ„ íˆ¬ì²™ ìœ„ì¹˜ ì„ íƒ';
     },
 
     // ============================================
-    // [NEW] ´º½º ¼ÛÃâ À§Ä¡ Å¸°ÙÆÃ ½ÃÀÛ (Ä«¸Ş¶ó¸Ç)
+    // [NEW] ë‰´ìŠ¤ ì†¡ì¶œ ìœ„ì¹˜ íƒ€ê²ŸíŒ… ì‹œì‘ (ì¹´ë©”ë¼ë§¨)
     // ============================================
     prepareNewsCommand() {
-        ui.showToast('¹æ¼Û Ä«¸Ş¶ó ±â´ÉÀº ºñÈ°¼ºÈ­µÇ¾ú½À´Ï´Ù.');
+        ui.showToast('ë°©ì†¡ ì¹´ë©”ë¼ ê¸°ëŠ¥ì€ ë¹„í™œì„±í™”ë˜ì—ˆìŠµë‹ˆë‹¤.');
     },
 
     // ============================================
-    // [NEW] ÀüÅõ±â ¹Ì»çÀÏ Å¸°ÙÆÃ ½ÃÀÛ
+    // [NEW] ì „íˆ¬ê¸° ë¯¸ì‚¬ì¼ íƒ€ê²ŸíŒ… ì‹œì‘
     // ============================================
     prepareMissileCommand() {
         if (!this.selectedUnits || this.selectedUnits.size === 0) {
-            ui.showToast('À¯´ÖÀ» ¸ÕÀú ¼±ÅÃÇÏ¼¼¿ä');
+            ui.showToast('ìœ ë‹›ì„ ë¨¼ì € ì„ íƒí•˜ì„¸ìš”');
             return;
         }
         if (this.targetingType) return;
 
         const readyMissileUnits = this.getSelectedMissileUnits(true);
         if (readyMissileUnits.length === 0) {
-            ui.showToast('¹Ì»çÀÏ »ç¿ë °¡´ÉÇÑ À¯´ÖÀÌ ¾ø½À´Ï´Ù');
+            ui.showToast('ë¯¸ì‚¬ì¼ ì‚¬ìš© ê°€ëŠ¥í•œ ìœ ë‹›ì´ ì—†ìŠµë‹ˆë‹¤');
             return;
         }
 
         this.targetingType = '__missile__';
         document.getElementById('targeting-overlay').classList.remove('hidden');
-        document.getElementById('target-msg').innerText = '¹Ì»çÀÏ Å¸°İ ´ë»ó ¼±ÅÃ';
+        document.getElementById('target-msg').innerText = 'ë¯¸ì‚¬ì¼ íƒ€ê²© ëŒ€ìƒ ì„ íƒ';
     },
 
     // ============================================
-    // [NEW] ¼ö¼Û ÇÏÂ÷ ¸í·É Å¸°ÙÆÃ ½ÃÀÛ
+    // [NEW] ìˆ˜ì†¡ í•˜ì°¨ ëª…ë ¹ íƒ€ê²ŸíŒ… ì‹œì‘
+    prepareReconLockStrikeCommand() {
+        if (!this.selectedUnits || this.selectedUnits.size === 0) {
+            ui.showToast('ìœ ë‹›ì„ ë¨¼ì € ì„ íƒí•˜ì„¸ìš”');
+            return;
+        }
+        if (this.targetingType) return;
+
+        const selectedRecon = this.getSelectedReconUnits();
+        if (selectedRecon.length <= 0) {
+            ui.showToast('ì •ì°° ë“œë¡  ì„ íƒ ì‹œ ì‚¬ìš© ê°€ëŠ¥í•©ë‹ˆë‹¤');
+            return;
+        }
+
+        const cooldownLeft = this.getReconLockStrikeCooldownLeftFrames();
+        if (cooldownLeft > 0) {
+            const sec = (cooldownLeft / 60).toFixed(1);
+            ui.showToast(`ë½ì˜¨ íƒ€ê²© ì¬ì‚¬ìš© ëŒ€ê¸° ${sec}s`);
+            return;
+        }
+
+        this.targetingType = '__recon_lock_strike__';
+        document.getElementById('targeting-overlay').classList.remove('hidden');
+        document.getElementById('target-msg').innerText = 'ë½ì˜¨í•  ì  ëª©í‘œ ì„ íƒ';
+    },
+
+    // ============================================
+    // [NEW] ìˆ˜ì†¡ í•˜ì°¨ ëª…ë ¹ íƒ€ê²ŸíŒ… ì‹œì‘
     // ============================================
     prepareDropCommand() {
         if (!this.selectedUnits || this.selectedUnits.size === 0) {
-            ui.showToast('À¯´ÖÀ» ¸ÕÀú ¼±ÅÃÇÏ¼¼¿ä');
+            ui.showToast('ìœ ë‹›ì„ ë¨¼ì € ì„ íƒí•˜ì„¸ìš”');
             return;
         }
-        if (this.targetingType) return; // ÀÌ¹Ì Å¸°ÙÆÃ Áß
+        if (this.targetingType) return; // ì´ë¯¸ íƒ€ê²ŸíŒ… ì¤‘
 
         let hasAir = false;
         let groundDropped = 0;
@@ -3214,23 +3418,23 @@ const game = {
         });
 
         if (groundDropped > 0) {
-            ui.showToast(`Áö»ó ¼ö¼Û ${groundDropped}´ë ÇÏÂ÷`);
+            ui.showToast(`ì§€ìƒ ìˆ˜ì†¡ ${groundDropped}ëŒ€ í•˜ì°¨`);
         }
 
         if (hasAir) {
             this.targetingType = '__drop__';
             document.getElementById('targeting-overlay').classList.remove('hidden');
-            document.getElementById('target-msg').innerText = 'ÇÏÂ÷ ÁöÁ¡ ¼±ÅÃ';
+            document.getElementById('target-msg').innerText = 'í•˜ì°¨ ì§€ì  ì„ íƒ';
             return;
         }
 
         if (groundDropped === 0) {
-            ui.showToast('ÇÏÂ÷ °¡´ÉÇÑ ¼ö¼Û À¯´ÖÀÌ ¾ø½À´Ï´Ù');
+            ui.showToast('í•˜ì°¨ ê°€ëŠ¥í•œ ìˆ˜ì†¡ ìœ ë‹›ì´ ì—†ìŠµë‹ˆë‹¤');
         }
     },
 
     // ============================================
-    // [NEW] ÀÌµ¿ ¸í·É Ã³¸® (handleTargeting¿¡¼­ È£Ãâ)
+    // [NEW] ì´ë™ ëª…ë ¹ ì²˜ë¦¬ (handleTargetingì—ì„œ í˜¸ì¶œ)
     // ============================================
     handleMoveTargeting(x, y) {
         if (!this.selectedUnits || this.selectedUnits.size === 0) return;
@@ -3298,17 +3502,17 @@ const game = {
             }
         });
 
-        ui.showToast(`${count}°³ À¯´Ö ÀÌµ¿ ¸í·É!`);
+        ui.showToast(`${count}ê°œ ìœ ë‹› ì´ë™ ëª…ë ¹!`);
         this.createParticles(x, targetYBase - 10, 8, '#22c55e');
     },
 
     // ============================================
-    // [NEW] ¿¬¸·Åº ÅõÃ´ Ã³¸® (handleTargeting¿¡¼­ È£Ãâ)
+    // [NEW] ì—°ë§‰íƒ„ íˆ¬ì²™ ì²˜ë¦¬ (handleTargetingì—ì„œ í˜¸ì¶œ)
     // ============================================
     handleSmokeTargeting(x, y) {
         if (!this.selectedUnits || this.selectedUnits.size === 0) return;
 
-        // [ITEM] smoke_grenade ¾ÆÀÌÅÛ Æ÷ÇÔ ? smokeChargesLeft > 0 ÀÎ ¸ğµç À¯´Ö Çã¿ë
+        // [ITEM] smoke_grenade ì•„ì´í…œ í¬í•¨ ? smokeChargesLeft > 0 ì¸ ëª¨ë“  ìœ ë‹› í—ˆìš©
         let usedUnit = null;
         for (const u of this.selectedUnits) {
             if (u && !u.dead && (u.smokeChargesLeft || 0) > 0) {
@@ -3317,44 +3521,44 @@ const game = {
             }
         }
         if (!usedUnit) {
-            ui.showToast('¿¬¸·ÅºÀ» »ç¿ëÇÒ À¯´ÖÀÌ ¾ø½À´Ï´Ù');
+            ui.showToast('ì—°ë§‰íƒ„ì„ ì‚¬ìš©í•  ìœ ë‹›ì´ ì—†ìŠµë‹ˆë‹¤');
             return;
         }
 
-        // [ITEM] ¿¬¸·Åº »ç°Å¸® Á¦ÇÑ: À¯´ÖÀ¸·ÎºÎÅÍ ÃÖ´ë 350px
+        // [ITEM] ì—°ë§‰íƒ„ ì‚¬ê±°ë¦¬ ì œí•œ: ìœ ë‹›ìœ¼ë¡œë¶€í„° ìµœëŒ€ 350px
         const SMOKE_THROW_RANGE = 350;
         const clampedX = Math.max(
             usedUnit.x - SMOKE_THROW_RANGE,
             Math.min(usedUnit.x + SMOKE_THROW_RANGE, x)
         );
 
-        // [ITEM] ¿¬¸·ÅºÀº Ç×»ó Áö¸é(groundY)¿¡¼­ ÅÍÁü
+        // [ITEM] ì—°ë§‰íƒ„ì€ í•­ìƒ ì§€ë©´(groundY)ì—ì„œ í„°ì§
         const groundLevel = Number.isFinite(this.groundY) ? this.groundY : y;
 
         usedUnit.smokeChargesLeft = Math.max(0, (usedUnit.smokeChargesLeft || 0) - 1);
         this.spawnSmokeAt(clampedX, groundLevel, { team: usedUnit.team });
-        ui.showToast('¿¬¸·Åº ÅõÃ´!');
+        ui.showToast('ì—°ë§‰íƒ„ íˆ¬ì²™!');
         if (typeof this.updateHUDSelection === 'function') this.updateHUDSelection();
     },
 
     // ============================================
-    // [NEW] ´º½º Ä«¸Ş¶ó À§Ä¡ ÁöÁ¤
+    // [NEW] ë‰´ìŠ¤ ì¹´ë©”ë¼ ìœ„ì¹˜ ì§€ì •
     // ============================================
     handleNewsTargeting(x, y) {
-        ui.showToast('¹æ¼Û Ä«¸Ş¶ó ±â´ÉÀº ºñÈ°¼ºÈ­µÇ¾ú½À´Ï´Ù.');
+        ui.showToast('ë°©ì†¡ ì¹´ë©”ë¼ ê¸°ëŠ¥ì€ ë¹„í™œì„±í™”ë˜ì—ˆìŠµë‹ˆë‹¤.');
     },
 
     // ============================================
-    // [NEW] ÀüÅõ±â ¹Ì»çÀÏ ¹ß»ç Ã³¸® (handleTargeting¿¡¼­ È£Ãâ)
+    // [NEW] ì „íˆ¬ê¸° ë¯¸ì‚¬ì¼ ë°œì‚¬ ì²˜ë¦¬ (handleTargetingì—ì„œ í˜¸ì¶œ)
     // ============================================
     handleMissileTargeting(x, y) {
         if (!this.selectedUnits || this.selectedUnits.size === 0) return;
 
-        // ¹Ì»çÀÏ »ç¿ë °¡´ÉÇÑ À¯´Ö 1±â ¼±ÅÃ
+        // ë¯¸ì‚¬ì¼ ì‚¬ìš© ê°€ëŠ¥í•œ ìœ ë‹› 1ê¸° ì„ íƒ
         const usedUnit = this.getSelectedMissileUnits(true)[0] || null;
-        if (!usedUnit) { ui.showToast('¹Ì»çÀÏÀ» »ç¿ëÇÒ À¯´ÖÀÌ ¾ø½À´Ï´Ù'); return; }
+        if (!usedUnit) { ui.showToast('ë¯¸ì‚¬ì¼ì„ ì‚¬ìš©í•  ìœ ë‹›ì´ ì—†ìŠµë‹ˆë‹¤'); return; }
 
-        // Å¬¸¯ À§Ä¡ ±ÙÃ³ Àû À¯´Ö/°Ç¹° ½º³À
+        // í´ë¦­ ìœ„ì¹˜ ê·¼ì²˜ ì  ìœ ë‹›/ê±´ë¬¼ ìŠ¤ëƒ…
         let target = null;
         let minDist = 300;
         const candidates = [...(this.enemies || []), ...(this.enemyBuildings || [])];
@@ -3365,9 +3569,9 @@ const game = {
             const d = Math.sqrt(dx * dx + dy * dy);
             if (d < minDist) { minDist = d; target = e; }
         }
-        if (!target) { ui.showToast('Å¸°ÙÀ» Ã£À» ¼ö ¾ø½À´Ï´Ù'); return; }
+        if (!target) { ui.showToast('íƒ€ê²Ÿì„ ì°¾ì„ ìˆ˜ ì—†ìŠµë‹ˆë‹¤'); return; }
 
-        // Â÷Áö ¼Ò¸ğ
+        // ì°¨ì§€ ì†Œëª¨
         usedUnit.missileChargesLeft = Math.max(0, (Number(usedUnit.missileChargesLeft) || 0) - 1);
 
         const missileType = (typeof usedUnit.stats?.missileProjectile === 'string' && usedUnit.stats.missileProjectile.trim())
@@ -3378,22 +3582,49 @@ const game = {
             ? missileSpeedRaw
             : 400;
 
-        // ¹Ì»çÀÏ ¹ß»ç
+        // ë¯¸ì‚¬ì¼ ë°œì‚¬
         this.projectiles.push(new Projectile(
             usedUnit.x, usedUnit.y, target, missileSpeed, usedUnit.team,
             missileType, { source: usedUnit }
         ));
 
         if (typeof AudioSystem !== 'undefined') AudioSystem.playSFX('rocket_launcher', usedUnit.x);
-        ui.showToast('¹Ì»çÀÏ ¹ß»ç!');
+        ui.showToast('ë¯¸ì‚¬ì¼ ë°œì‚¬!');
         if (typeof this.updateHUDSelection === 'function') this.updateHUDSelection();
     },
 
     // ============================================
-    // [NEW] ¼ö¼Û ÇÏÂ÷ Ã³¸® (handleTargeting¿¡¼­ È£Ãâ)
+    // [NEW] ìˆ˜ì†¡ í•˜ì°¨ ì²˜ë¦¬ (handleTargetingì—ì„œ í˜¸ì¶œ)
+    handleReconLockStrikeTargeting(x, y) {
+        const selectedRecon = this.getSelectedReconUnits();
+        if (selectedRecon.length <= 0) {
+            ui.showToast('ì •ì°° ë“œë¡  ì„ íƒ ì‹œ ì‚¬ìš© ê°€ëŠ¥í•©ë‹ˆë‹¤');
+            return;
+        }
+
+        const cooldownLeft = this.getReconLockStrikeCooldownLeftFrames();
+        if (cooldownLeft > 0) {
+            const sec = (cooldownLeft / 60).toFixed(1);
+            ui.showToast(`ë½ì˜¨ íƒ€ê²© ì¬ì‚¬ìš© ëŒ€ê¸° ${sec}s`);
+            return;
+        }
+
+        const target = this._findReconLockStrikeTarget(x, y, 260);
+        if (!target) {
+            ui.showToast('ë½ì˜¨ ê°€ëŠ¥í•œ ì ì´ ì—†ìŠµë‹ˆë‹¤');
+            return;
+        }
+
+        const fired = this._launchReconLockStrikeAtTarget(target);
+        if (!fired) {
+            ui.showToast('ë½ì˜¨ íƒ€ê²© ì²˜ë¦¬ ì¤‘ì…ë‹ˆë‹¤');
+        }
+    },
+
+    // ============================================
+    // [NEW] ìˆ˜ì†¡ í•˜ì°¨ ì²˜ë¦¬ (handleTargetingì—ì„œ í˜¸ì¶œ)
     // ============================================
     handleDropTargeting(x) {
-        if (!this.selectedUnits || this.selectedUnits.size === 0) return;
         let tx = x;
         if (typeof CONFIG !== 'undefined' && Number.isFinite(CONFIG.mapWidth)) {
             tx = Math.max(0, Math.min(CONFIG.mapWidth, x));
@@ -3411,36 +3642,36 @@ const game = {
         });
 
         if (count > 0) {
-            ui.showToast(`¼ö¼Û Çï±â ÇÏÂ÷ ÁöÁ¡ ÁöÁ¤ (${count}´ë)`);
+            ui.showToast(`ìˆ˜ì†¡ í—¬ê¸° í•˜ì°¨ ì§€ì  ì§€ì • (${count}ëŒ€)`);
             if (this.createParticles) this.createParticles(tx, this.groundY - 10, 6, '#22c55e');
         }
         if (typeof this.updateHUDSelection === 'function') this.updateHUDSelection();
     },
 
     // ============================================
-    // [NEW] °Ç¼³ ¸ğµå ÇÔ¼ö
-    // °¨½ÃÅ¾(watchtower)¸¸ °Ç¼³ °¡´É, 1È¸ Á¦ÇÑ
+    // [NEW] ê±´ì„¤ ëª¨ë“œ í•¨ìˆ˜
+    // ê°ì‹œíƒ‘(watchtower)ë§Œ ê±´ì„¤ ê°€ëŠ¥, 1íšŒ ì œí•œ
     // ============================================
     enterBuildMode(buildingType, worker) {
-        // [3.8] °¨½ÃÅ¾¸¸ °Ç¼³ °¡´É
+        // [3.8] ê°ì‹œíƒ‘ë§Œ ê±´ì„¤ ê°€ëŠ¥
         if (buildingType !== 'watchtower') {
-            ui.showToast('°¨½ÃÅ¾¸¸ °Ç¼³ÇÒ ¼ö ÀÖ½À´Ï´Ù!');
+            ui.showToast('ê°ì‹œíƒ‘ë§Œ ê±´ì„¤í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤!');
             console.warn(`[BUILD] Blocked: ${buildingType} - only watchtower allowed`);
             return;
         }
 
-        // [3.8] °¨½ÃÅ¾ 1È¸ °Ç¼³ Á¦ÇÑ
+        // [3.8] ê°ì‹œíƒ‘ 1íšŒ ê±´ì„¤ ì œí•œ
         if (this.watchtowerBuilt) {
-            ui.showToast('°¨½ÃÅ¾Àº 1È¸¸¸ °Ç¼³ °¡´ÉÇÕ´Ï´Ù!');
+            ui.showToast('ê°ì‹œíƒ‘ì€ 1íšŒë§Œ ê±´ì„¤ ê°€ëŠ¥í•©ë‹ˆë‹¤!');
             return;
         }
 
         if (!CONFIG.constructable[buildingType]) {
-            ui.showToast('¾Ë ¼ö ¾ø´Â °Ç¹° Å¸ÀÔ!');
+            ui.showToast('ì•Œ ìˆ˜ ì—†ëŠ” ê±´ë¬¼ íƒ€ì…!');
             return;
         }
         if (this.builderCooldown > 0) {
-            ui.showToast('°Ç¼³ ÄğÅ¸ÀÓ Áß!');
+            ui.showToast('ê±´ì„¤ ì¿¨íƒ€ì„ ì¤‘!');
             return;
         }
         const bData = CONFIG.constructable[buildingType];
@@ -3450,7 +3681,7 @@ const game = {
             ? BattleEconomy.canSpendSupply(this, bData.cost)
             : this.supply >= bData.cost;
         if (!canSpendSupply) {
-            ui.showToast('ÀÚ¿ø ºÎÁ·!');
+            ui.showToast('ìì› ë¶€ì¡±!');
             return;
         }
 
@@ -3459,9 +3690,9 @@ const game = {
         this.buildMode.worker = worker;
         this.buildMode.valid = false;
 
-        // Ãë¼Ò ¿À¹ö·¹ÀÌ Ç¥½Ã
+        // ì·¨ì†Œ ì˜¤ë²„ë ˆì´ í‘œì‹œ
         document.getElementById('targeting-overlay').classList.remove('hidden');
-        document.getElementById('target-msg').innerText = `${bData.name} ¹èÄ¡ À§Ä¡ ¼±ÅÃ`;
+        document.getElementById('target-msg').innerText = `${bData.name} ë°°ì¹˜ ìœ„ì¹˜ ì„ íƒ`;
     },
 
     cancelBuildMode() {
@@ -3479,29 +3710,29 @@ const game = {
         const bData = CONFIG.constructable[bType];
         if (!bData) return;
 
-        // ÇÁ¸®ºä À§Ä¡ ¾÷µ¥ÀÌÆ® (Áö¸é¿¡ °íÁ¤)
+        // í”„ë¦¬ë·° ìœ„ì¹˜ ì—…ë°ì´íŠ¸ (ì§€ë©´ì— ê³ ì •)
         this.buildMode.previewX = worldX;
         this.buildMode.previewY = this.groundY;
 
-        // ¹èÄ¡ °¡´É ¿©ºÎ ÆÇÁ¤
+        // ë°°ì¹˜ ê°€ëŠ¥ ì—¬ë¶€ íŒì •
         this.buildMode.valid = this.checkBuildPlacement(worldX, bData);
     },
 
     checkBuildPlacement(x, bData) {
-        // 1. ¸Ê ¹üÀ§ Ã¼Å©
+        // 1. ë§µ ë²”ìœ„ ì²´í¬
         const halfW = (bData.footprint?.w || bData.width) / 2;
         if (x - halfW < 50 || x + halfW > CONFIG.mapWidth - 50) return false;
 
-        // 2. ±âÁ¸ °Ç¹°°ú ÁßÃ¸ Ã¼Å©
+        // 2. ê¸°ì¡´ ê±´ë¬¼ê³¼ ì¤‘ì²© ì²´í¬
         for (const b of this.buildings) {
             if (b.dead) continue;
             const bHalfW = (b.width || 100) / 2;
             const dist = Math.abs(b.x - x);
-            const minDist = halfW + bHalfW + 20; // ¿©À¯ °£°İ
+            const minDist = halfW + bHalfW + 20; // ì—¬ìœ  ê°„ê²©
             if (dist < minDist) return false;
         }
 
-        // 3. °Ç¼³ ÁßÀÎ °Ç¹°°úµµ ÁßÃ¸ Ã¼Å©
+        // 3. ê±´ì„¤ ì¤‘ì¸ ê±´ë¬¼ê³¼ë„ ì¤‘ì²© ì²´í¬
         if (this.constructingBuildings) {
             for (const cb of this.constructingBuildings) {
                 if (cb.dead) continue;
@@ -3523,20 +3754,20 @@ const game = {
         const worker = this.buildMode.worker;
         if (!bData) return;
 
-        // À¯È¿¼º ÀçÈ®ÀÎ
+        // ìœ íš¨ì„± ì¬í™•ì¸
         if (!this.checkBuildPlacement(worldX, bData)) {
-            ui.showToast('ÀÌ À§Ä¡¿¡ °Ç¼³ÇÒ ¼ö ¾ø½À´Ï´Ù!');
+            ui.showToast('ì´ ìœ„ì¹˜ì— ê±´ì„¤í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤!');
             return;
         }
 
-        // ÀÚ¿ø ¼Ò¸ğ
+        // ìì› ì†Œëª¨
         const canSpendSupply = (typeof BattleEconomy !== 'undefined'
             && BattleEconomy
             && typeof BattleEconomy.canSpendSupply === 'function')
             ? BattleEconomy.canSpendSupply(this, bData.cost)
             : this.supply >= bData.cost;
         if (!canSpendSupply) {
-            ui.showToast('ÀÚ¿ø ºÎÁ·!');
+            ui.showToast('ìì› ë¶€ì¡±!');
             this.cancelBuildMode();
             return;
         }
@@ -3546,37 +3777,37 @@ const game = {
             ? BattleEconomy.spendSupply(this, bData.cost)
             : ((this.supply -= bData.cost), true);
         if (!spentBuildCost) {
-            ui.showToast('ÀÚ¿ø ºÎÁ·!');
+            ui.showToast('ìì› ë¶€ì¡±!');
             this.cancelBuildMode();
             return;
         }
 
-        // [3.8] °¨½ÃÅ¾ °Ç¼³ 1È¸ Á¦ÇÑ ÇÃ·¡±× ¼³Á¤
+        // [3.8] ê°ì‹œíƒ‘ ê±´ì„¤ 1íšŒ ì œí•œ í”Œë˜ê·¸ ì„¤ì •
         if (bType === 'watchtower') {
             this.watchtowerBuilt = true;
         }
 
-        // [3.8] ÀÛ¾÷ÀÚ¿¡°Ô buildTask »ı¼º (Áï½Ã °Ç¼³ ½ÃÀÛÇÏÁö ¾ÊÀ½)
+        // [3.8] ì‘ì—…ìì—ê²Œ buildTask ìƒì„± (ì¦‰ì‹œ ê±´ì„¤ ì‹œì‘í•˜ì§€ ì•ŠìŒ)
         if (worker && !worker.dead) {
             worker.buildTask = {
                 type: bType,
                 x: worldX,
-                phase: 'move',     // 'move' ¡æ 'build' ¡æ done
+                phase: 'move',     // 'move' â†’ 'build' â†’ done
                 started: false,
                 buildTime: bData.buildTime
             };
             worker.targetX = worldX;
-            ui.showToast('ÀÛ¾÷ÀÚ°¡ ÀÌµ¿ Áß...');
+            ui.showToast('ì‘ì—…ìê°€ ì´ë™ ì¤‘...');
         } else {
-            // ÀÛ¾÷ÀÚ°¡ ¾ø°Å³ª Á×¾úÀ¸¸é Áï½Ã °Ç¼³ (Æú¹é)
+            // ì‘ì—…ìê°€ ì—†ê±°ë‚˜ ì£½ì—ˆìœ¼ë©´ ì¦‰ì‹œ ê±´ì„¤ (í´ë°±)
             this.startConstruction(bType, worldX, this.groundY, 'player');
-            ui.showToast(`${bData.name} °Ç¼³ ½ÃÀÛ!`);
+            ui.showToast(`${bData.name} ê±´ì„¤ ì‹œì‘!`);
         }
 
-        // ÄğÅ¸ÀÓ ½ÃÀÛ
+        // ì¿¨íƒ€ì„ ì‹œì‘
         this.builderCooldown = bData.cooldown || 120;
 
-        // °Ç¼³ ¸ğµå Á¾·á
+        // ê±´ì„¤ ëª¨ë“œ ì¢…ë£Œ
         this.cancelBuildMode();
 
         if (typeof app !== 'undefined') {
@@ -3585,9 +3816,9 @@ const game = {
         }
     },
 
-    // °Ç¼³ ½ÃÀÛ (Commit C¿¡¼­ ¿ÏÀü ±¸Çö)
+    // ê±´ì„¤ ì‹œì‘ (Commit Cì—ì„œ ì™„ì „ êµ¬í˜„)
     startConstruction(bType, x, y, team) {
-        // ÀÓ½Ã: ¹Ù·Î ¿Ï¼ºµÈ °Ç¹° »ı¼º (Commit C¿¡¼­ °Ç¼³ Áß »óÅÂ·Î º¯°æ)
+        // ì„ì‹œ: ë°”ë¡œ ì™„ì„±ëœ ê±´ë¬¼ ìƒì„± (Commit Cì—ì„œ ê±´ì„¤ ì¤‘ ìƒíƒœë¡œ ë³€ê²½)
         if (!this.constructingBuildings) this.constructingBuildings = [];
 
         const bData = CONFIG.constructable[bType];
@@ -3608,7 +3839,7 @@ const game = {
         this.constructingBuildings.push(construction);
     },
 
-    // [NEW] °Ç¼³ ÇÁ¸®ºä ·»´õ¸µ
+    // [NEW] ê±´ì„¤ í”„ë¦¬ë·° ë Œë”ë§
     drawBuildPreview(ctx) {
         const bType = this.buildMode.type;
         const bData = CONFIG.constructable[bType];
@@ -3621,22 +3852,22 @@ const game = {
 
         ctx.save();
 
-        // À¯È¿/¹«È¿¿¡ µû¸¥ »ö»ó
+        // ìœ íš¨/ë¬´íš¨ì— ë”°ë¥¸ ìƒ‰ìƒ
         const isValid = this.buildMode.valid;
         const fillColor = isValid ? 'rgba(34, 197, 94, 0.4)' : 'rgba(239, 68, 68, 0.4)';
         const strokeColor = isValid ? '#22c55e' : '#ef4444';
 
-        // °Ç¹° ÇÁ¸®ºä (¹İÅõ¸í)
+        // ê±´ë¬¼ í”„ë¦¬ë·° (ë°˜íˆ¬ëª…)
         ctx.fillStyle = fillColor;
         ctx.fillRect(x - w / 2, y - h, w, h);
 
-        // Å×µÎ¸® (Á¡¼±)
+        // í…Œë‘ë¦¬ (ì ì„ )
         ctx.strokeStyle = strokeColor;
         ctx.lineWidth = 2;
         ctx.setLineDash([8, 4]);
         ctx.strokeRect(x - w / 2, y - h, w, h);
 
-        // °Ç¹° ÀÌ¸§ Ç¥½Ã
+        // ê±´ë¬¼ ì´ë¦„ í‘œì‹œ
         ctx.setLineDash([]);
         ctx.fillStyle = strokeColor;
         ctx.font = 'bold 14px sans-serif';
@@ -3679,7 +3910,7 @@ const game = {
         ctx.restore();
     },
 
-    // [NEW] °Ç¼³ ÁøÇà ¾÷µ¥ÀÌÆ®
+    // [NEW] ê±´ì„¤ ì§„í–‰ ì—…ë°ì´íŠ¸
     updateConstructions() {
         if (!this.constructingBuildings) return;
 
@@ -3695,41 +3926,41 @@ const game = {
             c.progress++;
             c.hp = Math.floor((c.progress / c.buildTime) * c.maxHp);
 
-            // °Ç¼³ ¿Ï·á
+            // ê±´ì„¤ ì™„ë£Œ
             if (c.progress >= c.buildTime) {
                 completed.push(c);
                 this.constructingBuildings.splice(i, 1);
             }
         }
 
-        // ¿Ï·áµÈ °Ç¹°À» ½ÇÁ¦ BuildingÀ¸·Î º¯È¯
+        // ì™„ë£Œëœ ê±´ë¬¼ì„ ì‹¤ì œ Buildingìœ¼ë¡œ ë³€í™˜
         for (const c of completed) {
             this.completeConstruction(c);
         }
     },
 
-    // [NEW] °Ç¼³ ¿Ï·á Ã³¸®
+    // [NEW] ê±´ì„¤ ì™„ë£Œ ì²˜ë¦¬
     completeConstruction(c) {
         const bData = CONFIG.constructable[c.type];
         if (!bData) return;
 
-        // Building Å¬·¡½º ÀÎ½ºÅÏ½º »ı¼º
+        // Building í´ë˜ìŠ¤ ì¸ìŠ¤í„´ìŠ¤ ìƒì„±
         const building = new Building(c.type, c.x, c.y, c.team);
 
-        // CONFIG.constructable µ¥ÀÌÅÍ·Î ¿À¹ö¶óÀÌµå
+        // CONFIG.constructable ë°ì´í„°ë¡œ ì˜¤ë²„ë¼ì´ë“œ
         building.hp = bData.hp;
         building.maxHp = bData.hp;
         building.width = bData.width;
         building.height = bData.height;
-        building.isConstructed = true;  // ÇÃ·¹ÀÌ¾î°¡ °Ç¼³ÇÑ °Ç¹° Ç¥½Ã
+        building.isConstructed = true;  // í”Œë ˆì´ì–´ê°€ ê±´ì„¤í•œ ê±´ë¬¼ í‘œì‹œ
 
-        // »ı»ê °¡´É °Ç¹°ÀÎ °æ¿ì Ãß°¡ ¼Ó¼º
+        // ìƒì‚° ê°€ëŠ¥ ê±´ë¬¼ì¸ ê²½ìš° ì¶”ê°€ ì†ì„±
         if (bData.productionTab) {
             building.productionTab = bData.productionTab;
             building.canProduce = true;
         }
 
-        // °¨½ÃÅ¾ÀÎ °æ¿ì °ø°İ ¼Ó¼º Ãß°¡
+        // ê°ì‹œíƒ‘ì¸ ê²½ìš° ê³µê²© ì†ì„± ì¶”ê°€
         if (bData.canShoot) {
             building.canShoot = true;
             building.damage = bData.damage;
@@ -3740,14 +3971,14 @@ const game = {
 
         this.buildings.push(building);
 
-        ui.showToast(`${bData.name} °Ç¼³ ¿Ï·á!`);
+        ui.showToast(`${bData.name} ê±´ì„¤ ì™„ë£Œ!`);
 
         if (typeof AudioSystem !== 'undefined') {
             AudioSystem.play('build_complete');
         }
     },
 
-    // [NEW] °Ç¼³ ÁßÀÎ °Ç¹° ·»´õ¸µ (È¸»ö °Ç¼³ÇöÀå ½ºÅ¸ÀÏ + »ó´Ü °ÔÀÌÁö)
+    // [NEW] ê±´ì„¤ ì¤‘ì¸ ê±´ë¬¼ ë Œë”ë§ (íšŒìƒ‰ ê±´ì„¤í˜„ì¥ ìŠ¤íƒ€ì¼ + ìƒë‹¨ ê²Œì´ì§€)
     drawConstructingBuilding(ctx, c) {
         const bData = CONFIG.constructable[c.type];
         if (!bData) return;
@@ -3758,7 +3989,7 @@ const game = {
 
         ctx.save();
 
-        // 1) °Ç¼³ÇöÀå º»Ã¼(È¸»ö + ½ºÄ³Æúµå ´À³¦)
+        // 1) ê±´ì„¤í˜„ì¥ ë³¸ì²´(íšŒìƒ‰ + ìŠ¤ìºí´ë“œ ëŠë‚Œ)
         const left = x - w / 2;
         const top = y - h;
 
@@ -3769,7 +4000,7 @@ const game = {
         ctx.lineWidth = 2;
         ctx.strokeRect(left + 2, top + 2, w - 4, h - 4);
 
-        // ¼¼·Î ±âµÕ
+        // ì„¸ë¡œ ê¸°ë‘¥
         ctx.globalAlpha = 0.55;
         for (let i = 1; i <= 3; i++) {
             const px = left + (w * i) / 4;
@@ -3779,7 +4010,7 @@ const game = {
             ctx.stroke();
         }
 
-        // ´ë°¢ ½ºÆ®¶óÀÌÇÁ(ÀÛ¾÷Áß ´À³¦)
+        // ëŒ€ê° ìŠ¤íŠ¸ë¼ì´í”„(ì‘ì—…ì¤‘ ëŠë‚Œ)
         ctx.globalAlpha = 0.18;
         ctx.strokeStyle = '#e5e7eb';
         ctx.lineWidth = 1;
@@ -3792,7 +4023,7 @@ const game = {
         }
         ctx.globalAlpha = 1;
 
-        // 2) »ó´Ü ÀÛÀº °ÔÀÌÁö + %
+        // 2) ìƒë‹¨ ì‘ì€ ê²Œì´ì§€ + %
         const barW = Math.max(40, w * 0.78);
         const barH = 7;
         const barX = x - barW / 2;
@@ -3811,7 +4042,7 @@ const game = {
         ctx.textAlign = 'center';
         ctx.fillText(`${pct}%`, x, barY - 2);
 
-        // ÀÌ¸§
+        // ì´ë¦„
         ctx.font = 'bold 12px sans-serif';
         ctx.fillStyle = '#e5e7eb';
         ctx.fillText(bData.name, x, barY - 16);
@@ -3870,7 +4101,7 @@ const game = {
         }
 
         if (count > 0) {
-            ui.showToast(`µå·Ğ ${count}±â ÀÌµ¿ ¸í·É!`);
+            ui.showToast(`ë“œë¡  ${count}ê¸° ì´ë™ ëª…ë ¹!`);
             this.createParticles(x, y, 10, '#facc15');
         }
         return count;
@@ -3880,7 +4111,7 @@ const game = {
         const n = Number(count) || 0;
         if (n <= 0) return;
 
-        // [P0] È­¸é ¹Û ÆÄÆ¼Å¬ »ı¼º ½ºÅµ
+        // [P0] í™”ë©´ ë°– íŒŒí‹°í´ ìƒì„± ìŠ¤í‚µ
         if (Number.isFinite(x)) {
             const pad = Number(this.particleCullPadding) || 0;
             const viewW = (typeof Camera !== 'undefined' && Camera.viewW) ? Camera.viewW(this) : this.width;
@@ -3889,7 +4120,7 @@ const game = {
             if (x < minX || x > maxX) return;
         }
 
-        // [P0] ÇÁ·¹ÀÓ´ç »ı¼º·® Ä¸
+        // [P0] í”„ë ˆì„ë‹¹ ìƒì„±ëŸ‰ ìº¡
         if (this._particleSpawnFrame !== this.frame) {
             this._particleSpawnFrame = this.frame;
             this._particleSpawnCount = 0;
@@ -3902,7 +4133,7 @@ const game = {
             remaining = Math.min(remaining, room);
         }
 
-        // [P0] ÀüÃ¼ °³¼ö Ä¸
+        // [P0] ì „ì²´ ê°œìˆ˜ ìº¡
         const totalCap = Number(this.particleCap) || 0;
         if (totalCap > 0) {
             const room = totalCap - this.particles.length;
@@ -3936,7 +4167,7 @@ const game = {
             }
         }
 
-        // ±âº» Ä¸ Àû¿ë
+        // ê¸°ë³¸ ìº¡ ì ìš©
         const totalCap = Number(this.particleCap) || 0;
         if (totalCap > 0 && this.particles.length >= totalCap) return;
 
@@ -3970,7 +4201,7 @@ const game = {
     // Queue System
     startHold(key) {
         if (!this.running || this.holdTimer) return;
-        // [P0-2] µå·ĞÀº ´ÜÀÏ Å¬¸¯À¸·Î Áï½Ã ½ºÆù (hold ¹İº¹ ¾È ÇÔ)
+        // [P0-2] ë“œë¡ ì€ ë‹¨ì¼ í´ë¦­ìœ¼ë¡œ ì¦‰ì‹œ ìŠ¤í° (hold ë°˜ë³µ ì•ˆ í•¨)
         if (key === 'drone_suicide' || key === 'drone_at') {
             this.queueUnit(key);
             return;
@@ -4072,25 +4303,25 @@ const game = {
         const u = CONFIG.units[key];
         if (!u) return;
         if (u.disabled === true) {
-            ui.showToast('ºñÈ°¼ºÈ­µÈ À¯´ÖÀÔ´Ï´Ù.');
+            ui.showToast('ë¹„í™œì„±í™”ëœ ìœ ë‹›ì…ë‹ˆë‹¤.');
             return;
         }
         if (this._landingSpawnUiLocked === true) {
             if (typeof ChatPanel !== 'undefined') {
-                ChatPanel.push('»ó·úÁ¤ ·¥ÇÁ °³¹æ Àü¿¡´Â »ı»êÇÒ ¼ö ¾ø½À´Ï´Ù.', 'WARN');
+                ChatPanel.push('ìƒë¥™ì • ë¨í”„ ê°œë°© ì „ì—ëŠ” ìƒì‚°í•  ìˆ˜ ì—†ìŠµë‹ˆë‹¤.', 'WARN');
             }
             return;
         }
         if (this.isCoastLimitedRosterMode() && u.isSkill !== true && !this.isCoastAllowedUnitKey(key)) {
             if (typeof ChatPanel !== 'undefined') {
-                ChatPanel.push('ÇØ¾È »ó·úÀüÀº º¸º´ + °øÁß(Àı¹İ) + Á¦ÇÑ ±â°©(Çèºñ/ÀüÂ÷/´ë°øÀüÂ÷)¸¸ »ç¿ë °¡´ÉÇÕ´Ï´Ù.', 'WARN');
+                ChatPanel.push('í•´ì•ˆ ìƒë¥™ì „ì€ ë³´ë³‘ + ê³µì¤‘(ì ˆë°˜) + ì œí•œ ê¸°ê°‘(í—˜ë¹„/ì „ì°¨/ëŒ€ê³µì „ì°¨)ë§Œ ì‚¬ìš© ê°€ëŠ¥í•©ë‹ˆë‹¤.', 'WARN');
             }
             return;
         }
         const isOperatorDroneLaunch = (key === 'drone_suicide' || key === 'drone_at');
         const isIcbmSkillLaunch = (typeof this.isIcbmSkillKey === 'function') && this.isIcbmSkillKey(key);
 
-        // ±¹ÁöÀü ¹èÄ¡ ÆäÀÌÁî¿¡¼­´Â ±âÁ¸ À¯´Ö»ı¼º¹Ù Å¬¸¯À» "¼±ÅÃ"À¸·Î Ã³¸®
+        // êµ­ì§€ì „ ë°°ì¹˜ í˜ì´ì¦ˆì—ì„œëŠ” ê¸°ì¡´ ìœ ë‹›ìƒì„±ë°” í´ë¦­ì„ "ì„ íƒ"ìœ¼ë¡œ ì²˜ë¦¬
         if (this._skirmishMode && typeof SkirmishMode !== 'undefined' && SkirmishMode.isActive) {
             if (SkirmishMode.phase === 'placement') {
                 if (typeof SkirmishMode.selectUnitFromBar === 'function') {
@@ -4098,8 +4329,8 @@ const game = {
                 }
             } else {
                 const warnMsg = (isOperatorDroneLaunch || isIcbmSkillLaunch)
-                    ? '±¹ÁöÀü ÀüÅõ Áß µå·Ğ/¹Ì»çÀÏÀº ¸í·É¹Ù ½ºÅ³·Î¸¸ »ç¿ë °¡´ÉÇÕ´Ï´Ù.'
-                    : '±¹ÁöÀü¿¡¼­´Â ¹èÄ¡ ´Ü°è¿¡¼­¸¸ À¯´ÖÀ» ¼±ÅÃÇÒ ¼ö ÀÖ½À´Ï´Ù.';
+                    ? 'êµ­ì§€ì „ ì „íˆ¬ ì¤‘ ë“œë¡ /ë¯¸ì‚¬ì¼ì€ ëª…ë ¹ë°” ìŠ¤í‚¬ë¡œë§Œ ì‚¬ìš© ê°€ëŠ¥í•©ë‹ˆë‹¤.'
+                    : 'êµ­ì§€ì „ì—ì„œëŠ” ë°°ì¹˜ ë‹¨ê³„ì—ì„œë§Œ ìœ ë‹›ì„ ì„ íƒí•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.';
                 if (typeof ChatPanel !== 'undefined') {
                     ChatPanel.push(warnMsg, 'WARN');
                 }
@@ -4113,8 +4344,8 @@ const game = {
             return;
         }
 
-        // [P0-2] µå·Ğ ÅÇ Å¬¸¯ = Áï½Ã Ãâ°İ
-        // µå·Ğº´ÀÌ ¼±ÅÃµÈ »óÅÂ¿¡¼­ µå·Ğ ¹öÆ° Å¬¸¯ ½Ã Áï½Ã ½ºÆù
+        // [P0-2] ë“œë¡  íƒ­ í´ë¦­ = ì¦‰ì‹œ ì¶œê²©
+        // ë“œë¡ ë³‘ì´ ì„ íƒëœ ìƒíƒœì—ì„œ ë“œë¡  ë²„íŠ¼ í´ë¦­ ì‹œ ì¦‰ì‹œ ìŠ¤í°
         if (key === 'drone_suicide' || key === 'drone_at') {
             this.launchOperatorDroneFromCommand(key);
             return;
@@ -4137,7 +4368,7 @@ const game = {
         const spent = this.spendUnitCost(key, u.cost);
         if (spent) {
             this.spawnQueue[key]++;
-            // [FIX] Å¬¸¯ Áï½Ã UI °»½Å
+            // [FIX] í´ë¦­ ì¦‰ì‹œ UI ê°±ì‹ 
             if (typeof app !== 'undefined') {
                 app.markUiDirty();
                 app.commit('queueUnit');
@@ -4165,18 +4396,18 @@ const game = {
             bypass = bypassBlock.bypassBlock === true;
         }
 
-        // [R 4.2 FIX v3] ±¸ µå·Ğ Àı´ë »ı¼º ºÒ°¡ (ÇÏµå °¡µå)
+        // [R 4.2 FIX v3] êµ¬ ë“œë¡  ì ˆëŒ€ ìƒì„± ë¶ˆê°€ (í•˜ë“œ ê°€ë“œ)
         const OBSOLETE_DRONES = ['tactical_drone', 'stealth_drone'];
         if (OBSOLETE_DRONES.includes(key)) {
             console.warn(`[spawnUnitDirect] HARD BLOCK: ${key} is obsolete`);
-            return null;  // ¾î¶² °æ¿ì¿¡µµ »ı¼º ºÒ°¡
+            return null;  // ì–´ë–¤ ê²½ìš°ì—ë„ ìƒì„± ë¶ˆê°€
         }
 
-        // ½Å±Ô µå·ĞÀº bypassBlock=trueÀÏ ¶§¸¸ »ı¼º °¡´É
+        // ì‹ ê·œ ë“œë¡ ì€ bypassBlock=trueì¼ ë•Œë§Œ ìƒì„± ê°€ëŠ¥
         const NEW_DRONES = ['drone_suicide', 'drone_at'];
         if (NEW_DRONES.includes(key) && !bypass) {
             if (team === 'player') {
-                if (typeof ChatPanel !== 'undefined') ChatPanel.push(`[Â÷´Ü] ${key}´Â Á÷Á¢ »ı»ê ºÒ°¡`, 'WARN');
+                if (typeof ChatPanel !== 'undefined') ChatPanel.push(`[ì°¨ë‹¨] ${key}ëŠ” ì§ì ‘ ìƒì‚° ë¶ˆê°€`, 'WARN');
             }
             console.warn(`[spawnUnitDirect] Blocked: ${key}`);
             return null;
@@ -4193,6 +4424,9 @@ const game = {
         if (this.isCoastLimitedRosterMode()) {
             const teamKey = String(team || '').trim().toLowerCase();
             const shouldRestrictTeam = teamKey === 'player' || teamKey === 'enemy';
+            if (teamKey === 'enemy' && this.isCoastEnemyAirBlockedKey(key)) {
+                return null;
+            }
             if (shouldRestrictTeam && unitDef.isSkill !== true && !this.isCoastAllowedUnitKey(key)) {
                 return null;
             }
@@ -4332,7 +4566,7 @@ const game = {
             }
         }
 
-        // [R 4.2] »ı¼ºµÈ unit ¹İÈ¯ (Ä¡¸í ¹ö±× ¼öÁ¤)
+        // [R 4.2] ìƒì„±ëœ unit ë°˜í™˜ (ì¹˜ëª… ë²„ê·¸ ìˆ˜ì •)
         return unit;
     },
 
@@ -4344,19 +4578,19 @@ const game = {
         return unit;
     },
 
-    // [NEW] ´º½º Ä«¸Ş¶ó¸Ç ½ºÆù (ÇÃ·¹ÀÌ¾î Á¶Á¾ °¡´É)
+    // [NEW] ë‰´ìŠ¤ ì¹´ë©”ë¼ë§¨ ìŠ¤í° (í”Œë ˆì´ì–´ ì¡°ì¢… ê°€ëŠ¥)
     spawnCameramanUnit(x, y) {
         if (this.cameramanDisabled) return null;
         const unit = new Unit('cameraman', x, y != null ? y : this.groundY, 'player');
         unit.hideHp = true;
         unit.isCameraman = true;
-        unit.commandMode = 'stop'; // ±âº» Á¤Áö »óÅÂ
-        this.players.push(unit); // ÇÃ·¹ÀÌ¾î À¯´ÖÀ¸·Î Ãß°¡
+        unit.commandMode = 'stop'; // ê¸°ë³¸ ì •ì§€ ìƒíƒœ
+        this.players.push(unit); // í”Œë ˆì´ì–´ ìœ ë‹›ìœ¼ë¡œ ì¶”ê°€
         this._activeCameraman = unit;
         return unit;
     },
 
-    // [NEW] È°¼º Ä«¸Ş¶ó¸Ç Á¶È¸
+    // [NEW] í™œì„± ì¹´ë©”ë¼ë§¨ ì¡°íšŒ
     getActiveCameraman() {
         if (this._activeCameraman && !this._activeCameraman.dead) {
             return this._activeCameraman;
@@ -4391,7 +4625,7 @@ const game = {
             this.spawnCivilianUnit(def.id, x, this.groundY);
         });
 
-        // [NEW] Áß¾Ó ¹ĞÁıµµ °­È­ (Áß¸³ ½Ã¹Î Ãß°¡ ½ºÆù)
+        // [NEW] ì¤‘ì•™ ë°€ì§‘ë„ ê°•í™” (ì¤‘ë¦½ ì‹œë¯¼ ì¶”ê°€ ìŠ¤í°)
         const centerPool = [
             'civ_crowd', 'civ_crowd', 'civ_crowd', 'civ_crowd',
             'civ_a', 'civ_b', 'civ_a', 'civ_b',
@@ -4457,6 +4691,7 @@ const game = {
         const u = CONFIG.units[key];
         if (!u) return false;
         if (this.isCoastLimitedRosterMode() && !this.isCoastAllowedUnitKey(key)) return false;
+        if (this.isCoastLimitedRosterMode() && this.isCoastEnemyAirBlockedKey(key)) return false;
         if (this.isEnemySpawnBlockedUnit(key)) return false;
         if (this.isCoastLimitedRosterMode()) {
             const nowFrame = Math.max(0, Math.floor(Number(this.frame) || 0));
@@ -4487,7 +4722,7 @@ const game = {
 
     setSpeed(s) {
         this.speed = s;
-        // Áï½Ã UI °»½Å(¹Ì´Ï¸Ê ¾Æ·¡ ¹öÆ° »óÅÂ)
+        // ì¦‰ì‹œ UI ê°±ì‹ (ë¯¸ë‹ˆë§µ ì•„ë˜ ë²„íŠ¼ ìƒíƒœ)
         if (typeof ui !== 'undefined') ui.updateSpeedBtns(this.speed);
         // [NEW] Update fixed HUD speed buttons
         if (typeof HUD !== 'undefined') HUD.updateSpeedButtons(this.speed);
@@ -4525,7 +4760,7 @@ const game = {
             }
             return;
         }
-        const centered = (mapW * 0.5) - (viewW * 0.5); // ¼¶/ÀüÀå Áß¾Ó
+        const centered = (mapW * 0.5) - (viewW * 0.5); // ì„¬/ì „ì¥ ì¤‘ì•™
         if (typeof Camera !== 'undefined' && typeof Camera.clampCameraX === 'function') {
             this.cameraX = Camera.clampCameraX(this, centered);
         } else {
@@ -4682,7 +4917,7 @@ const game = {
         ctx.strokeStyle = '#fbbf24'; ctx.lineWidth = 1; ctx.strokeRect(cx, 0, cw, cvs.height);
     },
 
-    // [FIX] ¸Ş¸ğ¸® ´©¼ö ¹æÁö - °ÔÀÓ Á¾·á ½Ã Å¸ÀÌ¸Ó Á¤¸®
+    // [FIX] ë©”ëª¨ë¦¬ ëˆ„ìˆ˜ ë°©ì§€ - ê²Œì„ ì¢…ë£Œ ì‹œ íƒ€ì´ë¨¸ ì •ë¦¬
     _stopPersistentBattleSfx() {
         const visited = new Set();
         const unitLists = [this.players, this.enemies, this.civilians];
@@ -4704,21 +4939,21 @@ const game = {
     },
 
     _cleanupTimers() {
-        // ÀüÅõ ·çÇÁ°¡ ¸ØÃâ ¶§ ³²¾ÆÀÖ´Â Áö¼Ó »ç¿îµå(MBT ±â°üÃÑ/ICBM »ó½ÂÀ½) Á¤¸®
+        // ì „íˆ¬ ë£¨í”„ê°€ ë©ˆì¶œ ë•Œ ë‚¨ì•„ìˆëŠ” ì§€ì† ì‚¬ìš´ë“œ(MBT ê¸°ê´€ì´/ICBM ìƒìŠ¹ìŒ) ì •ë¦¬
         this._stopPersistentBattleSfx();
 
-        // AI Å¸ÀÌ¸Ó Á¤¸®
+        // AI íƒ€ì´ë¨¸ ì •ë¦¬
         if (typeof AI !== 'undefined') {
             if (AI._nukeWarningTimeout) { clearTimeout(AI._nukeWarningTimeout); AI._nukeWarningTimeout = null; }
             if (AI._tacticalWarningTimeout) { clearTimeout(AI._tacticalWarningTimeout); AI._tacticalWarningTimeout = null; }
         }
-        // Æø°İ±â ¿¡¾î·¹ÀÌµå Å¸ÀÌ¸Ó Á¤¸®
+        // í­ê²©ê¸° ì—ì–´ë ˆì´ë“œ íƒ€ì´ë¨¸ ì •ë¦¬
         if (this.airRaidBomberTimeout) { clearTimeout(this.airRaidBomberTimeout); this.airRaidBomberTimeout = null; }
-        // ¹Ì´Ï¸Ê ÀÎÅÍ¹ú Á¤¸®
+        // ë¯¸ë‹ˆë§µ ì¸í„°ë²Œ ì •ë¦¬
         if (this._minimapInterval) { clearInterval(this._minimapInterval); this._minimapInterval = null; }
-        // À¯´Ö »ı»ê È¦µå Å¸ÀÌ¸Ó Á¤¸®
+        // ìœ ë‹› ìƒì‚° í™€ë“œ íƒ€ì´ë¨¸ ì •ë¦¬
         if (this.holdTimer) { clearInterval(this.holdTimer); this.holdTimer = null; }
-        // ´º½º Å¸ÀÌ¸Ó Á¤¸®
+        // ë‰´ìŠ¤ íƒ€ì´ë¨¸ ì •ë¦¬
         if (typeof NewsOverlay !== 'undefined') {
             if (NewsOverlay._showTimer) { clearTimeout(NewsOverlay._showTimer); NewsOverlay._showTimer = null; }
             if (NewsOverlay._hideTimer) { clearTimeout(NewsOverlay._hideTimer); NewsOverlay._hideTimer = null; }
@@ -4734,14 +4969,14 @@ const game = {
         this.running = false;
         this._uiRecoverySuspendUntil = Date.now() + 3000;
 
-        // ±¹ÁöÀü ¸ğµå Á¤¸®
+        // êµ­ì§€ì „ ëª¨ë“œ ì •ë¦¬
         try {
             this._cleanupSkirmishSession();
         } catch (err) {
             console.warn('[endGame] skirmish cleanup failed:', err);
         }
 
-        // [FIX] ¸Ş¸ğ¸® ´©¼ö ¹æÁö - Å¸ÀÌ¸Ó Á¤¸®
+        // [FIX] ë©”ëª¨ë¦¬ ëˆ„ìˆ˜ ë°©ì§€ - íƒ€ì´ë¨¸ ì •ë¦¬
         try {
             this._cleanupTimers();
         } catch (err) {
@@ -4758,7 +4993,7 @@ const game = {
             console.warn('[endGame] map clear mark failed:', err);
         }
 
-        // [NEW] °ÔÀÓ ¿À¹ö(½Â/ÆĞ ¹«°ü)¿¡µµ ³­ÀÌµµ/¸Ê ÁøÇàµµ ÀúÀå
+        // [NEW] ê²Œì„ ì˜¤ë²„(ìŠ¹/íŒ¨ ë¬´ê´€)ì—ë„ ë‚œì´ë„/ë§µ ì§„í–‰ë„ ì €ì¥
         if (typeof app !== 'undefined' && app.saveNow) {
             try {
                 app.saveNow();
@@ -4767,7 +5002,7 @@ const game = {
             }
         }
 
-        // [R 4.2] ÀÛÀü½ÇÆĞ ½Ã ÇÏ´Ü À¯´Ö»ı¼º¹Ù ¼û±è
+        // [R 4.2] ì‘ì „ì‹¤íŒ¨ ì‹œ í•˜ë‹¨ ìœ ë‹›ìƒì„±ë°” ìˆ¨ê¹€
         this.cancelTargeting();
         document.getElementById('unit-panel-container')?.classList.add('hidden');
         document.getElementById('hud-footer')?.classList.add('hidden');
@@ -4793,11 +5028,11 @@ const game = {
     },
 
     // ================================
-    // [NEW] ÀÓ¹« ¸ñÇ¥ ½Ã½ºÅÛ
+    // [NEW] ì„ë¬´ ëª©í‘œ ì‹œìŠ¤í…œ
     // ================================
     _updateMissionObjectiveText() {
         if (!this.$missionText) return;
-        this.$missionText.textContent = '¸ğµç ÀûÀ» ¼¶¸êÇÏ¼¼¿ä.';
+        this.$missionText.textContent = 'ëª¨ë“  ì ì„ ì„¬ë©¸í•˜ì„¸ìš”.';
     },
 
     showMissionObjective() {
@@ -4816,6 +5051,17 @@ const game = {
 // App runtime/storage moved to split modules.
 // - src/game/app_persistence.js
 // - src/game/app_runtime.js
+if (typeof window !== 'undefined') {
+    window.game = game;
+    try {
+        window.dispatchEvent(new Event('reclaim:game-ready'));
+    } catch (_) { }
+}
 window.onload = () => game.init();
+
+
+
+
+
 
 

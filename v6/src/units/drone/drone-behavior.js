@@ -1,4 +1,4 @@
-// [RULE] ?�게???�내/?�태/채팅 메시지??UI ?�스??금�?. ChatPanel.push()로만 출력.
+// [RULE] ?멸쾶???덈궡/?곹깭/梨꾪똿 硫붿떆吏??UI ?좎뒪??湲덉?. ChatPanel.push()濡쒕쭔 異쒕젰.
 
 const DroneBehavior = {
     update(drone, enemies, buildings) {
@@ -9,10 +9,10 @@ const DroneBehavior = {
             return;
         }
 
-        // [R 4.2] ?�론�?drone_operator)?� ?�기??처리 ????
+        // [R 4.2] ?쒕줎蹂?drone_operator)? ?ш린??泥섎━ ????
         if (drone.stats.operator) return;
 
-        // [FIX] ?�론�??�망 ???�론 즉시 ?�거 (orphan drone 방�?)
+        // [FIX] ?쒕줎蹂??щ쭩 ???쒕줎 利됱떆 ?쒓굅 (orphan drone 諛⑹?)
         if (typeof game !== 'undefined') {
             let owner = drone.ownerRef || drone.recallTarget || null;
             if (!owner || owner.dead) {
@@ -38,7 +38,7 @@ const DroneBehavior = {
         }
         // [NEW] Recall override (highest priority)
         if (drone.recallRequested) {
-            // owner ?�결???�간 ?�겨??복�??�청??취소?��? 말고 �??�레??복구 ?�도
+            // owner ?곌껐???쒓컙 ?딄꺼??蹂듦??붿껌??痍⑥냼?섏? 留먭퀬 留??꾨젅??蹂듦뎄 ?쒕룄
             let owner = drone.ownerRef || drone.recallTarget;
             if ((!owner || owner.dead) && typeof game !== 'undefined') {
                 owner = (typeof game.findDroneOwner === 'function')
@@ -55,7 +55,7 @@ const DroneBehavior = {
                 }
             }
 
-            // ?�직 owner�?�?찾으�? 복�??�청 ?��? + 공격 ?��??�거 + ?��?
+            // ?꾩쭅 owner瑜?紐?李얠쑝硫? 蹂듦??붿껌 ?좎? + 怨듦꺽 ?寃??쒓굅 + ?湲?
             if (!owner || owner.dead) {
                 drone.lockedTarget = null;
                 drone.attackTarget = null;
@@ -135,15 +135,15 @@ const DroneBehavior = {
                 }
                 drone.dead = true;
                 if (typeof ChatPanel !== 'undefined') {
-                    ChatPanel.push('[복�? ?�료]', 'INFO');
+                    ChatPanel.push('[蹂듦? ?꾨즺]', 'INFO');
                 }
                 return;
             }
             return;
         }
-        // [R 4.2 FIX v3] ?�치 ?�니메이??(?�기 ???�승 ??가??
+        // [R 4.2 FIX v3] ?곗튂 ?좊땲硫붿씠??(?됯린 ???곸듅 ??媛??
         if (drone.holdFrames && drone.holdFrames > 0) {
-            // ?�치 ?�라미터 초기??(1??
+            // ?곗튂 ?뚮씪誘명꽣 珥덇린??(1??
             if (!drone.launchInit) {
                 drone.launchInit = true;
                 const holdRaw = Number(drone.holdFrames);
@@ -173,11 +173,11 @@ const DroneBehavior = {
             const phaseFrame = Math.min(drone.launchT, drone.launchTotal);
 
             if (phaseFrame <= drone.launchGroundHold) {
-                // ?�기 구간: y 고정 + ?�도 0
+                // ?됯린 援ш컙: y 怨좎젙 + ?띾룄 0
                 drone.y = drone.launchY0;
                 drone.launchSpeedMul = 0.0;
             } else {
-                // ?�승 구간: smoothstep easing?�로 천천???�승
+                // ?곸듅 援ш컙: smoothstep easing?쇰줈 泥쒖쿇???곸듅
                 const riseFrame = phaseFrame - drone.launchGroundHold;
                 const t = riseFrame / Math.max(1, drone.launchRise);
                 const tt = Math.min(1, Math.max(0, t));
@@ -196,13 +196,13 @@ const DroneBehavior = {
 
             drone.holdFrames--;
             if (drone.holdFrames <= 0 && drone.y > drone.launchY1 + 0.5) {
-                // ?�승 ?�도 캡으�??�직 미도?�이�??�치 ?�태�?1?�레???�장
+                // ?곸듅 ?띾룄 罹≪쑝濡??꾩쭅 誘몃룄?ъ씠硫??곗튂 ?곹깭瑜?1?꾨젅???곗옣
                 drone.holdFrames = 1;
             }
-            return;  // 준비시�?중에??AI/공격 금�?
+            return;  // 以鍮꾩떆媛?以묒뿉??AI/怨듦꺽 湲덉?
         }
 
-        // ?�치 ?�료 ??speedMul ?�상??
+        // ?곗튂 ?꾨즺 ??speedMul ?뺤긽??
         if (drone.launchSpeedMul !== undefined && drone.launchSpeedMul < 1) {
             drone.launchSpeedMul = 1.0;
         }
@@ -241,7 +241,7 @@ const DroneBehavior = {
     },
 
     updateStealth(drone, enemies, buildings) {
-        // 지?�된 ?�치�??�동(고고?? -> ?�각선 ?�강 -> 광역 ??��
+        // 吏?뺣맂 ?꾩튂濡??대룞(怨좉퀬?? -> ?媛곸꽑 ?섍컯 -> 愿묒뿭 ??컻
         if (drone.targetX === null || drone.targetX === undefined) {
             drone.dead = true;
             return;
@@ -252,30 +252,30 @@ const DroneBehavior = {
             drone.stealthPhase = 'cruise';
             drone.cruiseY = (game && game.groundY ? (game.groundY - 420) : (drone.y - 200));
             drone.y = drone.cruiseY;
-            drone.diveSpeed = 8.0;   // ?�작 ?�도 (부?�럽�?
+            drone.diveSpeed = 8.0;   // ?쒖옉 ?띾룄 (遺?쒕읇寃?
         }
 
         const targetX = drone.targetX;
         const groundY = (game && game.groundY) ? game.groundY : drone.y;
 
-        // 목표 지??(지�? 좌표
+        // 紐⑺몴 吏??(吏硫? 醫뚰몴
         const tx = targetX;
         const ty = groundY - 8;
 
         if (drone.stealthPhase === 'cruise') {
-            // 1) ?�평 ?�동 + (가까워지�? ?�연?�러???�강 ?�작
+            // 1) ?섑룊 ?대룞 + (媛源뚯썙吏硫? ?먯뿰?ㅻ윭???섍컯 ?쒖옉
             const dx = tx - drone.x;
             const dir = dx > 0 ? 1 : -1;
 
-            // ?�근 구간?�서 y�??�서???�려�?(갑툭?� ?�하 방�?)
-            const approachDist = 260;      // ??거리 ?�에 ?�어?�면 ?�점 ?�강
-            const descendAmount = 220;     // ?�루�?고도?�서 ?�마???�려?�며 ?�근?��?
+            // ?묎렐 援ш컙?먯꽌 y瑜??쒖꽌???대젮以?(媛묓댂? ?숉븯 諛⑹?)
+            const approachDist = 260;      // ??嫄곕━ ?덉뿉 ?ㅼ뼱?ㅻ㈃ ?먯젏 ?섍컯
+            const descendAmount = 220;     // ?щ（利?怨좊룄?먯꽌 ?쇰쭏???대젮?ㅻŉ ?묎렐?좎?
             const t = Math.max(0, Math.min(1, 1 - (Math.abs(dx) / approachDist))); // 0~1
             drone.y = drone.cruiseY + (descendAmount * t);
 
             drone.x += drone.stats.speed * dir;
 
-            // 충분??가까우�?"?�각선 ?�강" ?�계 진입
+            // 異⑸텇??媛源뚯슦硫?"?媛곸꽑 ?섍컯" ?④퀎 吏꾩엯
             if (Math.abs(dx) <= Math.max(90, drone.stats.speed * 10)) {
                 this.playPreAttackCue(drone, tx);
                 drone.stealthPhase = 'dive';
@@ -283,24 +283,24 @@ const DroneBehavior = {
             return;
         }
 
-        // dive: 목표??tx, ty)�?"?�각선" 가???�동 (?�연?�럽�?
-        drone.diveSpeed = Math.min(26, (drone.diveSpeed || 8) + 1.0); // ?�진 가??
+        // dive: 紐⑺몴??tx, ty)濡?"?媛곸꽑" 媛???대룞 (?먯뿰?ㅻ읇寃?
+        drone.diveSpeed = Math.min(26, (drone.diveSpeed || 8) + 1.0); // ?먯쭊 媛??
         const dx = tx - drone.x;
         const dy = ty - drone.y;
         const dist = Math.hypot(dx, dy) || 1;
 
-        // 목표 ?�착(충돌) 처리
+        // 紐⑺몴 ?꾩갑(異⑸룎) 泥섎━
         if (dist <= drone.diveSpeed + 6) {
             const radius = drone.stats.splashRadius || 180;
             const baseDmg = drone.stats.damage || 1000;
 
-            // [VFX] ?�텔?�드�??�폭 ??��
+            // [VFX] ?ㅽ뀛?ㅻ뱶濡??먰룺 ??컻
             if (typeof VFX !== 'undefined') {
                 VFX.spawn(game, 'stealth', tx, groundY);
             } else {
                 if (game && game.createParticles) game.createParticles(tx, groundY, 28, '#f59e0b');
             }
-            // ???�텔?�드�???�� ?�운??(boom-3)
+            // ???ㅽ뀛?ㅻ뱶濡???컻 ?ъ슫??(boom-3)
             if (typeof AudioSystem !== 'undefined') AudioSystem.playBoom('stealth', tx);
 
             const applyAoE = (arr, mult = 1.0) => {
@@ -318,10 +318,10 @@ const DroneBehavior = {
                 }
             };
 
-            // ?�닛/병력 ?�해: 그�?�?
+            // ?좊떅/蹂묐젰 ?쇳빐: 洹몃?濡?
             applyAoE(enemies, 1.0);
 
-            // 건물 ?�해: ?�반
+            // 嫄대Ъ ?쇳빐: ?덈컲
             applyAoE(buildings, 0.5);
 
             drone.dead = true;
@@ -329,7 +329,7 @@ const DroneBehavior = {
             return;
         }
 
-        // ?�동(?�각선) ?�용
+        // ?대룞(?媛곸꽑) ?곸슜
         const nx = dx / dist;
         const ny = dy / dist;
 
@@ -339,19 +339,19 @@ const DroneBehavior = {
     updateHoming(drone, enemies, buildings) {
         const baseSpeed = Math.max(0.1, (drone.stats?.speed || 1) * (Number.isFinite(drone.launchSpeedMul) ? drone.launchSpeedMul : 1));
 
-        // [?�정] ?�레??맞아???��? ?�태????(?�겟팅 불�?, 직진)
+        // [?섏젙] ?뚮젅??留욎븘???쇰? ?곹깭????(?寃잜똿 遺덇?, 吏곸쭊)
         if (drone.confusedTimer > 0) {
             drone.confusedTimer--;
-            // 그냥 ?�재 방향(?��? ?�으�? �??�아�?
+            // 洹몃깷 ?꾩옱 諛⑺뼢(?뱀? ?욎쑝濡? 彛??좎븘媛?
             const dir = drone.team === 'player' ? 1 : -1;
             drone.x += baseSpeed * dir;
-            // ?�전/?�요 ?�과
+            // ?뚯쟾/?숈슂 ?④낵
             drone.y += Math.sin(game.frame * 0.5) * 2;
             if (this.trySuicideImpactDetonation(drone, enemies)) return;
             return;
         }
 
-        // Swarm Move Logic (명시??move ?�태?�서�?
+        // Swarm Move Logic (紐낆떆??move ?곹깭?먯꽌留?
         if (drone.swarmTarget && drone.commandState === 'move') {
             const dx = drone.swarmTarget.x - drone.x;
             const dy = drone.swarmTarget.y - drone.y;
@@ -377,7 +377,7 @@ const DroneBehavior = {
 
         if (this.trySuicideImpactDetonation(drone, enemies)) return;
 
-        // ?��??�효??체크 (dead/?�군/?�??무적/공중 ?��??�외)
+        // ?寃??좏슚??泥댄겕 (dead/?꾧뎔/???臾댁쟻/怨듭쨷 ?寃??쒖쇅)
         if (drone.lockedTarget) {
             const lt = drone.lockedTarget;
             const ltStats = lt.stats || {};
@@ -421,9 +421,16 @@ const DroneBehavior = {
                     const candidateDist = Math.abs((Number(candidateTarget.x) || drone.x) - drone.x);
                     const currentArmored = this.isArmoredTarget(currentTarget, !currentTarget.stats);
                     const candidateArmored = this.isArmoredTarget(candidateTarget, !candidateTarget.stats);
+                    const currentDroneId = String(drone.stats?.id || '').trim().toLowerCase();
+                    const forceSniperRetarget = (
+                        currentDroneId === 'drone_suicide'
+                        && this.isHighKillSniperTarget(candidateTarget)
+                        && !this.isHighKillSniperTarget(currentTarget)
+                    );
                     const shouldSwitch =
-                        (candidateArmored && !currentArmored) ||
-                        (candidateArmored === currentArmored && candidateDist + dynamicRetargetMargin < currentDist);
+                        forceSniperRetarget
+                        || (candidateArmored && !currentArmored)
+                        || (candidateArmored === currentArmored && candidateDist + dynamicRetargetMargin < currentDist);
                     if (shouldSwitch) {
                         drone.lockedTarget = candidateTarget;
                         drone.attackTarget = candidateTarget;
@@ -521,7 +528,7 @@ const DroneBehavior = {
                     drone.y += Math.max(-1.2, Math.min(1.2, settle * 0.2));
                     return;
                 }
-                // ?�효 진입거리 ?�달 ??멈추지 ?�고 즉시 ?�각선 ?�입
+                // ?좏슚 吏꾩엯嫄곕━ ?꾨떖 ??硫덉텛吏 ?딄퀬 利됱떆 ?媛곸꽑 ?뚯엯
                 this.playPreAttackCue(drone, tx);
                 drone.attackPhase = 'dive';
             }
@@ -560,7 +567,7 @@ const DroneBehavior = {
         } else {
             drone.lockedPursuitFrames = 0;
             drone.noTargetFrames = (Number(drone.noTargetFrames) || 0) + 1;
-            // ?�동 추적??켜진 ?�론�??�규 ?�겟을 ?�득?�다.
+            // ?먮룞 異붿쟻??耳쒖쭊 ?쒕줎留??좉퇋 ?寃잛쓣 ?띾뱷?쒕떎.
             if (drone.autoSeekTarget === true) {
                 const newTarget = this.findNearestEnemy(drone, enemies, buildings);
                 if (newTarget) {
@@ -573,7 +580,7 @@ const DroneBehavior = {
                 }
             }
 
-            // 기본 ?�태: 지???��?(?�동 ?�다???�는 ?�동 명령 ?��?
+            // 湲곕낯 ?곹깭: 吏???湲?(?섎룞 ?쎈떎???먮뒗 ?대룞 紐낅졊 ?湲?
             drone.attackTarget = null;
             drone.attackPhase = null;
             if (drone.commandState !== 'move') {
@@ -715,6 +722,21 @@ const DroneBehavior = {
         if (Number(target.width) >= 48) return true;
         return false;
     },
+    getUnitKillCount(unit) {
+        if (!unit || typeof unit !== 'object') return 0;
+        const direct = Number(unit.battleKills);
+        if (Number.isFinite(direct) && direct > 0) return Math.floor(direct);
+        const legacy = Number(unit.killCount);
+        if (Number.isFinite(legacy) && legacy > 0) return Math.floor(legacy);
+        return 0;
+    },
+    isHighKillSniperTarget(target) {
+        if (!target || target.dead) return false;
+        const id = String(target.stats?.id || '').trim().toLowerCase();
+        if (id !== 'sniper') return false;
+        const kills = this.getUnitKillCount(target);
+        return kills >= 6;
+    },
     findNearestEnemy(drone, enemies, buildings) {
         const x = drone.x;
         const team = drone.team;
@@ -731,6 +753,8 @@ const DroneBehavior = {
         let bestInfantrySq = Infinity;
         let bestBuilding = null;
         let bestBuildingSq = Infinity;
+        let bestHighKillSniper = null;
+        let bestHighKillSniperSq = Infinity;
 
         const considerTarget = (target, asBuilding = false) => {
             if (!target || target.dead) return;
@@ -749,6 +773,13 @@ const DroneBehavior = {
                     bestBuilding = target;
                 }
                 return;
+            }
+            const tId = String(tStats.id || '').trim().toLowerCase();
+            if (tId === 'sniper' && this.isHighKillSniperTarget(target)) {
+                if (dSq < bestHighKillSniperSq) {
+                    bestHighKillSniperSq = dSq;
+                    bestHighKillSniper = target;
+                }
             }
 
             if (this.isArmoredTarget(target, false)) {
@@ -771,14 +802,15 @@ const DroneBehavior = {
             }
         }
 
-        // AT ���: �尩/�ǹ� �켱
+        // AT 드론: 장갑/건물 우선
         if (isAtDrone) {
             return bestArmored || bestBuilding || bestInfantry || null;
         }
 
-        // �������: ����/����ǥ�� �켱. �� �ǹ� �������� ��� ��ȸ�ϴ� ���� ����.
+        // 자폭드론: 보병/연성표적 우선. 먼 건물 추적으로 상공 배회하는 현상 방지.
         if (isSuicideDrone) {
             const nearBuildingLimitSq = Math.pow(Math.min(seekRange, 700), 2);
+            if (bestHighKillSniper) return bestHighKillSniper;
             if (bestInfantry) return bestInfantry;
             if (bestArmored) return bestArmored;
             if (bestBuilding && bestBuildingSq <= nearBuildingLimitSq) return bestBuilding;
@@ -788,6 +820,7 @@ const DroneBehavior = {
         return bestArmored || bestInfantry || bestBuilding || null;
     }
 };
+
 
 
 

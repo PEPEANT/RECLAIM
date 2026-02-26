@@ -1,10 +1,10 @@
 // [FILE] ui.js: ?? UI ??(??/??/???/?? ?? ??) ??.
-// [RULE] ÀÎ°ÔÀÓ ¾È³»/»óÅÂ/Ã¤ÆÃ ¸Ş½ÃÁö´Â UI Åä½ºÆ® ±İÁö. ChatPanel.push()·Î¸¸ Ãâ·Â.
+// [RULE] ì¸ê²Œì„ ì•ˆë‚´/ìƒíƒœ/ì±„íŒ… ë©”ì‹œì§€ëŠ” UI í† ìŠ¤íŠ¸ ê¸ˆì§€. ChatPanel.push()ë¡œë§Œ ì¶œë ¥.
 const ui = {
     toastTimer: null,
     toastFadeTimer: null,
-    elementCache: {}, // [OPTIMIZATION] DOM ¿ä¼Ò Ä³½Ì
-    lastValues: {},   // [OPTIMIZATION] ÀÌÀü ÇÁ·¹ÀÓ µ¥ÀÌÅÍ ÀúÀå (°ª º¯°æ °¨Áö¿ë)
+    elementCache: {}, // [OPTIMIZATION] DOM ìš”ì†Œ ìºì‹±
+    lastValues: {},   // [OPTIMIZATION] ì´ì „ í”„ë ˆì„ ë°ì´í„° ì €ì¥ (ê°’ ë³€ê²½ ê°ì§€ìš©)
     _optTabsBound: false,
     _optFullscreenBound: false,
     _optFullscreenDocBound: false,
@@ -54,11 +54,11 @@ const ui = {
         const text = String(msg || '').trim();
         if (!text) return '';
 
-        if (/ÀÚ±İÀÌ ºÎÁ·|ÀÚ¿ø\s*ºÎÁ·|ÀÚ¿ø\s*¶Ç´Â\s*Àç°í\s*ºÎÁ·|±İÈ­°¡ ºÎÁ·|money is low|not enough money/i.test(text)) {
-            return 'µ·ÀÌ ºÎÁ·ÇÕ´Ï´Ù.';
+        if (/ìê¸ˆì´ ë¶€ì¡±|ìì›\s*ë¶€ì¡±|ìì›\s*ë˜ëŠ”\s*ì¬ê³ \s*ë¶€ì¡±|ê¸ˆí™”ê°€ ë¶€ì¡±|money is low|not enough money/i.test(text)) {
+            return 'ëˆì´ ë¶€ì¡±í•©ë‹ˆë‹¤.';
         }
-        if (/ÀÎ±¸\s*ÇÑµµ|ÀÎ±¸.*ºÎÁ·|population cap|max pop|ÀÎ±¸°¡ °¡µæ/i.test(text)) {
-            return 'ÀÎ±¸°¡ °¡µæ Ã¡½À´Ï´Ù.';
+        if (/ì¸êµ¬\s*í•œë„|ì¸êµ¬.*ë¶€ì¡±|population cap|max pop|ì¸êµ¬ê°€ ê°€ë“/i.test(text)) {
+            return 'ì¸êµ¬ê°€ ê°€ë“ ì°¼ìŠµë‹ˆë‹¤.';
         }
         return text;
     },
@@ -205,10 +205,10 @@ const ui = {
         this._unitIconBgColor = nextBgColor;
     },
 
-    // [OPTIMIZATION] ÃÊ±â 1È¸ ½ÇÇà: ¸ğµç À¯´Ö ¹öÆ° »ı¼º ¹× Ä³½Ì
+    // [OPTIMIZATION] ì´ˆê¸° 1íšŒ ì‹¤í–‰: ëª¨ë“  ìœ ë‹› ë²„íŠ¼ ìƒì„± ë° ìºì‹±
     initUnitButtons(currentCategory) {
         const container = document.getElementById('unit-list-container');
-        container.innerHTML = ''; // ÃÊ±âÈ­
+        container.innerHTML = ''; // ì´ˆê¸°í™”
         this.elementCache = {};
         this.lastValues = {};
         if (typeof CONFIG === 'undefined' || !CONFIG || !CONFIG.units) {
@@ -256,33 +256,33 @@ const ui = {
                 return;
             }
 
-            // [R 4.2] »ı»ê¹Ù¿¡¼­ ¼û±è Ã³¸®µÈ À¯´ÖÀº ¹öÆ° »ı¼º ½ºÅµ
+            // [R 4.2] ìƒì‚°ë°”ì—ì„œ ìˆ¨ê¹€ ì²˜ë¦¬ëœ ìœ ë‹›ì€ ë²„íŠ¼ ìƒì„± ìŠ¤í‚µ
             if (u.hideFromUnitBar === true) return;
-            // [R 4.3] µå·Ğº´ Àü¿ë ¹ßÁø µå·ĞÀº »ı¼º¹Ù¿¡¼­ Á¦°Å (¸í·É ½ºÅ³ Àü¿ë)
+            // [R 4.3] ë“œë¡ ë³‘ ì „ìš© ë°œì§„ ë“œë¡ ì€ ìƒì„±ë°”ì—ì„œ ì œê±° (ëª…ë ¹ ìŠ¤í‚¬ ì „ìš©)
             if (u.droneLaunchOnly === true) return;
             // ICBM payload skills are command-key only (never shown in unit placement bar).
             if (icbmSkillKeys.has(key)) return;
 
-            // ¹öÆ° DOM »ı¼º
+            // ë²„íŠ¼ DOM ìƒì„±
             const btn = document.createElement('div');
             btn.id = `btn-${key}`;
             btn.className = 'btn-unit relative w-16 h-14 md:w-20 md:h-16 rounded overflow-hidden shadow-lg shrink-0 cursor-pointer select-none';
             btn.style.display = 'flex';
 
-            // Äµ¹ö½º ¾ÆÀÌÄÜ (ÇÑ ¹ø¸¸ ±×¸²)
+            // ìº”ë²„ìŠ¤ ì•„ì´ì½˜ (í•œ ë²ˆë§Œ ê·¸ë¦¼)
             const iconCvs = document.createElement('canvas');
             iconCvs.width = 64; iconCvs.height = 48;
             this.drawUnitButtonIcon(iconCvs, key, u, iconBgColor);
 
             btn.appendChild(iconCvs);
 
-            // ÅØ½ºÆ® ¹× ¿À¹ö·¹ÀÌ »ı¼º
+            // í…ìŠ¤íŠ¸ ë° ì˜¤ë²„ë ˆì´ ìƒì„±
             const nameSpan = document.createElement('span');
             nameSpan.className = 'font-bold text-[10px] z-10 absolute top-0 w-full text-center bg-black/30 text-white';
             // [Localization]
             nameSpan.setAttribute('data-lang', `unit_${key}_name`);
             nameSpan.innerText = (typeof Lang !== 'undefined') ? Lang.getText(`unit_${key}_name`) : u.name;
-            // [R 4.2] ±âº» ¶óº§ º¸Á¸(Å¸°ÙÆÃ Áß "Ãë¼Ò" Åä±Û¿ë)
+            // [R 4.2] ê¸°ë³¸ ë¼ë²¨ ë³´ì¡´(íƒ€ê²ŸíŒ… ì¤‘ "ì·¨ì†Œ" í† ê¸€ìš©)
             nameSpan.dataset.defaultText = nameSpan.innerText;
             btn.appendChild(nameSpan);
 
@@ -300,11 +300,11 @@ const ui = {
             qBadge.innerText = '0';
             btn.appendChild(qBadge);
 
-            // Ä³½Ã¿¡ ÀúÀå (¸Å ÇÁ·¹ÀÓ °Ë»ö ¹æÁö)
+            // ìºì‹œì— ì €ì¥ (ë§¤ í”„ë ˆì„ ê²€ìƒ‰ ë°©ì§€)
             this.elementCache[key] = { btn, nameSpan, countSpan, cdDiv, qBadge, iconCvs };
             this.lastValues[key] = { stock: -1, cdRatio: -1, queue: -1, active: null };
 
-            // ÀÌº¥Æ® ¹ÙÀÎµù
+            // ì´ë²¤íŠ¸ ë°”ì¸ë”©
             this.bindButtonEvents(btn, key);
             container.appendChild(btn);
         });
@@ -340,7 +340,7 @@ const ui = {
         btn.addEventListener('touchcancel', endAction, { passive: false }); // [Mobile] Safety
     },
 
-    // [OPTIMIZATION] ¸Å ÇÁ·¹ÀÓ È£Ãâ: °ªÀÌ º¯ÇßÀ» ¶§¸¸ DOM ¼öÁ¤
+    // [OPTIMIZATION] ë§¤ í”„ë ˆì„ í˜¸ì¶œ: ê°’ì´ ë³€í–ˆì„ ë•Œë§Œ DOM ìˆ˜ì •
     showExitConfirmation(action) {
         const modal = document.getElementById('exit-modal');
         if (!modal) return;
@@ -354,11 +354,11 @@ const ui = {
             : (inGame ? 'retreat' : 'quit');
         this._exitAction = resolvedAction;
 
-        let titleText = '°ÔÀÓ Á¾·á';
-        let descText = 'ÇöÀç ÁøÇà Á¤º¸´Â À¯ÁöµË´Ï´Ù. °ÔÀÓÀ» Á¾·áÇÏ½Ã°Ú½À´Ï±î?';
+        let titleText = 'ê²Œì„ ì¢…ë£Œ';
+        let descText = 'í˜„ì¬ ì§„í–‰ ì •ë³´ëŠ” ìœ ì§€ë©ë‹ˆë‹¤. ê²Œì„ì„ ì¢…ë£Œí•˜ì‹œê² ìŠµë‹ˆê¹Œ?';
         if (resolvedAction === 'retreat') {
-            titleText = 'ÀüÅõ ÈÄÅğ';
-            descText = 'ÇöÀç ÁøÇà Á¤º¸´Â À¯ÁöµË´Ï´Ù. ÀüÅõ¸¦ Á¾·áÇÏ°í ¸Ê ¼±ÅÃÀ¸·Î º¹±ÍÇÏ½Ã°Ú½À´Ï±î?';
+            titleText = 'ì „íˆ¬ í›„í‡´';
+            descText = 'í˜„ì¬ ì§„í–‰ ì •ë³´ëŠ” ìœ ì§€ë©ë‹ˆë‹¤. ì „íˆ¬ë¥¼ ì¢…ë£Œí•˜ê³  ë§µ ì„ íƒìœ¼ë¡œ ë³µê·€í•˜ì‹œê² ìŠµë‹ˆê¹Œ?';
         }
         if (titleEl) titleEl.innerText = titleText;
         if (descEl) descEl.innerText = descText;
@@ -406,7 +406,7 @@ const ui = {
                     game.backToLobby();
                 }
                 history.replaceState({ page: 'map-select' }, "MapSelect", "#map-select");
-                this.showToast('ÀüÅõ¸¦ Á¾·áÇÏ°í ¸Ê ¼±ÅÃÀ¸·Î º¹±ÍÇß½À´Ï´Ù.');
+                this.showToast('ì „íˆ¬ë¥¼ ì¢…ë£Œí•˜ê³  ë§µ ì„ íƒìœ¼ë¡œ ë³µê·€í–ˆìŠµë‹ˆë‹¤.');
                 return;
             }
 
@@ -428,9 +428,9 @@ const ui = {
 
             history.replaceState({ page: 'map-select' }, "MapSelect", "#map-select");
 
-            this.showToast('°ÔÀÓÀ» Á¾·áÇß½À´Ï´Ù.');
+            this.showToast('ê²Œì„ì„ ì¢…ë£Œí–ˆìŠµë‹ˆë‹¤.');
 
-            // ºê¶ó¿ìÀú Á¤Ã¥»ó ÀÚµ¿ Ã¢ ´İ±â°¡ ¸·Èú ¼ö ÀÖ¾î ·Îºñ È­¸éÀ» ±âº» Á¾·á »óÅÂ·Î »ç¿ë.
+            // ë¸Œë¼ìš°ì € ì •ì±…ìƒ ìë™ ì°½ ë‹«ê¸°ê°€ ë§‰í ìˆ˜ ìˆì–´ ë¡œë¹„ í™”ë©´ì„ ê¸°ë³¸ ì¢…ë£Œ ìƒíƒœë¡œ ì‚¬ìš©.
             try { window.close(); } catch (_) { }
         }
     },
@@ -487,49 +487,49 @@ const ui = {
                     || !(typeof game !== 'undefined' && game && typeof game.isCoastAllowedUnitKey === 'function')
                     || game.isCoastAllowedUnitKey(key));
 
-            // 1. Ä«Å×°í¸® Ç¥½Ã/¼û±è ÃÖÀûÈ­
+            // 1. ì¹´í…Œê³ ë¦¬ í‘œì‹œ/ìˆ¨ê¹€ ìµœì í™”
             if (cache.btn.style.display !== (isVisible ? 'flex' : 'none')) {
                 cache.btn.style.display = isVisible ? 'flex' : 'none';
             }
-            if (!isVisible) return; // ¾È º¸ÀÌ¸é ¾÷µ¥ÀÌÆ® »ı·«
+            if (!isVisible) return; // ì•ˆ ë³´ì´ë©´ ì—…ë°ì´íŠ¸ ìƒëµ
 
             const last = this.lastValues[key];
 
-            // [R 4.2] Å¸°ÙÆÃ Åä±Û »óÅÂ(¹öÆ° ¶óº§: Ãë¼Ò)
+            // [R 4.2] íƒ€ê²ŸíŒ… í† ê¸€ ìƒíƒœ(ë²„íŠ¼ ë¼ë²¨: ì·¨ì†Œ)
             if (cache.nameSpan) {
                 const wantCancel = (game.targetingType === key);
                 const defaultText = cache.nameSpan.dataset.defaultText || cache.nameSpan.innerText;
-                const nextText = wantCancel ? 'Ãë¼Ò' : defaultText;
+                const nextText = wantCancel ? 'ì·¨ì†Œ' : defaultText;
                 if (cache.nameSpan.innerText !== nextText) {
                     cache.nameSpan.innerText = nextText;
                 }
             }
 
-            // 2. Àç°í/½ºÅ³ È½¼ö ¾÷µ¥ÀÌÆ®
+            // 2. ì¬ê³ /ìŠ¤í‚¬ íšŸìˆ˜ ì—…ë°ì´íŠ¸
             if (last.stock !== currentCount) {
                 if (u.droneLaunchOnly) {
-                    cache.countSpan.innerText = `${currentCount}±â`;
+                    cache.countSpan.innerText = `${currentCount}ê¸°`;
                 } else {
-                    cache.countSpan.innerText = u.isSkill ? currentCount + '¹ß' : currentCount;
+                    cache.countSpan.innerText = u.isSkill ? currentCount + 'ë°œ' : currentCount;
                 }
                 last.stock = currentCount;
             }
 
-            // 3. ÄğÅ¸ÀÓ ¾÷µ¥ÀÌÆ®
+            // 3. ì¿¨íƒ€ì„ ì—…ë°ì´íŠ¸
             const baseCooldown = Math.max(1, Number(u.cooldown) || 1);
             const currentCooldown = Math.max(0, Number(safeCooldowns[key]) || 0);
             const currentRatio = currentCooldown / baseCooldown;
-            // ÄğÅ¸ÀÓÀÌ 0ÀÌ°Å³ª ¿Ï·áµÈ »óÅÂ¿¡¼­ ºÒÇÊ¿äÇÑ ½ºÅ¸ÀÏ º¯°æ ¹æÁö
+            // ì¿¨íƒ€ì„ì´ 0ì´ê±°ë‚˜ ì™„ë£Œëœ ìƒíƒœì—ì„œ ë¶ˆí•„ìš”í•œ ìŠ¤íƒ€ì¼ ë³€ê²½ ë°©ì§€
             if (Math.abs(last.cdRatio - currentRatio) > 0.01) {
                 cache.cdDiv.style.height = `${currentRatio * 100}%`;
                 last.cdRatio = currentRatio;
             }
 
-            // 4. ´ë±â¿­ ¹îÁö
+            // 4. ëŒ€ê¸°ì—´ ë±ƒì§€
             const currentQ = Math.max(0, Number(safeQueue[key]) || 0);
             if (last.queue !== currentQ) {
                 if (currentQ > 0) {
-                    // ´ë±â¿­ ¹èÁö´Â º£Å×¶û ¾ÆÀÌÅÛ ¹èÁö(+n)¿Í ±¸ºĞµÇµµ·Ï Q Á¢µÎ¾î¸¦ »ç¿ë.
+                    // ëŒ€ê¸°ì—´ ë°°ì§€ëŠ” ë² í…Œë‘ ì•„ì´í…œ ë°°ì§€(+n)ì™€ êµ¬ë¶„ë˜ë„ë¡ Q ì ‘ë‘ì–´ë¥¼ ì‚¬ìš©.
                     cache.qBadge.innerText = `Q${currentQ}`;
                     cache.qBadge.classList.remove('hidden');
                 } else {
@@ -538,7 +538,7 @@ const ui = {
                 last.queue = currentQ;
             }
 
-            // 5. ¹öÆ° È°¼º/ºñÈ°¼º »óÅÂ
+            // 5. ë²„íŠ¼ í™œì„±/ë¹„í™œì„± ìƒíƒœ
             let isActive = true;
             if (u.isSkill) {
                 if (currentCount <= 0) isActive = false;
@@ -577,7 +577,7 @@ const ui = {
 
         document.getElementById('info-name').innerText = name;
         document.getElementById('info-name').style.color = u.color;
-        document.getElementById('info-role').innerText = u.role || 'À¯´Ö';
+        document.getElementById('info-role').innerText = u.role || 'ìœ ë‹›';
         document.getElementById('info-desc').innerText = desc;
         panel.classList.add('visible');
     },
@@ -627,47 +627,47 @@ const ui = {
         const stateRow = document.getElementById('enemy-status-state-row');
         if (!headRow || !countRow || !stateRow) return;
 
-        // Ç¥½ÃÇÒ À¯´Ö¸¸: "ÇöÀç Á¸ÀçÇÏ´Â À¯´Ö" À§ÁÖ·Î º¸¿©¼­ ÄÃ·³ Æø¹ß ¹æÁö
-        // (½ºÅ©·Ñ ¾ø°Ô ÇÏ·Á¸é 0°³ À¯´Ö±îÁö ÀüºÎ º¸¿©ÁÖ¸é È­¸éÀÌ ¹«³ÊÁü)
+        // í‘œì‹œí•  ìœ ë‹›ë§Œ: "í˜„ì¬ ì¡´ì¬í•˜ëŠ” ìœ ë‹›" ìœ„ì£¼ë¡œ ë³´ì—¬ì„œ ì»¬ëŸ¼ í­ë°œ ë°©ì§€
+        // (ìŠ¤í¬ë¡¤ ì—†ê²Œ í•˜ë ¤ë©´ 0ê°œ ìœ ë‹›ê¹Œì§€ ì „ë¶€ ë³´ì—¬ì£¼ë©´ í™”ë©´ì´ ë¬´ë„ˆì§)
         const entries = Object.entries(enemyStock || {})
             .filter(([k, c]) => CONFIG.units[k] && c > 0)
-            .sort((a, b) => (b[1] - a[1])); // ¼ö·® ¸¹Àº ¼ø
+            .sort((a, b) => (b[1] - a[1])); // ìˆ˜ëŸ‰ ë§ì€ ìˆœ
 
-        // ÃÊ±âÈ­
+        // ì´ˆê¸°í™”
         headRow.innerHTML = '';
         countRow.innerHTML = '';
         stateRow.innerHTML = '';
 
         if (entries.length === 0) {
-            headRow.innerHTML = `<th class="stub">À¯´Ö</th><th>¾øÀ½</th>`;
-            countRow.innerHTML = `<th class="stub">¼ö·®</th><td class="text-center text-gray-400">0</td>`;
-            stateRow.innerHTML = `<th class="stub">»óÅÂ</th><td class="text-center text-gray-400">-</td>`;
+            headRow.innerHTML = `<th class="stub">ìœ ë‹›</th><th>ì—†ìŒ</th>`;
+            countRow.innerHTML = `<th class="stub">ìˆ˜ëŸ‰</th><td class="text-center text-gray-400">0</td>`;
+            stateRow.innerHTML = `<th class="stub">ìƒíƒœ</th><td class="text-center text-gray-400">-</td>`;
             return;
         }
 
-        // Çì´õ(À¯´Ö¸í)
-        headRow.innerHTML = `<th class="stub">À¯´Ö</th>` + entries.map(([k]) => {
+        // í—¤ë”(ìœ ë‹›ëª…)
+        headRow.innerHTML = `<th class="stub">ìœ ë‹›</th>` + entries.map(([k]) => {
             const u = CONFIG.units[k];
             return `<th title="${u.name}">${u.name}</th>`;
         }).join('');
 
-        // ¼ö·®
-        countRow.innerHTML = `<th class="stub">¼ö·®</th>` + entries.map(([k, c]) => {
+        // ìˆ˜ëŸ‰
+        countRow.innerHTML = `<th class="stub">ìˆ˜ëŸ‰</th>` + entries.map(([k, c]) => {
             return `<td class="text-center num">${c}</td>`;
         }).join('');
 
-        // »óÅÂ
-        stateRow.innerHTML = `<th class="stub">»óÅÂ</th>` + entries.map(([k, c]) => {
-            let cls = 'ok', txt = '¾çÈ£';
-            if (c <= 0) { cls = 'dead'; txt = 'Àü¸ê'; }
-            else if (c < 3) { cls = 'warn'; txt = 'À§Çè'; }
+        // ìƒíƒœ
+        stateRow.innerHTML = `<th class="stub">ìƒíƒœ</th>` + entries.map(([k, c]) => {
+            let cls = 'ok', txt = 'ì–‘í˜¸';
+            if (c <= 0) { cls = 'dead'; txt = 'ì „ë©¸'; }
+            else if (c < 3) { cls = 'warn'; txt = 'ìœ„í—˜'; }
             return `<td class="text-center state ${cls}">${txt}</td>`;
         }).join('');
     },
 
     setSkillCount(type, count) {
         const el = document.getElementById(`cnt-${type}`);
-        if (el) el.innerText = count + "¹ß";
+        if (el) el.innerText = count + "ë°œ";
         const btn = document.getElementById(`btn-${type}`);
         if (btn) {
             if (count <= 0) btn.classList.add('used');
@@ -773,19 +773,19 @@ const ui = {
 
         btn.disabled = !available;
         if (!available) {
-            btn.innerText = 'ÀüÃ¼È­¸é ¹ÌÁö¿ø';
-            if (state) state.innerText = 'ÇöÀç ±â±â/ºê¶ó¿ìÀú´Â ÀüÃ¼È­¸é ÀüÈ¯À» Áö¿øÇÏÁö ¾Ê½À´Ï´Ù.';
+            btn.innerText = 'ì „ì²´í™”ë©´ ë¯¸ì§€ì›';
+            if (state) state.innerText = 'í˜„ì¬ ê¸°ê¸°/ë¸Œë¼ìš°ì €ëŠ” ì „ì²´í™”ë©´ ì „í™˜ì„ ì§€ì›í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.';
             return;
         }
 
-        btn.innerText = active ? 'ÀüÃ¼È­¸é ²ô±â' : 'ÀüÃ¼È­¸é ÄÑ±â';
-        if (state) state.innerText = active ? 'ÇöÀç: ÀüÃ¼È­¸é ¸ğµå' : 'ÇöÀç: Ã¢ ¸ğµå';
+        btn.innerText = active ? 'ì „ì²´í™”ë©´ ë„ê¸°' : 'ì „ì²´í™”ë©´ ì¼œê¸°';
+        if (state) state.innerText = active ? 'í˜„ì¬: ì „ì²´í™”ë©´ ëª¨ë“œ' : 'í˜„ì¬: ì°½ ëª¨ë“œ';
     },
 
     async toggleOptionFullscreen() {
         if (!this.isFullscreenAvailable()) {
             this.syncOptionFullscreenState();
-            this.showToast('ÀÌ ºê¶ó¿ìÀú´Â ÀüÃ¼È­¸éÀ» Áö¿øÇÏÁö ¾Ê½À´Ï´Ù.');
+            this.showToast('ì´ ë¸Œë¼ìš°ì €ëŠ” ì „ì²´í™”ë©´ì„ ì§€ì›í•˜ì§€ ì•ŠìŠµë‹ˆë‹¤.');
             return;
         }
 
@@ -793,7 +793,7 @@ const ui = {
             if (this.isFullscreenActive()) await this.exitAppFullscreen();
             else await this.requestAppFullscreen();
         } catch (_) {
-            this.showToast('ÀüÃ¼È­¸é ÀüÈ¯¿¡ ½ÇÆĞÇß½À´Ï´Ù.');
+            this.showToast('ì „ì²´í™”ë©´ ì „í™˜ì— ì‹¤íŒ¨í–ˆìŠµë‹ˆë‹¤.');
         } finally {
             this.syncOptionFullscreenState();
         }
@@ -836,8 +836,8 @@ const ui = {
         const state = document.getElementById('opt-hitbox-state');
         if (!btn) return;
         const enabled = this.isHitboxDebugEnabled();
-        btn.innerText = enabled ? 'È÷Æ®¹Ú½º ²ô±â' : 'È÷Æ®¹Ú½º ÄÑ±â';
-        if (state) state.innerText = enabled ? 'ÇöÀç: Ç¥½Ã Áß' : 'ÇöÀç: ¼û±è';
+        btn.innerText = enabled ? 'íˆíŠ¸ë°•ìŠ¤ ë„ê¸°' : 'íˆíŠ¸ë°•ìŠ¤ ì¼œê¸°';
+        if (state) state.innerText = enabled ? 'í˜„ì¬: í‘œì‹œ ì¤‘' : 'í˜„ì¬: ìˆ¨ê¹€';
     },
 
     setHitboxDebugEnabled(enabled) {
@@ -918,23 +918,23 @@ const ui = {
 
         const configByContext = {
             'map-select': {
-                modalTitle: '¸Ê ¼±ÅÃ ¼³Á¤',
-                gameTitle: '¸Ê ¼±ÅÃ/Á¾·á',
-                gameDesc: '¸Ê ¼±ÅÃ È­¸é¿¡¼­ ¼³Á¤ º¯°æ ¶Ç´Â °ÔÀÓ Á¾·á¸¦ »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.',
+                modalTitle: 'ë§µ ì„ íƒ ì„¤ì •',
+                gameTitle: 'ë§µ ì„ íƒ/ì¢…ë£Œ',
+                gameDesc: 'ë§µ ì„ íƒ í™”ë©´ì—ì„œ ì„¤ì • ë³€ê²½ ë˜ëŠ” ê²Œì„ ì¢…ë£Œë¥¼ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.',
                 showRetreat: false,
                 showQuit: true
             },
             ingame: {
-                modalTitle: 'ÀÎ°ÔÀÓ ¼³Á¤',
-                gameTitle: 'ÀüÅõ/Á¾·á',
-                gameDesc: 'ÀüÅõ Áß¿¡´Â Ã¶¼ö ÈÄ ¸Ê ¼±ÅÃ º¹±Í ¶Ç´Â °ÔÀÓ Á¾·á¸¦ »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.',
+                modalTitle: 'ì¸ê²Œì„ ì„¤ì •',
+                gameTitle: 'ì „íˆ¬/ì¢…ë£Œ',
+                gameDesc: 'ì „íˆ¬ ì¤‘ì—ëŠ” ì² ìˆ˜ í›„ ë§µ ì„ íƒ ë³µê·€ ë˜ëŠ” ê²Œì„ ì¢…ë£Œë¥¼ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.',
                 showRetreat: true,
                 showQuit: true
             },
             general: {
                 modalTitle: 'SETTINGS',
-                gameTitle: 'ÀüÅõ/Á¾·á',
-                gameDesc: 'ÀüÅõ Áß¿¡´Â Ã¶¼ö, Æò½Ã¿¡´Â Á¾·á È®ÀÎÀ» »ç¿ëÇÒ ¼ö ÀÖ½À´Ï´Ù.',
+                gameTitle: 'ì „íˆ¬/ì¢…ë£Œ',
+                gameDesc: 'ì „íˆ¬ ì¤‘ì—ëŠ” ì² ìˆ˜, í‰ì‹œì—ëŠ” ì¢…ë£Œ í™•ì¸ì„ ì‚¬ìš©í•  ìˆ˜ ìˆìŠµë‹ˆë‹¤.',
                 showRetreat: false,
                 showQuit: true
             }
