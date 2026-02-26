@@ -187,7 +187,7 @@ const CONFIG = {
         // [AIR]
         fighter: {
             id: 'fighter', name: '전투기', cost: 160, cooldown: 300, maxCount: 5,
-            hp: 300, damage: 80, range: 600, speed: 4.4,
+            hp: 300, damage: 80, range: 600, speed: 6.2,
             width: 70, height: 18, color: '#0ea5e9', type: 'air', category: 'air',
             role: '제공권 장악', description: '적 항공기(헬기, 폭격기)만 전문적으로 요격합니다. (드론 무시)',
             missileCommand: true, missileCount: 1, missileProjectile: 'fighter_missile', missileSpeed: 400

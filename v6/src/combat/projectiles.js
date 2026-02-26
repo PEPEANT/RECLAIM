@@ -236,7 +236,10 @@ class Projectile {
             this.speed =
                 (type === 'machinegun') ? 30 :
                     (type === 'bullet') ? 32 :
-                        (type === 'aa_shell') ? 25 : 15;
+                        (type === 'humvee_burst') ? 24 :
+                            (type === 'aa_shell') ? 34 :
+                                (type === 'shell') ? 36 :
+                                    15;
             this.vx = (dx / dist) * this.speed; this.vy = (dy / dist) * this.speed;
             if (this.coastBallistics) {
                 const srcVxAbs = Math.abs(Number(this.source && this.source.vx) || 0);
@@ -1301,8 +1304,66 @@ class Projectile {
             ctx.fillRect(-len * 0.15, -0.55, len * 0.65, 1.1);
             ctx.restore();
         }
-        else if (this.type === 'shell') { ctx.fillStyle = '#fbbf24'; ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill(); }
-        else if (this.type === 'aa_shell') { ctx.fillStyle = '#f472b6'; ctx.arc(this.x, this.y, 3, 0, Math.PI * 2); ctx.fill(); }
+        else if (this.type === 'shell') {
+            const vx = Number(this.vx) || 0;
+            const vy = Number(this.vy) || 0;
+            const ang = Math.atan2(vy || 0.0001, vx || 0.0001);
+            const speed = Math.max(1, Math.hypot(vx, vy));
+            const len = Math.max(14, Math.min(24, speed * 0.58));
+            const bodyLen = len * 0.72;
+            const bodyHalf = 2.1;
+
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(ang);
+            ctx.globalAlpha = 0.96;
+
+            ctx.fillStyle = '#fbbf24';
+            ctx.fillRect(-bodyLen * 0.55, -bodyHalf, bodyLen, bodyHalf * 2);
+
+            ctx.fillStyle = '#fde68a';
+            ctx.fillRect(-bodyLen * 0.15, -0.7, bodyLen * 0.42, 1.4);
+
+            ctx.fillStyle = '#d97706';
+            ctx.beginPath();
+            ctx.moveTo(bodyLen * 0.45, 0);
+            ctx.lineTo(bodyLen * 0.12, -bodyHalf * 1.08);
+            ctx.lineTo(bodyLen * 0.12, bodyHalf * 1.08);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
+        else if (this.type === 'aa_shell') {
+            const vx = Number(this.vx) || 0;
+            const vy = Number(this.vy) || 0;
+            const ang = Math.atan2(vy || 0.0001, vx || 0.0001);
+            const speed = Math.max(1, Math.hypot(vx, vy));
+            const len = Math.max(13, Math.min(22, speed * 0.54));
+            const bodyLen = len * 0.70;
+            const bodyHalf = 1.9;
+
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(ang);
+            ctx.globalAlpha = 0.95;
+
+            ctx.fillStyle = '#f472b6';
+            ctx.fillRect(-bodyLen * 0.56, -bodyHalf, bodyLen, bodyHalf * 2);
+
+            ctx.fillStyle = '#fbcfe8';
+            ctx.fillRect(-bodyLen * 0.14, -0.6, bodyLen * 0.40, 1.2);
+
+            ctx.fillStyle = '#be185d';
+            ctx.beginPath();
+            ctx.moveTo(bodyLen * 0.44, 0);
+            ctx.lineTo(bodyLen * 0.12, -bodyHalf * 1.06);
+            ctx.lineTo(bodyLen * 0.12, bodyHalf * 1.06);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.restore();
+        }
         else if (this.type === 'rocket') { ctx.fillStyle = '#f87171'; ctx.fillRect(this.x - 4, this.y - 2, 8, 4); }
         else if (this.type === 'bomb') {
             // 誘몄궗?쇳삎(?섏쭅 ?숉븯 ?먮굦)

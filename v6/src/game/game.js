@@ -709,9 +709,9 @@ const game = {
             ? this.clampGroundLaneY(tyRaw)
             : tyRaw;
 
-        const spawnJitter = (Math.random() * 160) - 80;
-        const startX = Math.max(30, Math.min(CONFIG.mapWidth - 30, tx + spawnJitter));
-        const startY = -220;
+        const edgeJitter = (Math.random() * 80) - 40;
+        const startX = -140 + edgeJitter;
+        const startY = Math.max(70, Math.min(360, ty - 220));
 
         const shotOpts = {
             source: null,
