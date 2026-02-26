@@ -2574,7 +2574,7 @@ const game = {
         // 아군 시작 보유 수량은 난이도와 무관하게 동일하게 유지한다.
         const stockMult = 1.0;
         const isCoastMap = String(this.currentMapId || '').trim() === 'skirmish_coast';
-        const enemyBaseMult = isCoastMap ? 1.35 : 1.5;
+        const enemyBaseMult = isCoastMap ? 1.6 : 1.5;
         const enemyThreatMult = 1;
 
         for (let k in CONFIG.units) {
@@ -3003,6 +3003,11 @@ const game = {
             }
 
             if (isAir) {
+                if (key === 'recon') {
+                    this.playerStock[key] = 2;
+                    this.enemyStock[key] = 0;
+                    continue;
+                }
                 if (this.isCoastEnemyAirBlockedKey(key)) {
                     const p = Math.max(1, Math.floor(Math.max(0, Number(this.playerStock[key]) || 0) * 0.5));
                     this.playerStock[key] = p;

@@ -3186,14 +3186,6 @@ class Unit extends Entity {
             if (outOfBounds) {
                 this._recordCaptureEdgeBreach();
                 this.dead = true;
-                if (this.team === 'player') {
-                    if (this.isVeteran && this.veteranId && game.playerVeteranStock && Object.prototype.hasOwnProperty.call(game.playerVeteranStock, this.veteranId)) {
-                        game.playerVeteranStock[this.veteranId] = Math.max(0, Math.floor(Number(game.playerVeteranStock[this.veteranId]) || 0)) + 1;
-                    } else {
-                        game.playerStock['recon']++;
-                    }
-                }
-                else game.enemyStock['recon']++;
             }
             return;
         }
