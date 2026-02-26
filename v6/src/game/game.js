@@ -2574,7 +2574,7 @@ const game = {
         // 아군 시작 보유 수량은 난이도와 무관하게 동일하게 유지한다.
         const stockMult = 1.0;
         const isCoastMap = String(this.currentMapId || '').trim() === 'skirmish_coast';
-        const enemyBaseMult = isCoastMap ? 1.6 : 1.5;
+        const enemyBaseMult = isCoastMap ? 1.9 : 1.5;
         const enemyThreatMult = 1;
 
         for (let k in CONFIG.units) {

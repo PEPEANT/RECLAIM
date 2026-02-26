@@ -32,6 +32,10 @@
         let cap = tiers[0];
         if (f >= 60 * 210) cap = tiers[2];
         else if (f >= 60 * 90) cap = tiers[1];
+        const mapId = String((game && game.currentMapId) || '').trim();
+        if (mapId === 'skirmish_coast') {
+            cap = Math.round(cap * 1.45);
+        }
         return Math.max(1, Math.floor(Number(cap) || 1));
     },
 

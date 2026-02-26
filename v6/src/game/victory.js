@@ -10,6 +10,7 @@
     const CAMERA_EDGE_MARGIN = 12;
     const MAP_EDGE_CAPTURE_MARGIN = 16;
     const CAPTURE_BREACH_STEP = 20;
+    const COAST_CAPTURE_BREACH_STEP = 34;
 
     function getSkirmishState(game) {
         const enabled = !!(game && game._skirmishMode);
@@ -192,6 +193,7 @@
         const state = ensureCaptureControlState(game);
         const frame = Number(game && game.frame) || 0;
         const breach = consumeCaptureEdgeBreach(game);
+        const breachStep = isCoastMap(game) ? COAST_CAPTURE_BREACH_STEP : CAPTURE_BREACH_STEP;
 
         const enemyCount = Math.max(0, Math.floor(Number(breach.enemy) || 0));
         const playerCount = Math.max(0, Math.floor(Number(breach.player) || 0));
@@ -201,14 +203,14 @@
         // Event-based capture only: one unit breach = +20%.
         if (breach.enemy > 0) {
             state.enemyRisk = clamp(
-                Number(state.enemyRisk || 0) + (breach.enemy * CAPTURE_BREACH_STEP),
+                Number(state.enemyRisk || 0) + (breach.enemy * breachStep),
                 0,
                 CAPTURE_MAX
             );
         }
         if (breach.player > 0) {
             state.playerCapture = clamp(
-                Number(state.playerCapture || 0) + (breach.player * CAPTURE_BREACH_STEP),
+                Number(state.playerCapture || 0) + (breach.player * breachStep),
                 0,
                 CAPTURE_MAX
             );
@@ -233,6 +235,31 @@
         }
 
         return state;
+    }
+
+    function countCoastAliveEnemyCombatUnits(game) {
+        const list = (game && Array.isArray(game.enemies)) ? game.enemies : [];
+        const mapW = Number(
+            (typeof CONFIG !== 'undefined' && CONFIG && Number.isFinite(Number(CONFIG.mapWidth)))
+                ? CONFIG.mapWidth
+                : NaN
+        );
+        let alive = 0;
+        for (let i = 0; i < list.length; i++) {
+            const u = list[i];
+            if (!u || u.dead) continue;
+            if (u.isCameraman) continue;
+            const stats = u.stats || null;
+            if (stats && stats.civilian === true) continue;
+            const x = Number(u.x);
+            if (!Number.isFinite(x)) continue;
+            const isAir = !!(stats && stats.type === 'air');
+            if (isAir && Number.isFinite(mapW) && mapW > 0) {
+                if (x < -260 || x > (mapW + 260)) continue;
+            }
+            alive += 1;
+        }
+        return alive;
     }
 
     window.GameVictory = {
@@ -305,6 +332,10 @@
                 : (winCondition === 'hq_destroy' && !!game._enemyHQWasPresent);
 
             const enemyWiped = (aliveEnemyUnits <= 0) && (game.enemyEverSeen || skirmishBattle);
+            const coastEnemyAlive = coastMap ? countCoastAliveEnemyCombatUnits(game) : aliveEnemyUnits;
+            const coastEnemyWiped = coastMap
+                ? ((coastEnemyAlive <= 0) && (game.enemyEverSeen || skirmishBattle))
+                : enemyWiped;
             const survived = elapsedSeconds >= survivalTime;
 
             const captureState = updateCaptureControlState(game);
@@ -313,7 +344,7 @@
                     game.endGame('win', '작전 성공', '적 전선을 돌파해 점령도 100%를 달성했습니다.');
                     return;
                 }
-                if (enemyWiped) {
+                if (coastEnemyWiped) {
                     game.endGame('win', '작전 성공', '적 부대를 모두 섬멸했습니다.');
                     return;
                 }
