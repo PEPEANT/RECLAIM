@@ -1,0 +1,247 @@
+/* ===== 국지전 (Skirmish) ===== */
+.skirmish-placement-ui {
+    position: absolute;
+    inset: 0;
+    z-index: 80;
+    pointer-events: none;
+    --skirmish-hud-offset: 0px;
+}
+
+.skirmish-narration {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 0.45rem);
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - 1rem));
+    margin: 0;
+    padding: 0.75rem 1.2rem;
+    background: rgba(0, 0, 0, 0.75);
+    border: 1px solid rgba(59, 130, 246, 0.4);
+    border-radius: 0.5rem;
+    color: #e2e8f0;
+    font-size: 0.85rem;
+    line-height: 1.5;
+    text-align: center;
+    white-space: pre-line;
+    pointer-events: auto;
+    backdrop-filter: blur(4px);
+    z-index: 1;
+}
+
+.skirmish-bottom-bar {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--skirmish-hud-offset, 0px) + env(safe-area-inset-bottom, 0px));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    min-height: 62px;
+    background: rgba(15, 23, 42, 0.85);
+    border-top: 1px solid rgba(71, 85, 105, 0.5);
+    pointer-events: auto;
+    backdrop-filter: blur(4px);
+}
+
+.skirmish-placement-ui.use-main-unit-bar .skirmish-bottom-bar {
+    min-height: 0;
+    height: 0;
+    padding: 0;
+    border-top: 0;
+    background: transparent;
+    backdrop-filter: none;
+}
+
+.skirmish-placement-ui.use-main-unit-bar .skirmish-narration,
+.skirmish-placement-ui.use-main-unit-bar .skirmish-unit-palette {
+    display: none !important;
+}
+
+.skirmish-placement-ui.use-main-unit-bar .skirmish-ready-btn {
+    position: fixed;
+    top: 50%;
+    bottom: auto;
+    transform: translate(-50%, -50%);
+}
+
+.skirmish-unit-palette {
+    display: flex;
+    gap: 0.4rem;
+    flex: 1;
+    overflow-x: auto;
+    padding: 0.25rem 0;
+}
+
+.skirmish-unit-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-width: 64px;
+    width: 64px;
+    height: 56px;
+    padding: 0.2rem;
+    background: rgba(30, 41, 59, 0.9);
+    border: 2px solid #475569;
+    border-radius: 0.4rem;
+    color: #e2e8f0;
+    font-size: 0.7rem;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    user-select: none;
+}
+
+.skirmish-unit-card:hover {
+    border-color: #60a5fa;
+    background: rgba(30, 58, 95, 0.9);
+}
+
+.skirmish-unit-card.selected {
+    border-color: #3b82f6;
+    background: rgba(29, 78, 216, 0.4);
+    box-shadow: 0 0 8px rgba(59, 130, 246, 0.5);
+}
+
+.skirmish-unit-card.depleted {
+    opacity: 0.4;
+    pointer-events: none;
+}
+
+.skirmish-unit-card-name {
+    font-weight: 700;
+    font-size: 0.65rem;
+    margin-bottom: 2px;
+}
+
+.skirmish-unit-card-count {
+    font-size: 0.6rem;
+    color: #94a3b8;
+}
+
+.skirmish-ready-btn {
+    position: absolute;
+    left: 50%;
+    bottom: calc(100% + 4.2rem);
+    transform: translateX(-50%);
+    padding: 0.5rem 1.5rem;
+    background: linear-gradient(135deg, #16a34a, #15803d);
+    border: 2px solid #4ade80;
+    border-radius: 0.5rem;
+    color: #fff;
+    font-weight: 800;
+    font-size: 0.9rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: transform 0.1s, box-shadow 0.15s;
+    pointer-events: auto;
+    z-index: 2;
+    opacity: 0.94;
+}
+
+.skirmish-ready-btn.is-hidden {
+    display: none !important;
+}
+
+.skirmish-ready-btn:hover {
+    transform: translateX(-50%) scale(1.05);
+    box-shadow: 0 0 16px rgba(74, 222, 128, 0.5);
+}
+
+.skirmish-ready-btn:active {
+    transform: translateX(-50%) scale(0.97);
+}
+
+.skirmish-placement-ui.use-main-unit-bar .skirmish-ready-btn:hover {
+    transform: translate(-50%, -50%) scale(1.05);
+}
+
+.skirmish-placement-ui.use-main-unit-bar .skirmish-ready-btn:active {
+    transform: translate(-50%, -50%) scale(0.97);
+}
+
+/* 카운트다운 오버레이 */
+.skirmish-countdown {
+    position: absolute;
+    inset: 0;
+    z-index: 95;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.6);
+    pointer-events: none;
+}
+
+.skirmish-countdown span {
+    font-size: 6rem;
+    font-weight: 900;
+    color: #fff;
+    text-shadow: 0 0 40px rgba(59, 130, 246, 0.8), 0 0 80px rgba(59, 130, 246, 0.3);
+    animation: skirmishCountPulse 0.8s ease-out;
+}
+
+@keyframes skirmishCountPulse {
+    from {
+        transform: scale(2.5);
+        opacity: 0;
+    }
+    to {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* 배치 가능 영역 하이라이트 (canvas 위 반투명 표시) */
+.skirmish-placement-zone-hint {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 30%;
+    height: 100%;
+    background: rgba(59, 130, 246, 0.08);
+    border-right: 2px dashed rgba(59, 130, 246, 0.3);
+    pointer-events: none;
+    z-index: 75;
+}
+
+@media (max-width: 640px) {
+    .skirmish-bottom-bar {
+        gap: 0.35rem;
+        min-height: 54px;
+        padding: 0.35rem 0.55rem;
+    }
+
+    .skirmish-unit-palette {
+        gap: 0.32rem;
+    }
+
+    .skirmish-narration {
+        bottom: calc(100% + 0.3rem);
+        padding: 0.5rem 0.8rem;
+        font-size: 0.75rem;
+        width: min(90%, calc(100% - 0.75rem));
+    }
+
+    .skirmish-unit-card {
+        min-width: 54px;
+        width: 54px;
+        height: 48px;
+    }
+
+    .skirmish-ready-btn {
+        bottom: calc(100% + 3.25rem);
+        padding: 0.4rem 1rem;
+        font-size: 0.8rem;
+    }
+
+    .skirmish-placement-ui.use-main-unit-bar .skirmish-ready-btn {
+        top: 50%;
+        bottom: auto;
+        transform: translate(-50%, -50%);
+    }
+
+    .skirmish-countdown span {
+        font-size: 4rem;
+    }
+}

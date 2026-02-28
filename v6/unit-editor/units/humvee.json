@@ -1,0 +1,69 @@
+{
+  "id": "humvee",
+  "name": "험비",
+  "type": "vehicle",
+  "metadata": {
+    "author": "editor",
+    "version": "1.0",
+    "lastModified": "2025-01-31",
+    "description": "빠른 속도로 치고 빠지며 보병을 제압하는 고속 차량"
+  },
+  "parts": {
+    "body": {
+      "type": "polygon",
+      "points": [
+        {"x": 20, "y": -8},
+        {"x": 18, "y": -12},
+        {"x": -15, "y": -12},
+        {"x": -20, "y": -8},
+        {"x": -20, "y": 4},
+        {"x": 20, "y": 4}
+      ],
+      "color": "team",
+      "zIndex": 1
+    },
+    "window": {
+      "type": "rect",
+      "x": 8,
+      "y": -11,
+      "w": 10,
+      "h": 5,
+      "color": "#1e293b",
+      "zIndex": 2
+    },
+    "roof": {
+      "type": "rect",
+      "x": -12,
+      "y": -14,
+      "w": 18,
+      "h": 3,
+      "color": "#1e293b",
+      "zIndex": 3
+    },
+    "gunMount": {
+      "type": "circle",
+      "x": -3,
+      "y": -16,
+      "r": 4,
+      "color": "#0f172a",
+      "zIndex": 4
+    },
+    "gun": {
+      "type": "rect",
+      "x": 1,
+      "y": -17,
+      "w": 10,
+      "h": 2,
+      "color": "#000",
+      "zIndex": 5
+    },
+    "wheels": {
+      "type": "wheels",
+      "points": [
+        {"x": -14, "y": 5},
+        {"x": 14, "y": 5}
+      ],
+      "zIndex": 0
+    }
+  }
+}
